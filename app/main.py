@@ -258,6 +258,10 @@ async def update_my_ps_config(
         tenant = await db.get(PSTenant, body.ps_tenant_id)
         if not tenant:
             raise HTTPException(status_code=404, detail="PS Tenant not found")
+        if current_user.ps_tenant_id != body.ps_tenant_id and body.ps_api_key is None:
+            # Tenant changed without a new App ID — clear the stored key so the
+            # old tenant's App ID is not silently used against the new endpoint.
+            current_user.ps_api_key_enc = None
         current_user.ps_tenant_id = body.ps_tenant_id
 
     if body.ps_api_key is not None:
@@ -871,8 +875,10 @@ async def chat_stream(
                 else:
                     last_user_msg_eff = last_user_msg
             except Exception as e:
-                logger.error("PS prompt scan error: %s", e)
-                last_user_msg_eff = last_user_msg
+                logger.error("PS prompt scan error for %s: %s", current_user.email, e)
+                err_hint = "PS App ID may be wrong for this tenant — re-enter it in ⚙ Settings → Prompt Security."
+                yield ("data: " + json.dumps({'type': 'error', 'detail': f'PS scan failed: {e}. {err_hint}'}) + "\n\n")
+                return
         else:
             last_user_msg_eff = last_user_msg
 
@@ -917,7 +923,10 @@ async def chat_stream(
                     final_action = "modify"
                     yield f"data: {json.dumps({'type': 'sanitized', 'text': reply})}\n\n"
             except Exception as e:
-                logger.error("PS response scan error: %s", e)
+                logger.error("PS response scan error for %s: %s", current_user.email, e)
+                err_hint = "PS App ID may be wrong for this tenant — re-enter it in ⚙ Settings → Prompt Security."
+                yield ("data: " + json.dumps({'type': 'error', 'detail': f'PS response scan failed: {e}. {err_hint}'}) + "\n\n")
+                return
 
         await _log_msg(db, session_id, current_user.id, "assistant", reply, model,
                        ps_scanned=bool(ps_client), ps_action=final_action,
