@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Chat — Prompt Security Demo</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0f1117; --surface: #1a1d27; --surface2: #20232f; --border: #2a2d3a;
+  --text: #e8e9f0; --text-muted: #7a7d8e; --accent: #6c63ff; --accent-hover: #5a52e0;
+  --user-bubble: #1e2240; --bot-bubble: #1a1d27;
+  --green: #2ecc71; --red: #e74c3c; --yellow: #e6b800;
+  --blocked: rgba(231,76,60,0.08); --blocked-border: rgba(231,76,60,0.3); --blocked-text: #e74c3c;
+  --radius: 12px; --font: 'Inter', system-ui, sans-serif;
+}
+body { background: var(--bg); color: var(--text); font-family: var(--font); height: 100vh; display: flex; overflow: hidden; }
+
+/* ── Sidebar ── */
+#sidebar { width: 240px; min-width: 240px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+#sidebar-header { padding: 16px 14px 10px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--border); }
+#sidebar-header img { height: 28px; object-fit: contain; align-self: flex-start; }
+.sidebar-btn { width: 100%; background: transparent; border: 1px solid var(--border); border-radius: 8px; color: var(--text-muted); font-family: var(--font); font-size: 12px; font-weight: 500; padding: 7px 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s; }
+.sidebar-btn:hover { background: var(--surface2); color: var(--text); }
+#sidebar-label { font-size: 10px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.8px; text-transform: uppercase; padding: 12px 14px 4px; }
+#historyList { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
+.history-item { padding: 8px 10px; border-radius: 8px; cursor: pointer; position: relative; transition: background 0.15s; }
+.history-item:hover, .history-item.active { background: var(--surface2); }
+.history-title { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.history-date { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+.del-btn { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 12px; padding: 3px 5px; border-radius: 4px; opacity: 0; transition: opacity 0.15s, color 0.15s; }
+.history-item:hover .del-btn { opacity: 1; }
+.del-btn:hover { color: var(--red); }
+.history-empty { font-size: 12px; color: var(--text-muted); text-align: center; padding: 24px 8px; }
+
+/* ── Main ── */
+#main { flex: 1; display: flex; flex-direction: column; height: 100vh; min-width: 0; }
+header { display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.header-title { font-size: 15px; font-weight: 700; }
+.header-subtitle { font-size: 11px; color: var(--text-muted); }
+header .spacer { flex: 1; }
+#modelSelect { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: var(--font); font-size: 12px; padding: 5px 10px; cursor: pointer; outline: none; max-width: 200px; }
+#modelSelect:focus { border-color: var(--accent); }
+#modelSelect option { background: var(--surface2); }
+#modelSelect option:disabled { color: var(--text-muted); font-style: italic; }
+.icon-btn { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 16px; padding: 6px; border-radius: 8px; transition: color 0.15s, background 0.15s; line-height: 1; }
+.icon-btn:hover { color: var(--text); background: var(--surface2); }
+.icon-btn.active { color: var(--accent); }
+#psStatus { font-size: 11px; padding: 3px 10px; border-radius: 12px; font-weight: 600; white-space: nowrap; }
+#psStatus.on  { background: rgba(46,204,113,0.1); color: var(--green); border: 1px solid rgba(46,204,113,0.3); }
+#psStatus.off { background: rgba(122,125,142,0.1); color: var(--text-muted); border: 1px solid var(--border); cursor: pointer; }
+#userMenuBtn { display: flex; align-items: center; gap: 6px; background: none; border: 1px solid var(--border); border-radius: 8px; color: var(--text-muted); font-family: var(--font); font-size: 12px; padding: 5px 10px; cursor: pointer; transition: all 0.15s; position: relative; }
+#userMenuBtn:hover { background: var(--surface2); color: var(--text); }
+#userDropdown { display: none; position: absolute; top: calc(100% + 6px); right: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 6px; min-width: 160px; z-index: 50; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+#userDropdown.open { display: block; }
+.dd-item { display: block; width: 100%; text-align: left; background: none; border: none; color: var(--text); font-family: var(--font); font-size: 13px; padding: 7px 12px; border-radius: 6px; cursor: pointer; transition: background 0.15s; }
+.dd-item:hover { background: var(--surface2); }
+.dd-item.muted { color: var(--text-muted); font-size: 12px; }
+.dd-sep { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+#userMenuWrap { position: relative; }
+
+/* ── Quota bar ── */
+#quotaBar { display: none; padding: 4px 20px; background: var(--surface); border-bottom: 1px solid var(--border); align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); }
+#quotaTrack { flex: 1; height: 3px; background: var(--border); border-radius: 2px; max-width: 200px; }
+#quotaFill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.4s; }
+
+/* ── Chat ── */
+#chat { flex: 1; overflow-y: auto; padding: 24px 20px; display: flex; flex-direction: column; gap: 16px; }
+.message { display: flex; gap: 10px; max-width: 760px; animation: fadeIn 0.22s ease-out; }
+.message.user  { align-self: flex-end; flex-direction: row-reverse; }
+.message.bot   { align-self: flex-start; }
+.avatar { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; margin-top: 2px; }
+.message.user .avatar { background: var(--accent); }
+.message.bot  .avatar { background: var(--surface2); border: 1px solid var(--border); }
+.msg-inner { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.bubble { padding: 10px 14px; border-radius: var(--radius); line-height: 1.6; font-size: 14px; word-break: break-word; white-space: pre-wrap; }
+.message.user .bubble { background: var(--user-bubble); border: 1px solid #3b4590; border-bottom-right-radius: 4px; }
+.message.bot  .bubble { background: var(--bot-bubble); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+.message.blocked .bubble { background: var(--blocked); border-color: var(--blocked-border); color: var(--blocked-text); }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.typing-dots span { display: inline-block; width: 6px; height: 6px; background: var(--text-muted); border-radius: 50%; animation: bounce 1.2s infinite ease-in-out; }
+.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-6px)} }
+.msg-footer { display: flex; align-items: center; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+.model-badge { font-size: 10px; color: var(--text-muted); background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+.copy-btn { font-size: 11px; padding: 1px 8px; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer; font-family: var(--font); opacity: 0; transition: opacity 0.15s; }
+.msg-inner:hover .copy-btn { opacity: 1; }
+.copy-btn:hover { background: var(--surface2); color: var(--text); }
+.copy-btn.copied { color: var(--green); border-color: rgba(46,204,113,0.4); opacity: 1; }
+.ps-badge { font-size: 10px; border-radius: 4px; padding: 1px 6px; border: 1px solid; white-space: nowrap; cursor: pointer; }
+.ps-badge.pass   { color: var(--green); border-color: rgba(46,204,113,0.4); background: rgba(46,204,113,0.07); }
+.ps-badge.modify { color: var(--yellow); border-color: rgba(230,184,0,0.4); background: rgba(230,184,0,0.07); }
+.ps-badge.block  { color: var(--red); border-color: rgba(231,76,60,0.4); background: rgba(231,76,60,0.07); }
+.ps-badge.none   { color: var(--text-muted); border-color: var(--border); cursor: default; }
+.ps-detail { display: none; margin-top: 6px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 11px; color: var(--text-muted); max-width: 340px; }
+.ps-detail.open { display: block; }
+.ps-detail-row { display: flex; justify-content: space-between; padding: 2px 0; border-top: 1px solid var(--border); margin-top: 4px; }
+.ps-detail-row:first-child { border-top: none; margin-top: 0; }
+.bubble-image { max-width: 320px; max-height: 240px; border-radius: 8px; display: block; margin-bottom: 6px; }
+
+/* ── Markdown ── */
+.bubble p { margin-bottom: 8px; }
+.bubble p:last-child { margin-bottom: 0; }
+.bubble pre { background: #0d0f1a; border: 1px solid var(--border); border-radius: 8px; padding: 12px; overflow-x: auto; margin: 8px 0; }
+.bubble code:not(pre code) { background: var(--surface2); border-radius: 4px; padding: 1px 5px; font-size: 13px; }
+.bubble pre code { font-size: 12px; }
+.bubble ul, .bubble ol { padding-left: 20px; margin: 6px 0; }
+.bubble table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+.bubble th, .bubble td { border: 1px solid var(--border); padding: 4px 8px; font-size: 13px; }
+.bubble th { background: var(--surface2); }
+
+/* ── Input area ── */
+#inputArea { display: flex; flex-direction: column; gap: 0; padding: 12px 16px 16px; background: var(--surface); border-top: 1px solid var(--border); flex-shrink: 0; }
+#attachmentBadge { display: none; align-items: center; gap: 6px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; font-size: 12px; color: var(--text); margin-bottom: 6px; }
+#attachmentBadge.visible { display: flex; }
+.att-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.att-remove { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 16px; line-height: 1; padding: 0 2px; }
+.att-remove:hover { color: var(--red); }
+#inputRow { display: flex; gap: 10px; align-items: flex-end; }
+#attachBtn { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 18px; border-radius: 8px; padding: 6px 8px; transition: color 0.15s, background 0.15s; line-height: 1; flex-shrink: 0; }
+#attachBtn:hover { color: var(--text); background: var(--surface2); }
+#userInput { flex: 1; min-width: 0; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: var(--font); font-size: 14px; padding: 10px 14px; resize: none; outline: none; line-height: 1.5; max-height: 140px; overflow-y: auto; transition: border-color 0.2s; }
+#userInput:focus { border-color: var(--accent); }
+#userInput::placeholder { color: var(--text-muted); }
+#sendBtn { background: var(--accent); border: none; border-radius: var(--radius); color: #fff; cursor: pointer; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; font-size: 17px; transition: background 0.2s; flex-shrink: 0; align-self: flex-end; }
+#sendBtn:hover:not(:disabled) { background: var(--accent-hover); }
+#sendBtn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ── Modals ── */
+.backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 100; align-items: center; justify-content: center; }
+.backdrop.open { display: flex; }
+.modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; width: 480px; max-width: 92vw; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+.modal h3 { font-size: 15px; font-weight: 700; }
+.modal p  { font-size: 12px; color: var(--text-muted); margin-top: -8px; }
+.modal label { font-size: 12px; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 5px; }
+.modal textarea, .modal select, .modal input[type=text], .modal input[type=password] {
+  width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); font-family: var(--font); font-size: 13px; padding: 8px 12px;
+  outline: none; transition: border-color 0.2s;
+}
+.modal textarea { resize: vertical; line-height: 1.5; }
+.modal select option { background: var(--surface2); }
+.modal textarea:focus, .modal select:focus, .modal input:focus { border-color: var(--accent); }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+.btn { padding: 7px 18px; border-radius: 8px; font-family: var(--font); font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); transition: all 0.2s; }
+.btn-primary   { background: var(--accent); color: #fff; border-color: transparent; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-secondary { background: transparent; color: var(--text-muted); }
+.btn-secondary:hover { background: var(--surface2); color: var(--text); }
+.btn-danger { background: transparent; color: var(--red); border-color: rgba(231,76,60,0.3); }
+.btn-danger:hover { background: rgba(231,76,60,0.1); }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+</head>
+<body>
+
+<!-- ── Sidebar ── -->
+<div id="sidebar">
+  <div id="sidebar-header">
+    <button class="sidebar-btn" id="newChatBtn">✏️ New Chat</button>
+  </div>
+  <div id="sidebar-label">History</div>
+  <div id="historyList"><div class="history-empty">No conversations yet.</div></div>
+</div>
+
+<!-- ── Main ── -->
+<div id="main">
+  <header>
+    <span style="font-size:24px">🤖</span>
+    <div>
+      <div class="header-title">AI Chat Demo</div>
+      <div class="header-subtitle">powered by Prompt Security</div>
+    </div>
+    <div class="spacer"></div>
+    <select id="modelSelect"><option disabled selected>Loading…</option></select>
+    <button class="icon-btn" id="sysPromptBtn" title="System prompt">⚙️</button>
+    <div id="psStatus" class="off" title="Configure PS in settings">PS off</div>
+    <div id="userMenuWrap">
+      <button id="userMenuBtn">👤 <span id="userLabel">—</span></button>
+      <div id="userDropdown">
+        <button class="dd-item muted" id="userEmailLabel" disabled>—</button>
+        <hr class="dd-sep">
+        <button class="dd-item" id="psSettingsBtn">🔑 PS Settings</button>
+        <button class="dd-item" id="exportBtn">⬇️ Export Chat</button>
+        <hr class="dd-sep" id="adminSep" style="display:none">
+        <a class="dd-item" id="adminLink" href="/admin" style="display:none;text-decoration:none">⚙️ Admin</a>
+        <hr class="dd-sep">
+        <button class="dd-item" id="logoutBtn">Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <div id="quotaBar">
+    <span id="quotaText">0 / 0 messages today</span>
+    <div id="quotaTrack"><div id="quotaFill" style="width:0%"></div></div>
+  </div>
+
+  <div id="chat"></div>
+
+  <div id="inputArea">
+    <div id="attachmentBadge">
+      <span id="attIcon">📎</span>
+      <span class="att-name" id="attName"></span>
+      <button class="att-remove" id="attRemoveBtn">&times;</button>
+    </div>
+    <div id="inputRow">
+      <input type="file" id="fileInput" accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/markdown,text/csv,application/json,.txt,.md,.csv,.json,.pdf" style="display:none">
+      <button id="attachBtn" title="Attach file">📎</button>
+      <textarea id="userInput" rows="1" placeholder="Type a message… (Enter to send, Shift+Enter for newline)"></textarea>
+      <button id="sendBtn" title="Send">&#10148;</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── System Prompt Modal ── -->
+<div class="backdrop" id="sysBackdrop">
+  <div class="modal">
+    <h3>System Prompt</h3>
+    <p>Override the default system prompt for this session.</p>
+    <div><label for="sysTextarea">Prompt</label><textarea id="sysTextarea" rows="6"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" id="sysResetBtn">Reset</button>
+      <button class="btn btn-secondary" id="sysCancelBtn">Cancel</button>
+      <button class="btn btn-primary" id="sysSaveBtn">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── PS Settings Modal ── -->
+<div class="backdrop" id="psBackdrop">
+  <div class="modal">
+    <h3>Prompt Security Settings</h3>
+    <p>Select your PS tenant and enter your App ID. Keys are stored encrypted.</p>
+    <div>
+      <label for="psTenantSel">PS Tenant</label>
+      <select id="psTenantSel"><option value="">— Select tenant —</option></select>
+    </div>
+    <div>
+      <label for="psKeyInput">PS App ID / API Key</label>
+      <input type="password" id="psKeyInput" placeholder="Leave blank to keep existing key">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="psCancelBtn">Cancel</button>
+      <button class="btn btn-primary" id="psSaveBtn">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  marked.setOptions({ breaks: true, gfm: true });
+
+  // ── Auth ──────────────────────────────────────────────────────────────────
+  const AUTH_TOKEN = localStorage.getItem('hgapp_token');
+  let AUTH_USER = JSON.parse(localStorage.getItem('hgapp_user') || 'null');
+  if (!AUTH_TOKEN) window.location.replace('/login');
+
+  function authFetch(url, opts = {}) {
+    return fetch(url, {
+      ...opts,
+      headers: {
+        ...(opts.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+        'Authorization': `Bearer ${AUTH_TOKEN}`,
+        ...(opts.headers || {}),
+      },
+    }).then(res => {
+      if (res.status === 401) { localStorage.clear(); window.location.replace('/login'); }
+      return res;
+    });
+  }
+
+  // ── DOM refs ──────────────────────────────────────────────────────────────
+  const chatEl       = document.getElementById('chat');
+  const input        = document.getElementById('userInput');
+  const sendBtn      = document.getElementById('sendBtn');
+  const modelSelect  = document.getElementById('modelSelect');
+  const historyList  = document.getElementById('historyList');
+  const psStatusEl   = document.getElementById('psStatus');
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  const SYS_KEY = 'hgapp_v2_sysprompt';
+  let currentSessionId = null;
+  let messages = [];
+  let serverSessions = [];
+  let attachment = null;
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  async function init() {
+    const res = await authFetch('/auth/me');
+    if (!res.ok) { localStorage.clear(); window.location.replace('/login'); return; }
+    AUTH_USER = await res.json();
+    localStorage.setItem('hgapp_user', JSON.stringify(AUTH_USER));
+
+    document.getElementById('userLabel').textContent = AUTH_USER.email.split('@')[0];
+    document.getElementById('userEmailLabel').textContent = AUTH_USER.email;
+    if (AUTH_USER.role === 'admin') {
+      document.getElementById('adminLink').style.display = 'block';
+      document.getElementById('adminSep').style.display = 'block';
+    }
+    updatePsStatus();
+    await Promise.all([loadModels(), loadSessions(), loadStats()]);
+  }
+
+  function updatePsStatus() {
+    if (AUTH_USER?.ps_configured) {
+      psStatusEl.className = 'on';
+      psStatusEl.textContent = `PS: ${AUTH_USER.ps_tenant?.name || 'on'}`;
+      psStatusEl.title = `Scanning via ${AUTH_USER.ps_tenant?.base_url}`;
+    } else {
+      psStatusEl.className = 'off';
+      psStatusEl.textContent = 'PS off';
+      psStatusEl.title = 'Click Settings → PS Settings to configure';
+    }
+  }
+
+  async function loadModels() {
+    const res = await authFetch('/models');
+    if (!res.ok) return;
+    const { models } = await res.json();
+    modelSelect.innerHTML = '';
+    if (!models.length) {
+      modelSelect.innerHTML = '<option disabled>No models available</option>';
+      return;
+    }
+    models.forEach((m, i) => {
+      const opt = document.createElement('option');
+      opt.value = m.id; opt.textContent = m.id;
+      if (i === 0) opt.selected = true;
+      modelSelect.appendChild(opt);
+    });
+  }
+
+  async function loadSessions() {
+    const res = await authFetch('/sessions');
+    if (!res.ok) return;
+    serverSessions = await res.json();
+    renderHistory();
+  }
+
+  async function loadStats() {
+    const res = await authFetch('/users/me/stats');
+    if (!res.ok) return;
+    const stats = await res.json();
+    updateQuota(stats.messages_today, stats.daily_limit);
+  }
+
+  // ── History ───────────────────────────────────────────────────────────────
+  function renderHistory() {
+    historyList.innerHTML = '';
+    if (!serverSessions.length) {
+      historyList.innerHTML = '<div class="history-empty">No conversations yet.</div>'; return;
+    }
+    serverSessions.forEach(s => {
+      const item = document.createElement('div');
+      item.className = 'history-item' + (s.id === currentSessionId ? ' active' : '');
+      item.innerHTML = `<div class="history-title">${esc(s.title)}</div><div class="history-date">${formatDate(s.created_at)}</div>`;
+      const del = document.createElement('button');
+      del.className = 'del-btn'; del.title = 'Delete'; del.textContent = '🗑';
+      del.addEventListener('click', e => { e.stopPropagation(); deleteSession(s.id); });
+      item.appendChild(del);
+      item.addEventListener('click', () => loadSession(s.id));
+      historyList.appendChild(item);
+    });
+  }
+
+  async function loadSession(id) {
+    const res = await authFetch(`/sessions/${id}/messages`);
+    if (!res.ok) return;
+    const msgs = await res.json();
+    currentSessionId = id;
+    messages = msgs.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content }));
+    chatEl.innerHTML = '';
+    msgs.forEach(m => {
+      if (m.role === 'user') appendMessage('user', m.content);
+      else appendMessage('bot', m.content, { model: m.model, psScanned: m.ps_scanned, psAction: m.ps_action || 'pass', violations: m.ps_violations || [] });
+    });
+    renderHistory(); scrollToBottom();
+  }
+
+  async function deleteSession(id) {
+    await authFetch(`/sessions/${id}`, { method: 'DELETE' });
+    if (currentSessionId === id) { currentSessionId = null; messages = []; chatEl.innerHTML = ''; }
+    serverSessions = serverSessions.filter(s => s.id !== id);
+    renderHistory();
+  }
+
+  function startNewChat() {
+    currentSessionId = null; messages = [];
+    chatEl.innerHTML = ''; renderHistory(); input.focus();
+  }
+
+  // ── Models ────────────────────────────────────────────────────────────────
+  function populateModels(models) {
+    modelSelect.innerHTML = '';
+    if (!models.length) { modelSelect.innerHTML = '<option disabled>No models</option>'; return; }
+    models.forEach((m, i) => {
+      const opt = Object.assign(document.createElement('option'), { value: m.id, textContent: m.id });
+      if (i === 0) opt.selected = true;
+      modelSelect.appendChild(opt);
+    });
+  }
+
+  // ── Quota ─────────────────────────────────────────────────────────────────
+  function updateQuota(used, limit) {
+    const bar = document.getElementById('quotaBar');
+    if (!limit) { bar.style.display = 'none'; return; }
+    bar.style.display = 'flex';
+    const pct = Math.min(100, Math.round(used / limit * 100));
+    document.getElementById('quotaFill').style.width = pct + '%';
+    document.getElementById('quotaText').textContent = `${used} / ${limit} messages today`;
+  }
+
+  // ── System prompt ─────────────────────────────────────────────────────────
+  const sysBackdrop = document.getElementById('sysBackdrop');
+  const sysTextarea = document.getElementById('sysTextarea');
+  document.getElementById('sysPromptBtn').addEventListener('click', () => {
+    sysTextarea.value = localStorage.getItem(SYS_KEY) || '';
+    sysBackdrop.classList.add('open');
+  });
+  document.getElementById('sysCancelBtn').addEventListener('click', () => sysBackdrop.classList.remove('open'));
+  document.getElementById('sysResetBtn').addEventListener('click', () => { localStorage.removeItem(SYS_KEY); document.getElementById('sysPromptBtn').classList.remove('active'); sysBackdrop.classList.remove('open'); });
+  document.getElementById('sysSaveBtn').addEventListener('click', () => {
+    const v = sysTextarea.value.trim();
+    if (v) localStorage.setItem(SYS_KEY, v); else localStorage.removeItem(SYS_KEY);
+    document.getElementById('sysPromptBtn').classList.toggle('active', !!v);
+    sysBackdrop.classList.remove('open');
+  });
+  sysBackdrop.addEventListener('click', e => { if (e.target === sysBackdrop) sysBackdrop.classList.remove('open'); });
+
+  // ── PS Settings modal ─────────────────────────────────────────────────────
+  const psBackdrop = document.getElementById('psBackdrop');
+  async function openPsSettings() {
+    userDropdown.classList.remove('open');
+    const res = await authFetch('/ps-tenants');
+    const tenants = res.ok ? await res.json() : [];
+    const sel = document.getElementById('psTenantSel');
+    sel.innerHTML = '<option value="">— Select tenant —</option>';
+    tenants.forEach(t => {
+      const opt = Object.assign(document.createElement('option'), { value: t.id, textContent: `${t.name} — ${t.base_url}` });
+      if (AUTH_USER?.ps_tenant_id === t.id) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    document.getElementById('psKeyInput').value = '';
+    psBackdrop.classList.add('open');
+  }
+  document.getElementById('psSettingsBtn').addEventListener('click', openPsSettings);
+  psStatusEl.addEventListener('click', () => { if (!AUTH_USER?.ps_configured) openPsSettings(); });
+  document.getElementById('psCancelBtn').addEventListener('click', () => psBackdrop.classList.remove('open'));
+  psBackdrop.addEventListener('click', e => { if (e.target === psBackdrop) psBackdrop.classList.remove('open'); });
+  document.getElementById('psSaveBtn').addEventListener('click', async () => {
+    const tenantId = parseInt(document.getElementById('psTenantSel').value) || null;
+    const key = document.getElementById('psKeyInput').value.trim() || null;
+    const body = {};
+    if (tenantId) body.ps_tenant_id = tenantId;
+    if (key) body.ps_api_key = key;
+    const res = await authFetch('/users/me/ps-config', { method: 'PATCH', body: JSON.stringify(body) });
+    if (res.ok) {
+      AUTH_USER = await res.json();
+      localStorage.setItem('hgapp_user', JSON.stringify(AUTH_USER));
+      updatePsStatus();
+      psBackdrop.classList.remove('open');
+    } else {
+      alert('Failed to save PS settings');
+    }
+  });
+
+  // ── User dropdown ─────────────────────────────────────────────────────────
+  const userDropdown = document.getElementById('userDropdown');
+  document.getElementById('userMenuBtn').addEventListener('click', e => { e.stopPropagation(); userDropdown.classList.toggle('open'); });
+  document.addEventListener('click', () => userDropdown.classList.remove('open'));
+  document.getElementById('logoutBtn').addEventListener('click', () => { localStorage.clear(); window.location.replace('/login'); });
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    userDropdown.classList.remove('open');
+    if (!messages.length) { alert('No messages to export.'); return; }
+    const txt = messages.map(m => `**${m.role === 'user' ? 'User' : 'Assistant'}**\n\n${m.content}`).join('\n\n---\n\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([txt], { type: 'text/markdown' }));
+    a.download = `chat-${currentSessionId || 'export'}.md`; a.click();
+  });
+
+  // ── File attachment ───────────────────────────────────────────────────────
+  const badge = document.getElementById('attachmentBadge');
+  function clearAttachment() { attachment = null; badge.classList.remove('visible'); document.getElementById('fileInput').value = ''; }
+  document.getElementById('attachBtn').addEventListener('click', () => document.getElementById('fileInput').click());
+  document.getElementById('attRemoveBtn').addEventListener('click', clearAttachment);
+  document.getElementById('fileInput').addEventListener('change', async e => {
+    const file = e.target.files[0]; if (!file) return;
+    document.getElementById('attName').textContent = 'Uploading…'; badge.classList.add('visible');
+    try {
+      const fd = new FormData(); fd.append('file', file);
+      const res = await authFetch('/upload', { method: 'POST', body: fd });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.detail || 'Upload failed'); clearAttachment(); return; }
+      attachment = await res.json();
+      document.getElementById('attIcon').textContent = attachment.type === 'image' ? '🖼️' : '📄';
+      document.getElementById('attName').textContent = attachment.filename;
+    } catch (err) { alert('Upload error: ' + err.message); clearAttachment(); }
+  });
+
+  // ── Rendering helpers ─────────────────────────────────────────────────────
+  function renderMd(text) {
+    try { return marked.parse(text); } catch { return text; }
+  }
+  function highlightBubble(el) {
+    el.querySelectorAll('pre code').forEach(b => { try { hljs.highlightElement(b); } catch {} });
+  }
+  function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function formatDate(iso) {
+    const d = new Date(iso); const now = new Date();
+    if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  }
+  function scrollToBottom() { chatEl.scrollTop = chatEl.scrollHeight; }
+
+  function appendMessage(role, text, { blocked=false, violations=[], model:mdl=null, psScanned=false, psAction='pass', rawHtml=null } = {}) {
+    const wrap = document.createElement('div');
+    wrap.className = `message ${role}` + (blocked ? ' blocked' : '');
+    const av = Object.assign(document.createElement('div'), { className:'avatar', textContent: role==='user'?'👤':'🤖' });
+    const inner = document.createElement('div'); inner.className = 'msg-inner';
+    const bub = document.createElement('div'); bub.className = 'bubble';
+
+    if (blocked) bub.textContent = '⛔ Message blocked by security policy.';
+    else if (rawHtml !== null) bub.innerHTML = rawHtml;
+    else if (role === 'bot') { bub.innerHTML = renderMd(text); highlightBubble(bub); }
+    else bub.textContent = text;
+
+    inner.appendChild(bub);
+    if (role === 'bot' && !blocked) addFooter(inner, () => text || bub.innerText, mdl, psScanned, violations, psAction);
+    else if (blocked) renderPsInsight(inner, true, 'block', violations);
+    wrap.append(av, inner); chatEl.appendChild(wrap); scrollToBottom();
+    return { wrap, bub, inner };
+  }
+
+  function addFooter(inner, getText, mdl, psScanned, violations, psAction) {
+    const footer = document.createElement('div'); footer.className = 'msg-footer';
+    if (mdl) { const mb = document.createElement('span'); mb.className = 'model-badge'; mb.textContent = mdl; footer.appendChild(mb); }
+    const cp = document.createElement('button'); cp.className = 'copy-btn'; cp.textContent = 'Copy';
+    cp.addEventListener('click', () => { navigator.clipboard.writeText(getText()); cp.className = 'copy-btn copied'; cp.textContent = 'Copied!'; setTimeout(() => { cp.className = 'copy-btn'; cp.textContent = 'Copy'; }, 1500); });
+    footer.appendChild(cp);
+    inner.appendChild(footer);
+    renderPsInsight(inner, psScanned, psAction, violations);
+  }
+
+  function renderPsInsight(inner, scanned, action, violations) {
+    if (!scanned) return;
+    const wrap = document.createElement('div'); wrap.className = 'ps-insight';
+    const badge = document.createElement('span'); badge.className = `ps-badge ${action}`;
+    const icons = { pass:'✅', modify:'⚠️', block:'🚫' };
+    badge.textContent = `${icons[action]||'🔍'} PS: ${action}`;
+    wrap.appendChild(badge);
+    if (violations?.length) {
+      const detail = document.createElement('div'); detail.className = 'ps-detail';
+      violations.forEach(v => {
+        const row = document.createElement('div'); row.className = 'ps-detail-row';
+        row.innerHTML = `<span>${typeof v === 'string' ? v : (v.type||v.category||JSON.stringify(v))}</span>${v.score !== undefined ? `<span style="color:var(--accent);font-size:10px">${Math.round(v.score*100)}%</span>` : ''}`;
+        detail.appendChild(row);
+      });
+      badge.addEventListener('click', () => detail.classList.toggle('open'));
+      wrap.appendChild(detail);
+    }
+    inner.appendChild(wrap);
+  }
+
+  function createStreamBubble() {
+    const wrap = document.createElement('div'); wrap.className = 'message bot';
+    const av = Object.assign(document.createElement('div'), { className:'avatar', textContent:'🤖' });
+    const inner = document.createElement('div'); inner.className = 'msg-inner';
+    const bub = document.createElement('div'); bub.className = 'bubble';
+    inner.appendChild(bub); wrap.append(av, inner); chatEl.appendChild(wrap); scrollToBottom();
+    return { wrap, bub, inner };
+  }
+
+  // ── Send ──────────────────────────────────────────────────────────────────
+  async function send() {
+    const text = input.value.trim();
+    if (!text && !attachment) return;
+
+    const att = attachment; clearAttachment();
+    const userMsg = { role: 'user', content: text };
+    if (att?.type === 'image') userMsg.image_url = att.content;
+    else if (att?.type === 'text') userMsg.content = `[File: ${att.filename}]\n${att.content}${text ? '\n\n' + text : ''}`;
+
+    const displayHtml = (att?.type === 'image' ? `<img class="bubble-image" src="${att.content}" alt="${att.filename}"><br>` :
+                        (att?.type === 'text' ? `<em style="font-size:11px;color:var(--text-muted)">📄 ${att.filename}</em><br>` : ''))
+                        + (text ? renderMd(text) : '');
+    appendMessage('user', '', { rawHtml: displayHtml });
+    messages.push(userMsg);
+    input.value = ''; input.style.height = 'auto';
+    sendBtn.disabled = input.disabled = true;
+
+    // Show typing
+    const typingWrap = document.createElement('div'); typingWrap.id = 'typing'; typingWrap.className = 'message bot';
+    const typingAv = Object.assign(document.createElement('div'), { className:'avatar', textContent:'🤖' });
+    const typingIn = document.createElement('div'); typingIn.className = 'msg-inner';
+    const typingBub = document.createElement('div'); typingBub.className = 'bubble typing-dots';
+    typingBub.innerHTML = '<span></span><span></span><span></span>';
+    typingIn.appendChild(typingBub); typingWrap.append(typingAv, typingIn); chatEl.appendChild(typingWrap); scrollToBottom();
+
+    const model = modelSelect.value || undefined;
+    const sys   = localStorage.getItem(SYS_KEY) || undefined;
+
+    try {
+      const res = await authFetch('/chat/stream', {
+        method: 'POST',
+        body: JSON.stringify({ messages, model, system_prompt: sys, session_id: currentSessionId }),
+      });
+      document.getElementById('typing')?.remove();
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        if (res.status === 429) {
+          const d = typeof err.detail === 'object' ? err.detail : {};
+          appendMessage('bot', `Daily limit reached (${d.used ?? '?'} / ${d.limit ?? '?'}). Try again tomorrow.`);
+        } else {
+          appendMessage('bot', `Error: ${err.detail || res.statusText}`);
+        }
+        messages.pop();
+      } else {
+        const { wrap, bub, inner } = createStreamBubble();
+        const reader = res.body.getReader(); const dec = new TextDecoder();
+        let buf = '', fullText = '', finalModel = model || null, done = false;
+        while (!done) {
+          const { done: rd, value } = await reader.read(); if (rd) break;
+          buf += dec.decode(value, { stream: true });
+          const parts = buf.split('\n\n'); buf = parts.pop();
+          for (const part of parts) {
+            if (!part.startsWith('data: ')) continue;
+            let evt; try { evt = JSON.parse(part.slice(6)); } catch { continue; }
+            if (evt.type === 'token') { fullText += evt.content; bub.innerHTML = renderMd(fullText); highlightBubble(bub); scrollToBottom(); }
+            else if (evt.type === 'sanitized') { fullText = evt.text; bub.innerHTML = renderMd(fullText); highlightBubble(bub); }
+            else if (evt.type === 'done') {
+              finalModel = evt.model || finalModel;
+              if (!currentSessionId && evt.session_id) {
+                currentSessionId = evt.session_id;
+                await loadSessions();
+              }
+              addFooter(inner, () => fullText, finalModel, evt.ps_scanned, evt.ps_violations || [], evt.ps_action || 'pass');
+              updateQuota(evt.messages_today, evt.daily_limit);
+              messages.push({ role: 'assistant', content: fullText }); done = true;
+            }
+            else if (evt.type === 'blocked') { wrap.remove(); appendMessage('bot', '', { blocked: true, violations: evt.violations || [] }); messages.pop(); done = true; }
+            else if (evt.type === 'revoke') { wrap.classList.add('blocked'); bub.textContent = 'Response blocked by security policy.'; renderPsInsight(inner, true, 'block', evt.violations || []); messages.pop(); done = true; }
+            else if (evt.type === 'error') { bub.textContent = `⚠️ ${evt.detail}`; messages.pop(); done = true; }
+          }
+        }
+      }
+    } catch (err) {
+      document.getElementById('typing')?.remove();
+      appendMessage('bot', 'Network error. Is the server running?');
+      messages.pop();
+    } finally {
+      sendBtn.disabled = input.disabled = false; input.focus();
+    }
+  }
+
+  // ── Event listeners ───────────────────────────────────────────────────────
+  input.addEventListener('input', () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 140) + 'px'; });
+  input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+  sendBtn.addEventListener('click', send);
+  document.getElementById('newChatBtn').addEventListener('click', startNewChat);
+
+  init();
+</script>
+</body>
+</html>

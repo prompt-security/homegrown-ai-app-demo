@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — AI Chat v2</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--surface:#1a1d27;--surface2:#20232f;--border:#2a2d3a;
+  --text:#e8e9f0;--text-muted:#7a7d8e;--accent:#6c63ff;--accent-hover:#5a52e0;
+  --green:#2ecc71;--red:#e74c3c;--yellow:#e6b800;
+  --font:'Inter',system-ui,sans-serif;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;display:flex}
+#sidebar{width:200px;min-width:200px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:20px 12px;gap:4px}
+.brand{font-size:14px;font-weight:700;padding:4px 10px 16px;color:var(--text)}
+.nav-item{display:block;padding:8px 12px;border-radius:8px;font-size:13px;cursor:pointer;color:var(--text-muted);border:none;background:none;width:100%;text-align:left;font-family:var(--font);transition:all 0.15s}
+.nav-item:hover{background:var(--surface2);color:var(--text)}
+.nav-item.active{background:rgba(108,99,255,0.15);color:var(--accent);font-weight:600}
+.nav-sep{border:none;border-top:1px solid var(--border);margin:8px 0}
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:12px}
+header h1{font-size:16px;font-weight:700}
+.spacer{flex:1}
+.back-link{font-size:13px;color:var(--text-muted);text-decoration:none;padding:5px 12px;border:1px solid var(--border);border-radius:8px;transition:all 0.15s}
+.back-link:hover{background:var(--surface2);color:var(--text)}
+#content{flex:1;overflow-y:auto;padding:28px 28px}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+/* ── Cards / Tables ── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:24px}
+.card-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.card-title{font-size:14px;font-weight:700}
+table{width:100%;border-collapse:collapse}
+th,td{padding:10px 20px;text-align:left;font-size:13px;border-bottom:1px solid var(--border)}
+th{font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;background:var(--surface2)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,0.02)}
+.badge{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600;border:1px solid}
+.badge-admin{color:var(--accent);border-color:rgba(108,99,255,0.4);background:rgba(108,99,255,0.1)}
+.badge-se{color:var(--text-muted);border-color:var(--border);background:transparent}
+.badge-on{color:var(--green);border-color:rgba(46,204,113,0.4);background:rgba(46,204,113,0.07)}
+.badge-off{color:var(--text-muted);border-color:var(--border);background:transparent}
+.tbl-actions{display:flex;gap:6px}
+
+/* ── Buttons ── */
+.btn{padding:6px 14px;border-radius:8px;font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;border:1px solid var(--border);transition:all 0.2s;white-space:nowrap}
+.btn-primary{background:var(--accent);color:#fff;border-color:transparent}
+.btn-primary:hover{background:var(--accent-hover)}
+.btn-secondary{background:transparent;color:var(--text-muted)}
+.btn-secondary:hover{background:var(--surface2);color:var(--text)}
+.btn-danger{background:transparent;color:var(--red);border-color:rgba(231,76,60,0.3)}
+.btn-danger:hover{background:rgba(231,76,60,0.1)}
+.btn-sm{padding:3px 10px;font-size:11px}
+
+/* ── Stats grid ── */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:24px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px}
+.stat-label{font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px}
+.stat-value{font-size:26px;font-weight:700}
+
+/* ── Modal ── */
+.backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:100;align-items:center;justify-content:center}
+.backdrop.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;width:480px;max-width:92vw;display:flex;flex-direction:column;gap:14px;box-shadow:0 20px 60px rgba(0,0,0,0.5);max-height:88vh;overflow-y:auto}
+.modal h3{font-size:15px;font-weight:700}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:12px;font-weight:600;color:var(--text-muted)}
+.field input,.field select,.field textarea{background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;outline:none;transition:border-color 0.2s;width:100%}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent)}
+.field select option{background:var(--surface2)}
+.field-note{font-size:11px;color:var(--text-muted)}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:4px}
+.err-msg{font-size:12px;color:var(--red);min-height:16px}
+</style>
+</head>
+<body>
+
+<!-- ── Sidebar ── -->
+<div id="sidebar">
+  <div class="brand">⚙️ Admin</div>
+  <button class="nav-item active" onclick="showTab('stats')">📊 Overview</button>
+  <button class="nav-item" onclick="showTab('users')">👥 Users</button>
+  <button class="nav-item" onclick="showTab('tenants')">🔑 PS Tenants</button>
+  <hr class="nav-sep">
+  <a href="/" class="nav-item" style="text-decoration:none">💬 Back to Chat</a>
+</div>
+
+<!-- ── Main ── -->
+<div id="main">
+  <header>
+    <h1>Admin Dashboard</h1>
+    <div class="spacer"></div>
+    <span id="adminEmail" style="font-size:12px;color:var(--text-muted)"></span>
+  </header>
+
+  <div id="content">
+
+    <!-- ── Stats tab ── -->
+    <div id="tab-stats" class="tab-panel active">
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">Total Messages</div><div class="stat-value" id="stTotal">—</div></div>
+        <div class="stat-card"><div class="stat-label">Today</div><div class="stat-value" id="stToday">—</div></div>
+        <div class="stat-card"><div class="stat-label">Total Users</div><div class="stat-value" id="stUsers">—</div></div>
+        <div class="stat-card"><div class="stat-label">PS Blocked</div><div class="stat-value" id="stBlocked" style="color:var(--red)">—</div></div>
+        <div class="stat-card"><div class="stat-label">PS Modified</div><div class="stat-value" id="stModified" style="color:var(--yellow)">—</div></div>
+        <div class="stat-card"><div class="stat-label">PS Passed</div><div class="stat-value" id="stPassed" style="color:var(--green)">—</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Top Users Today</span><button class="btn btn-secondary btn-sm" onclick="loadStats()">↻ Refresh</button></div>
+        <table>
+          <thead><tr><th>Email</th><th>Messages</th></tr></thead>
+          <tbody id="stUserTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Users tab ── -->
+    <div id="tab-users" class="tab-panel">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Users</span>
+          <button class="btn btn-primary btn-sm" onclick="openUserModal()">+ New User</button>
+        </div>
+        <table>
+          <thead><tr><th>Email</th><th>Role</th><th>PS Tenant</th><th>PS Key</th><th>Daily Limit</th><th>Status</th><th></th></tr></thead>
+          <tbody id="userTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── PS Tenants tab ── -->
+    <div id="tab-tenants" class="tab-panel">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Prompt Security Tenants</span>
+          <button class="btn btn-primary btn-sm" onclick="openTenantModal()">+ New Tenant</button>
+        </div>
+        <table>
+          <thead><tr><th>Name</th><th>Base URL</th><th>Gateway URL</th><th>Users</th><th></th></tr></thead>
+          <tbody id="tenantTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── User Modal ── -->
+<div class="backdrop" id="userBackdrop">
+  <div class="modal">
+    <h3 id="userModalTitle">New User</h3>
+    <input type="hidden" id="userModalId">
+    <div class="field"><label>Email</label><input type="email" id="umEmail" placeholder="se@company.com"></div>
+    <div class="field"><label id="umPwLabel">Password</label><input type="password" id="umPassword" placeholder="Leave blank to keep current"></div>
+    <div class="field">
+      <label>Role</label>
+      <select id="umRole"><option value="se">SE (regular user)</option><option value="admin">Admin</option></select>
+    </div>
+    <div class="field">
+      <label>PS Tenant</label>
+      <select id="umTenant"><option value="">— Not assigned —</option></select>
+    </div>
+    <div class="field"><label>Daily Message Limit</label><input type="number" id="umLimit" placeholder="e.g. 50 (0 = unlimited)"></div>
+    <div class="field">
+      <label>Allowed Models</label>
+      <input type="text" id="umModels" placeholder="Leave blank for all models, or: gpt-4o,claude-3-5-sonnet-20241022">
+      <span class="field-note">Comma-separated model IDs</span>
+    </div>
+    <div class="field">
+      <label>Active</label>
+      <select id="umActive"><option value="true">Yes</option><option value="false">No</option></select>
+    </div>
+    <div class="err-msg" id="userModalErr"></div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" id="userDeleteBtn" style="display:none;margin-right:auto" onclick="deleteUser()">Delete</button>
+      <button class="btn btn-secondary" onclick="closeUserModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveUser()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Tenant Modal ── -->
+<div class="backdrop" id="tenantBackdrop">
+  <div class="modal">
+    <h3 id="tenantModalTitle">New PS Tenant</h3>
+    <input type="hidden" id="tenantModalId">
+    <div class="field"><label>Name</label><input type="text" id="tmName" placeholder="e.g. eunorth"></div>
+    <div class="field"><label>Base URL</label><input type="text" id="tmBase" placeholder="https://eunorth.prompt.security"></div>
+    <div class="field"><label>Gateway URL (optional)</label><input type="text" id="tmGw" placeholder="https://eunorth.prompt.security/v1"></div>
+    <div class="err-msg" id="tenantModalErr"></div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" id="tenantDeleteBtn" style="display:none;margin-right:auto" onclick="deleteTenant()">Delete</button>
+      <button class="btn btn-secondary" onclick="closeTenantModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTenant()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const TOKEN = localStorage.getItem('hgapp_token');
+  if (!TOKEN) window.location.replace('/login');
+
+  function api(url, opts = {}) {
+    return fetch(url, {
+      ...opts,
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}`, ...(opts.headers||{}) },
+    }).then(r => { if (r.status === 401) { localStorage.clear(); window.location.replace('/login'); } return r; });
+  }
+
+  // ── Tab navigation ────────────────────────────────────────────────────────
+  function showTab(name) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    document.querySelector(`.nav-item[onclick="showTab('${name}')"]`).classList.add('active');
+    if (name === 'stats')   loadStats();
+    if (name === 'users')   loadUsers();
+    if (name === 'tenants') loadTenants();
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  async function init() {
+    const res = await api('/auth/me');
+    if (!res.ok) { localStorage.clear(); window.location.replace('/login'); return; }
+    const user = await res.json();
+    if (user.role !== 'admin') { window.location.replace('/'); return; }
+    document.getElementById('adminEmail').textContent = user.email;
+    loadStats();
+  }
+
+  // ── Stats ─────────────────────────────────────────────────────────────────
+  async function loadStats() {
+    const res = await api('/admin/stats');
+    if (!res.ok) return;
+    const d = await res.json();
+    document.getElementById('stTotal').textContent   = d.total_messages;
+    document.getElementById('stToday').textContent   = d.messages_today;
+    document.getElementById('stUsers').textContent   = d.total_users;
+    document.getElementById('stBlocked').textContent  = d.ps_actions?.block  || 0;
+    document.getElementById('stModified').textContent = d.ps_actions?.modify || 0;
+    document.getElementById('stPassed').textContent   = d.ps_actions?.pass   || 0;
+    const tbody = document.getElementById('stUserTable');
+    tbody.innerHTML = '';
+    (d.user_counts_today || []).forEach(u => {
+      tbody.innerHTML += `<tr><td>${esc(u.email)}</td><td>${u.count}</td></tr>`;
+    });
+    if (!tbody.innerHTML) tbody.innerHTML = '<tr><td colspan="2" style="color:var(--text-muted);text-align:center">No messages today</td></tr>';
+  }
+
+  // ── Users ─────────────────────────────────────────────────────────────────
+  let allUsers = [];
+  async function loadUsers() {
+    const res = await api('/admin/users');
+    if (!res.ok) return;
+    allUsers = await res.json();
+    const tbody = document.getElementById('userTable');
+    tbody.innerHTML = '';
+    allUsers.forEach(u => {
+      tbody.innerHTML += `
+        <tr>
+          <td>${esc(u.email)}</td>
+          <td><span class="badge badge-${u.role}">${u.role}</span></td>
+          <td>${u.ps_tenant ? esc(u.ps_tenant.name) : '<span style="color:var(--text-muted)">—</span>'}</td>
+          <td><span class="badge ${u.ps_configured ? 'badge-on' : 'badge-off'}">${u.ps_configured ? '✓ set' : '—'}</span></td>
+          <td>${u.daily_message_limit ?? '<span style="color:var(--text-muted)">unlimited</span>'}</td>
+          <td><span class="badge ${u.is_active ? 'badge-on' : 'badge-off'}">${u.is_active ? 'active' : 'inactive'}</span></td>
+          <td><button class="btn btn-secondary btn-sm" onclick="openUserModal(${u.id})">Edit</button></td>
+        </tr>`;
+    });
+    if (!tbody.innerHTML) tbody.innerHTML = '<tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:20px">No users found</td></tr>';
+  }
+
+  // ── User Modal ────────────────────────────────────────────────────────────
+  async function openUserModal(userId) {
+    document.getElementById('userModalErr').textContent = '';
+    const tenantRes = await api('/admin/ps-tenants');
+    const tenants = tenantRes.ok ? await tenantRes.json() : [];
+    const sel = document.getElementById('umTenant');
+    sel.innerHTML = '<option value="">— Not assigned —</option>';
+    tenants.forEach(t => sel.innerHTML += `<option value="${t.id}">${esc(t.name)} — ${esc(t.base_url)}</option>`);
+
+    if (userId) {
+      const u = allUsers.find(x => x.id === userId);
+      if (!u) return;
+      document.getElementById('userModalTitle').textContent = 'Edit User';
+      document.getElementById('userModalId').value = userId;
+      document.getElementById('umEmail').value = u.email;
+      document.getElementById('umPassword').value = '';
+      document.getElementById('umPwLabel').textContent = 'Password (leave blank to keep)';
+      document.getElementById('umRole').value = u.role;
+      document.getElementById('umTenant').value = u.ps_tenant_id || '';
+      document.getElementById('umLimit').value = u.daily_message_limit || '';
+      document.getElementById('umModels').value = (u.allowed_models || []).join(',');
+      document.getElementById('umActive').value = String(u.is_active);
+      document.getElementById('userDeleteBtn').style.display = 'block';
+    } else {
+      document.getElementById('userModalTitle').textContent = 'New User';
+      document.getElementById('userModalId').value = '';
+      document.getElementById('umEmail').value = '';
+      document.getElementById('umPassword').value = '';
+      document.getElementById('umPwLabel').textContent = 'Password';
+      document.getElementById('umRole').value = 'se';
+      document.getElementById('umTenant').value = '';
+      document.getElementById('umLimit').value = '';
+      document.getElementById('umModels').value = '';
+      document.getElementById('umActive').value = 'true';
+      document.getElementById('userDeleteBtn').style.display = 'none';
+    }
+    document.getElementById('userBackdrop').classList.add('open');
+  }
+
+  function closeUserModal() { document.getElementById('userBackdrop').classList.remove('open'); }
+
+  async function saveUser() {
+    const errEl = document.getElementById('userModalErr');
+    errEl.textContent = '';
+    const id       = document.getElementById('userModalId').value;
+    const email    = document.getElementById('umEmail').value.trim();
+    const password = document.getElementById('umPassword').value;
+    const role     = document.getElementById('umRole').value;
+    const tenantId = parseInt(document.getElementById('umTenant').value) || null;
+    const limit    = parseInt(document.getElementById('umLimit').value) || null;
+    const models   = document.getElementById('umModels').value.trim().split(',').map(s=>s.trim()).filter(Boolean);
+    const active   = document.getElementById('umActive').value === 'true';
+
+    const body = { email, role, ps_tenant_id: tenantId, daily_message_limit: limit, allowed_models: models.length ? models : null, is_active: active };
+    if (password) body.password = password;
+    if (!id && !password) { errEl.textContent = 'Password required for new users.'; return; }
+
+    const res = id
+      ? await api(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+      : await api('/admin/users', { method: 'POST', body: JSON.stringify(body) });
+
+    if (!res.ok) { const d = await res.json().catch(()=>({})); errEl.textContent = d.detail || 'Error saving user'; return; }
+    closeUserModal(); loadUsers();
+  }
+
+  async function deleteUser() {
+    const id = document.getElementById('userModalId').value;
+    if (!id || !confirm('Delete this user? This cannot be undone.')) return;
+    const res = await api(`/admin/users/${id}`, { method: 'DELETE' });
+    if (res.ok || res.status === 204) { closeUserModal(); loadUsers(); }
+    else { document.getElementById('userModalErr').textContent = 'Failed to delete user'; }
+  }
+
+  // ── PS Tenants ────────────────────────────────────────────────────────────
+  let allTenants = [];
+  async function loadTenants() {
+    const res = await api('/admin/ps-tenants');
+    if (!res.ok) return;
+    allTenants = await res.json();
+
+    // Count users per tenant
+    const usersRes = await api('/admin/users');
+    const users = usersRes.ok ? await usersRes.json() : [];
+    const countMap = {};
+    users.forEach(u => { if (u.ps_tenant_id) countMap[u.ps_tenant_id] = (countMap[u.ps_tenant_id]||0)+1; });
+
+    const tbody = document.getElementById('tenantTable');
+    tbody.innerHTML = '';
+    allTenants.forEach(t => {
+      tbody.innerHTML += `
+        <tr>
+          <td><strong>${esc(t.name)}</strong></td>
+          <td style="font-size:12px;color:var(--text-muted)">${esc(t.base_url)}</td>
+          <td style="font-size:12px;color:var(--text-muted)">${t.gateway_url ? esc(t.gateway_url) : '<span style="color:var(--text-muted)">—</span>'}</td>
+          <td>${countMap[t.id] || 0}</td>
+          <td><button class="btn btn-secondary btn-sm" onclick="openTenantModal(${t.id})">Edit</button></td>
+        </tr>`;
+    });
+    if (!tbody.innerHTML) tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);text-align:center;padding:20px">No tenants defined yet</td></tr>';
+  }
+
+  function openTenantModal(tenantId) {
+    document.getElementById('tenantModalErr').textContent = '';
+    if (tenantId) {
+      const t = allTenants.find(x => x.id === tenantId);
+      if (!t) return;
+      document.getElementById('tenantModalTitle').textContent = 'Edit PS Tenant';
+      document.getElementById('tenantModalId').value = tenantId;
+      document.getElementById('tmName').value = t.name;
+      document.getElementById('tmBase').value = t.base_url;
+      document.getElementById('tmGw').value   = t.gateway_url || '';
+      document.getElementById('tenantDeleteBtn').style.display = 'block';
+    } else {
+      document.getElementById('tenantModalTitle').textContent = 'New PS Tenant';
+      document.getElementById('tenantModalId').value = '';
+      document.getElementById('tmName').value = '';
+      document.getElementById('tmBase').value = '';
+      document.getElementById('tmGw').value   = '';
+      document.getElementById('tenantDeleteBtn').style.display = 'none';
+    }
+    document.getElementById('tenantBackdrop').classList.add('open');
+  }
+
+  function closeTenantModal() { document.getElementById('tenantBackdrop').classList.remove('open'); }
+
+  async function saveTenant() {
+    const errEl = document.getElementById('tenantModalErr');
+    errEl.textContent = '';
+    const id   = document.getElementById('tenantModalId').value;
+    const body = {
+      name:        document.getElementById('tmName').value.trim(),
+      base_url:    document.getElementById('tmBase').value.trim(),
+      gateway_url: document.getElementById('tmGw').value.trim() || null,
+    };
+    if (!body.name || !body.base_url) { errEl.textContent = 'Name and Base URL are required.'; return; }
+
+    const res = id
+      ? await api(`/admin/ps-tenants/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+      : await api('/admin/ps-tenants',        { method: 'POST',  body: JSON.stringify(body) });
+
+    if (!res.ok) { const d = await res.json().catch(()=>({})); errEl.textContent = d.detail || 'Error saving tenant'; return; }
+    closeTenantModal(); loadTenants();
+  }
+
+  async function deleteTenant() {
+    const id = document.getElementById('tenantModalId').value;
+    if (!id || !confirm('Delete this PS tenant? Users assigned to it will lose their PS config.')) return;
+    const res = await api(`/admin/ps-tenants/${id}`, { method: 'DELETE' });
+    if (res.ok || res.status === 204) { closeTenantModal(); loadTenants(); }
+    else { document.getElementById('tenantModalErr').textContent = 'Failed to delete tenant'; }
+  }
+
+  // Close modals on backdrop click
+  document.getElementById('userBackdrop').addEventListener('click',   e => { if (e.target.id==='userBackdrop')   closeUserModal(); });
+  document.getElementById('tenantBackdrop').addEventListener('click', e => { if (e.target.id==='tenantBackdrop') closeTenantModal(); });
+
+  function esc(s='') { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  init();
+</script>
+</body>
+</html>

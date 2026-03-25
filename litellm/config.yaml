@@ -1,0 +1,56 @@
+model_list:
+  # ── OpenAI ────────────────────────────────────────────────────────────────
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+  # ── Anthropic ─────────────────────────────────────────────────────────────
+  - model_name: claude-3-5-sonnet-20241022
+    litellm_params:
+      model: anthropic/claude-3-5-sonnet-20241022
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  - model_name: claude-3-5-haiku-20241022
+    litellm_params:
+      model: anthropic/claude-3-5-haiku-20241022
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  # ── Google ────────────────────────────────────────────────────────────────
+  - model_name: gemini-2.0-flash
+    litellm_params:
+      model: gemini/gemini-2.0-flash
+      api_key: os.environ/GOOGLE_API_KEY
+
+  - model_name: gemini-1.5-pro
+    litellm_params:
+      model: gemini/gemini-1.5-pro
+      api_key: os.environ/GOOGLE_API_KEY
+
+  # ── Free models via OpenRouter ────────────────────────────────────────────
+  - model_name: meta-llama/llama-3.1-8b-instruct:free
+    litellm_params:
+      model: openrouter/meta-llama/llama-3.1-8b-instruct:free
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: nvidia/nemotron-nano-9b-v2:free
+    litellm_params:
+      model: openrouter/nvidia/nemotron-nano-9b-v2:free
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: mistralai/mistral-7b-instruct:free
+    litellm_params:
+      model: openrouter/mistralai/mistral-7b-instruct:free
+      api_key: os.environ/OPENROUTER_API_KEY
+
+litellm_settings:
+  drop_params: true
+  request_timeout: 60
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

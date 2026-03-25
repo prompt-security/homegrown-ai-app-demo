@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In — AI Chat</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3a;
+      --text: #e8e9f0; --text-muted: #7a7d8e; --accent: #6c63ff;
+      --accent-hover: #5a52e0; --font: 'Inter', system-ui, sans-serif;
+      --red: #e74c3c;
+    }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 40px 36px; width: 360px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+    .logo { font-size: 32px; text-align: center; margin-bottom: 8px; }
+    h1 { font-size: 20px; font-weight: 700; text-align: center; margin-bottom: 4px; }
+    .subtitle { font-size: 13px; color: var(--text-muted); text-align: center; margin-bottom: 28px; }
+    label { font-size: 12px; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 6px; }
+    .field { margin-bottom: 16px; }
+    input {
+      width: 100%; background: #0f1117; border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-family: var(--font);
+      font-size: 14px; padding: 10px 14px; outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus { border-color: var(--accent); }
+    input::placeholder { color: var(--text-muted); }
+    button[type=submit] {
+      width: 100%; background: var(--accent); border: none; border-radius: 8px;
+      color: #fff; cursor: pointer; font-family: var(--font); font-size: 14px;
+      font-weight: 600; padding: 11px; margin-top: 8px;
+      transition: background 0.2s; letter-spacing: 0.2px;
+    }
+    button[type=submit]:hover { background: var(--accent-hover); }
+    button[type=submit]:disabled { opacity: 0.5; cursor: not-allowed; }
+    .error { color: var(--red); font-size: 12px; margin-top: 12px; text-align: center; min-height: 18px; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">🔒</div>
+  <h1>AI Chat Demo</h1>
+  <p class="subtitle">powered by Prompt Security</p>
+  <form id="loginForm">
+    <div class="field">
+      <label for="email">Email</label>
+      <input type="email" id="email" placeholder="you@company.com" required autofocus>
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input type="password" id="password" placeholder="••••••••" required>
+    </div>
+    <button type="submit" id="submitBtn">Sign In</button>
+    <div class="error" id="error"></div>
+  </form>
+</div>
+<script>
+  if (localStorage.getItem('hgapp_token')) window.location.replace('/');
+
+  document.getElementById('loginForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    const err = document.getElementById('error');
+    btn.disabled = true; err.textContent = '';
+    try {
+      const res = await fetch('/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: document.getElementById('email').value,
+          password: document.getElementById('password').value,
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        err.textContent = d.detail || 'Invalid credentials';
+        btn.disabled = false; return;
+      }
+      const data = await res.json();
+      localStorage.setItem('hgapp_token', data.access_token);
+      localStorage.setItem('hgapp_user', JSON.stringify(data.user));
+      window.location.replace('/');
+    } catch (e) {
+      err.textContent = 'Network error'; btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

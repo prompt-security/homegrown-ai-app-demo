@@ -1,0 +1,709 @@
+import base64
+import io
+import json
+import logging
+import os
+import time
+import uuid
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from typing import Optional
+
+import httpx
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile, status
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from openai import AsyncOpenAI
+from sqlalchemy import desc, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+load_dotenv()
+
+from auth import create_access_token, get_current_user, hash_password, require_admin, verify_password
+from crypto import decrypt, encrypt
+from database import AsyncSessionLocal, Base, engine, get_db
+from models import ChatSession, Message, PSTenant, User
+from prompt_security import PromptSecurityClient
+from schemas import (
+    ChatMessage, ChatRequest, ChatResponse,
+    LoginRequest, MessageOut, PSConfigUpdate, PSTenantCreate, PSTenantOut, PSTenantUpdate,
+    SessionOut, TokenResponse, UserCreate, UserOut, UserStats, UserUpdate,
+)
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-8s %(name)s  %(message)s")
+logger = logging.getLogger("main")
+
+# ── Configuration ─────────────────────────────────────────────────────────────
+LITELLM_BASE_URL   = os.getenv("LITELLM_BASE_URL", "http://litellm:4000")
+LITELLM_MASTER_KEY = os.getenv("LITELLM_MASTER_KEY", "")
+ADMIN_EMAIL        = os.getenv("ADMIN_EMAIL", "admin@example.com")
+ADMIN_PASSWORD     = os.getenv("ADMIN_PASSWORD", "admin")
+DEFAULT_DAILY_LIMIT = int(os.getenv("DEFAULT_DAILY_LIMIT", "50")) or None
+
+# ── File upload limits ────────────────────────────────────────────────────────
+# Set MAX_FILE_SIZE_MB in .env to restrict upload size.
+MAX_FILE_SIZE_MB    = int(os.getenv("MAX_FILE_SIZE_MB", "10"))
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+ALLOWED_TEXT_TYPES  = {"text/plain", "text/markdown", "text/csv", "application/json"}
+ALLOWED_PDF_TYPE    = "application/pdf"
+
+# ── LiteLLM client (single OpenAI-compatible client for all providers) ────────
+litellm_client = AsyncOpenAI(
+    api_key=LITELLM_MASTER_KEY or "no-key",
+    base_url=f"{LITELLM_BASE_URL}/v1",
+)
+
+# ── Cached model list ─────────────────────────────────────────────────────────
+_model_cache: list[dict] = []
+
+
+async def refresh_model_cache() -> list[dict]:
+    global _model_cache
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            headers = {}
+            if LITELLM_MASTER_KEY:
+                headers["Authorization"] = f"Bearer {LITELLM_MASTER_KEY}"
+            r = await client.get(f"{LITELLM_BASE_URL}/v1/models", headers=headers)
+            r.raise_for_status()
+            data = r.json().get("data", [])
+            _model_cache = [{"id": m["id"]} for m in data]
+            logger.info("LiteLLM: %d models loaded", len(_model_cache))
+    except Exception as e:
+        logger.warning("Could not reach LiteLLM (%s) — model list empty", e)
+        _model_cache = []
+    return _model_cache
+
+
+# ── Lifespan ──────────────────────────────────────────────────────────────────
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async with AsyncSessionLocal() as db:
+        existing = await db.scalar(select(User).where(User.email == ADMIN_EMAIL))
+        if not existing:
+            admin = User(
+                email=ADMIN_EMAIL,
+                hashed_password=hash_password(ADMIN_PASSWORD),
+                role="admin",
+                is_active=True,
+            )
+            db.add(admin)
+            await db.commit()
+            logger.info("Bootstrap admin created: %s", ADMIN_EMAIL)
+
+    await refresh_model_cache()
+    yield
+
+
+app = FastAPI(title="AI Chat + Prompt Security v2", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+# ── HTML routes ───────────────────────────────────────────────────────────────
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    return HTMLResponse(open("static/index.html").read())
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page():
+    return HTMLResponse(open("static/login.html").read())
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page():
+    return HTMLResponse(open("static/admin.html").read())
+
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
+@app.post("/auth/login", response_model=TokenResponse)
+async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(User).where(User.email == body.email, User.is_active == True)
+        .options(selectinload(User.ps_tenant))
+    )
+    user = result.scalar_one_or_none()
+    if not user or not user.hashed_password or not verify_password(body.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    token = create_access_token({"sub": str(user.id)})
+    return TokenResponse(
+        access_token=token,
+        user=_user_out(user),
+    )
+
+@app.get("/auth/me", response_model=UserOut)
+async def me(current_user: User = Depends(get_current_user)):
+    return _user_out(current_user)
+
+
+# ── Health + Models ───────────────────────────────────────────────────────────
+@app.get("/health")
+async def health():
+    return {
+        "status": "ok",
+        "litellm_url": LITELLM_BASE_URL,
+        "models_loaded": len(_model_cache),
+    }
+
+@app.get("/models")
+async def models(current_user: User = Depends(get_current_user)):
+    models = _model_cache or await refresh_model_cache()
+    allowed = current_user.allowed_models
+    if allowed is not None:
+        models = [m for m in models if m["id"] in allowed]
+    return {"models": models}
+
+
+# ── User self-service ─────────────────────────────────────────────────────────
+@app.get("/users/me/stats", response_model=UserStats)
+async def my_stats(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    count = await db.scalar(
+        select(func.count(Message.id)).where(
+            Message.user_id == current_user.id,
+            Message.role == "user",
+            Message.created_at >= today_start,
+        )
+    ) or 0
+    return UserStats(messages_today=count, daily_limit=current_user.daily_message_limit)
+
+
+@app.patch("/users/me/ps-config", response_model=UserOut)
+async def update_my_ps_config(
+    body: PSConfigUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if body.ps_tenant_id is not None:
+        tenant = await db.get(PSTenant, body.ps_tenant_id)
+        if not tenant:
+            raise HTTPException(status_code=404, detail="PS Tenant not found")
+        current_user.ps_tenant_id = body.ps_tenant_id
+
+    if body.ps_api_key is not None:
+        current_user.ps_api_key_enc = encrypt(body.ps_api_key) if body.ps_api_key else None
+
+    await db.commit()
+    await db.refresh(current_user, ["ps_tenant"])
+    return _user_out(current_user)
+
+
+# ── Admin: Users ──────────────────────────────────────────────────────────────
+@app.get("/admin/users", response_model=list[UserOut])
+async def admin_list_users(
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(User).options(selectinload(User.ps_tenant)).order_by(User.created_at)
+    )
+    return [_user_out(u) for u in result.scalars().all()]
+
+
+@app.post("/admin/users", response_model=UserOut, status_code=201)
+async def admin_create_user(
+    body: UserCreate,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    existing = await db.scalar(select(User).where(User.email == body.email))
+    if existing:
+        raise HTTPException(status_code=409, detail="Email already registered")
+    user = User(
+        email=body.email,
+        hashed_password=hash_password(body.password),
+        role=body.role,
+        daily_message_limit=body.daily_message_limit if body.daily_message_limit is not None else DEFAULT_DAILY_LIMIT,
+        allowed_models=body.allowed_models,
+        ps_tenant_id=body.ps_tenant_id,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user, ["ps_tenant"])
+    return _user_out(user)
+
+
+@app.get("/admin/users/{user_id}", response_model=UserOut)
+async def admin_get_user(
+    user_id: int,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(User).where(User.id == user_id).options(selectinload(User.ps_tenant))
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return _user_out(user)
+
+
+@app.patch("/admin/users/{user_id}", response_model=UserOut)
+async def admin_update_user(
+    user_id: int,
+    body: UserUpdate,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(User).where(User.id == user_id).options(selectinload(User.ps_tenant))
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if body.email is not None:
+        user.email = body.email
+    if body.password is not None:
+        user.hashed_password = hash_password(body.password)
+    if body.role is not None:
+        user.role = body.role
+    if body.is_active is not None:
+        user.is_active = body.is_active
+    if body.daily_message_limit is not None:
+        user.daily_message_limit = body.daily_message_limit
+    if body.allowed_models is not None:
+        user.allowed_models = body.allowed_models
+    if body.ps_tenant_id is not None:
+        user.ps_tenant_id = body.ps_tenant_id
+
+    await db.commit()
+    await db.refresh(user, ["ps_tenant"])
+    return _user_out(user)
+
+
+@app.delete("/admin/users/{user_id}", status_code=204)
+async def admin_delete_user(
+    user_id: int,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.id == admin.id:
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+    await db.delete(user)
+    await db.commit()
+
+
+# ── Admin: PS Tenants ─────────────────────────────────────────────────────────
+@app.get("/admin/ps-tenants", response_model=list[PSTenantOut])
+async def admin_list_ps_tenants(
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(PSTenant).order_by(PSTenant.name))
+    return result.scalars().all()
+
+
+@app.post("/admin/ps-tenants", response_model=PSTenantOut, status_code=201)
+async def admin_create_ps_tenant(
+    body: PSTenantCreate,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    existing = await db.scalar(select(PSTenant).where(PSTenant.name == body.name))
+    if existing:
+        raise HTTPException(status_code=409, detail="Tenant name already exists")
+    tenant = PSTenant(name=body.name, base_url=body.base_url, gateway_url=body.gateway_url)
+    db.add(tenant)
+    await db.commit()
+    await db.refresh(tenant)
+    return tenant
+
+
+@app.patch("/admin/ps-tenants/{tenant_id}", response_model=PSTenantOut)
+async def admin_update_ps_tenant(
+    tenant_id: int,
+    body: PSTenantUpdate,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    tenant = await db.get(PSTenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    if body.name is not None:
+        tenant.name = body.name
+    if body.base_url is not None:
+        tenant.base_url = body.base_url
+    if body.gateway_url is not None:
+        tenant.gateway_url = body.gateway_url
+    await db.commit()
+    await db.refresh(tenant)
+    return tenant
+
+
+@app.delete("/admin/ps-tenants/{tenant_id}", status_code=204)
+async def admin_delete_ps_tenant(
+    tenant_id: int,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    tenant = await db.get(PSTenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    await db.delete(tenant)
+    await db.commit()
+
+
+# ── Admin: PS Tenants (non-admin read — for settings dropdown) ────────────────
+@app.get("/ps-tenants", response_model=list[PSTenantOut])
+async def list_ps_tenants_public(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(PSTenant).order_by(PSTenant.name))
+    return result.scalars().all()
+
+
+# ── Admin: Stats ──────────────────────────────────────────────────────────────
+@app.get("/admin/stats")
+async def admin_stats(
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    total_messages = await db.scalar(select(func.count(Message.id))) or 0
+    messages_today = await db.scalar(
+        select(func.count(Message.id)).where(Message.created_at >= today_start)
+    ) or 0
+    total_users = await db.scalar(select(func.count(User.id))) or 0
+
+    # PS actions distribution
+    ps_actions_result = await db.execute(
+        select(Message.ps_action, func.count(Message.id))
+        .where(Message.ps_scanned == True)
+        .group_by(Message.ps_action)
+    )
+    ps_actions = {row[0]: row[1] for row in ps_actions_result.all() if row[0]}
+
+    # Per-user message counts today
+    user_counts_result = await db.execute(
+        select(User.email, func.count(Message.id).label("count"))
+        .join(Message, Message.user_id == User.id)
+        .where(Message.created_at >= today_start, Message.role == "user")
+        .group_by(User.email)
+        .order_by(desc("count"))
+    )
+    user_counts = [{"email": r[0], "count": r[1]} for r in user_counts_result.all()]
+
+    return {
+        "total_messages": total_messages,
+        "messages_today": messages_today,
+        "total_users": total_users,
+        "ps_actions": ps_actions,
+        "user_counts_today": user_counts,
+    }
+
+
+# ── Sessions (chat history) ───────────────────────────────────────────────────
+@app.get("/sessions", response_model=list[SessionOut])
+async def list_sessions(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(ChatSession)
+        .where(ChatSession.user_id == current_user.id)
+        .order_by(desc(ChatSession.created_at))
+        .limit(50)
+    )
+    return result.scalars().all()
+
+
+@app.get("/sessions/{session_id}/messages", response_model=list[MessageOut])
+async def get_session_messages(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    session = await db.scalar(
+        select(ChatSession).where(
+            ChatSession.id == session_id,
+            ChatSession.user_id == current_user.id,
+        )
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    result = await db.execute(
+        select(Message).where(Message.session_id == session_id).order_by(Message.id)
+    )
+    return result.scalars().all()
+
+
+@app.delete("/sessions/{session_id}", status_code=204)
+async def delete_session(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    session = await db.scalar(
+        select(ChatSession).where(
+            ChatSession.id == session_id,
+            ChatSession.user_id == current_user.id,
+        )
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    await db.delete(session)
+    await db.commit()
+
+
+# ── File upload ───────────────────────────────────────────────────────────────
+@app.post("/upload")
+async def upload_file(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    data = await file.read()
+    if len(data) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail=f"File too large. Max {MAX_FILE_SIZE_MB} MB.")
+
+    mime = (file.content_type or "application/octet-stream").split(";")[0].strip()
+    filename = file.filename or "upload"
+
+    if mime in ALLOWED_IMAGE_TYPES:
+        b64 = base64.b64encode(data).decode()
+        return {"type": "image", "content": f"data:{mime};base64,{b64}", "filename": filename, "size_bytes": len(data)}
+
+    if mime == ALLOWED_PDF_TYPE or filename.lower().endswith(".pdf"):
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(io.BytesIO(data))
+            text = "\n\n".join(page.extract_text() or "" for page in reader.pages).strip()
+            if not text:
+                raise HTTPException(status_code=422, detail="Could not extract text from PDF.")
+        except ImportError:
+            raise HTTPException(status_code=501, detail="PDF support not installed.")
+        return {"type": "text", "content": text, "filename": filename, "size_bytes": len(data)}
+
+    if mime in ALLOWED_TEXT_TYPES or filename.lower().endswith((".txt", ".md", ".csv", ".json")):
+        text = data.decode("utf-8", errors="replace")
+        return {"type": "text", "content": text, "filename": filename, "size_bytes": len(data)}
+
+    raise HTTPException(status_code=415, detail=f"Unsupported file type '{mime}'.")
+
+
+# ── Chat streaming ────────────────────────────────────────────────────────────
+@app.post("/chat/stream")
+async def chat_stream(
+    request: ChatRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.messages:
+        raise HTTPException(status_code=400, detail="messages list cannot be empty")
+
+    model = request.model or (_model_cache[0]["id"] if _model_cache else None)
+    if not model:
+        raise HTTPException(status_code=503, detail="No models available — check LiteLLM config")
+
+    last_user_msg = next((m.content for m in reversed(request.messages) if m.role == "user"), None)
+    if not last_user_msg:
+        raise HTTPException(status_code=400, detail="No user message found")
+
+    system_prompt = request.system_prompt or "You are a helpful AI assistant."
+
+    # ── Daily limit check ─────────────────────────────────────────────────────
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    used_today = await db.scalar(
+        select(func.count(Message.id)).where(
+            Message.user_id == current_user.id,
+            Message.role == "user",
+            Message.created_at >= today_start,
+        )
+    ) or 0
+    if current_user.daily_message_limit and used_today >= current_user.daily_message_limit:
+        raise HTTPException(
+            status_code=429,
+            detail={"used": used_today, "limit": current_user.daily_message_limit},
+        )
+
+    # ── Ensure session exists ─────────────────────────────────────────────────
+    session_id = request.session_id or str(uuid.uuid4())
+    session = await db.scalar(select(ChatSession).where(ChatSession.id == session_id))
+    if not session:
+        title = last_user_msg[:60] + ("…" if len(last_user_msg) > 60 else "")
+        session = ChatSession(id=session_id, user_id=current_user.id, title=title)
+        db.add(session)
+        await db.commit()
+
+    # ── Per-user PS client ────────────────────────────────────────────────────
+    ps_client: Optional[PromptSecurityClient] = None
+    if current_user.ps_tenant and current_user.ps_api_key_enc:
+        try:
+            ps_client = PromptSecurityClient(
+                base_url=current_user.ps_tenant.base_url,
+                app_id=decrypt(current_user.ps_api_key_enc),
+            )
+        except Exception as e:
+            logger.warning("Could not init PS client for %s: %s", current_user.email, e)
+
+    # ── Store user message in DB ──────────────────────────────────────────────
+    user_db_msg = Message(
+        session_id=session_id,
+        user_id=current_user.id,
+        role="user",
+        content=last_user_msg,
+        model=model,
+    )
+    db.add(user_db_msg)
+    await db.commit()
+
+    async def generate():
+        reply = ""
+        prompt_action = "pass"
+        t0 = time.monotonic()
+
+        # ── PS: scan prompt ───────────────────────────────────────────────────
+        if ps_client:
+            try:
+                ps_result = await ps_client.protect_prompt(
+                    user_prompt=last_user_msg,
+                    system_prompt=system_prompt,
+                    user=current_user.email,
+                )
+                if not ps_result.allowed:
+                    await _log_msg(db, session_id, current_user.id, "assistant", "", model,
+                                   ps_scanned=True, ps_blocked=True, ps_action="block",
+                                   ps_violations=ps_result.violations)
+                    yield f"data: {json.dumps({'type': 'blocked', 'action': 'block', 'violations': ps_result.violations})}\n\n"
+                    return
+                if ps_result.modified_text:
+                    last_user_msg_eff = ps_result.modified_text
+                    prompt_action = "modify"
+                else:
+                    last_user_msg_eff = last_user_msg
+            except Exception as e:
+                logger.error("PS prompt scan error: %s", e)
+                last_user_msg_eff = last_user_msg
+        else:
+            last_user_msg_eff = last_user_msg
+
+        # Rebuild messages with possibly-modified last user message
+        msgs = list(request.messages)
+        if last_user_msg_eff != last_user_msg:
+            for i in range(len(msgs) - 1, -1, -1):
+                if msgs[i].role == "user":
+                    msgs[i] = ChatMessage(role="user", content=last_user_msg_eff)
+                    break
+
+        # ── Stream from LiteLLM ───────────────────────────────────────────────
+        payload = [{"role": "system", "content": system_prompt}] + [
+            {"role": m.role, "content": _build_content(m)} for m in msgs
+        ]
+        try:
+            stream = await litellm_client.chat.completions.create(
+                model=model, messages=payload, stream=True
+            )
+            async for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    token = chunk.choices[0].delta.content
+                    reply += token
+                    yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+        except Exception as e:
+            logger.error("LiteLLM stream error: %s", e)
+            yield f"data: {json.dumps({'type': 'error', 'detail': str(e)})}\n\n"
+            return
+
+        resp_ms = round((time.monotonic() - t0) * 1000)
+
+        # ── PS: scan response ─────────────────────────────────────────────────
+        final_action = prompt_action
+        ps_violations: list = []
+        if ps_client and reply:
+            try:
+                ps_resp = await ps_client.protect_response(
+                    response_text=reply,
+                    user_prompt=last_user_msg,
+                    system_prompt=system_prompt,
+                    user=current_user.email,
+                )
+                ps_violations = ps_resp.violations
+                if not ps_resp.allowed:
+                    await _log_msg(db, session_id, current_user.id, "assistant", reply, model,
+                                   ps_scanned=True, ps_blocked=True, ps_action="block",
+                                   ps_violations=ps_violations, response_ms=resp_ms)
+                    yield f"data: {json.dumps({'type': 'revoke', 'action': 'block', 'violations': ps_violations})}\n\n"
+                    return
+                if ps_resp.modified_text:
+                    reply = ps_resp.modified_text
+                    final_action = "modify"
+                    yield f"data: {json.dumps({'type': 'sanitized', 'text': reply})}\n\n"
+            except Exception as e:
+                logger.error("PS response scan error: %s", e)
+
+        await _log_msg(db, session_id, current_user.id, "assistant", reply, model,
+                       ps_scanned=bool(ps_client), ps_action=final_action,
+                       ps_violations=ps_violations, response_ms=resp_ms)
+
+        today_used = used_today + 1
+        yield f"data: {json.dumps({'type': 'done', 'model': model, 'session_id': session_id, 'ps_scanned': bool(ps_client), 'ps_action': final_action, 'ps_violations': ps_violations, 'messages_today': today_used, 'daily_limit': current_user.daily_message_limit})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+def _user_out(user: User) -> UserOut:
+    return UserOut(
+        id=user.id,
+        email=user.email,
+        role=user.role,
+        is_active=user.is_active,
+        daily_message_limit=user.daily_message_limit,
+        allowed_models=user.allowed_models,
+        ps_tenant_id=user.ps_tenant_id,
+        ps_tenant=PSTenantOut.model_validate(user.ps_tenant) if user.ps_tenant else None,
+        ps_configured=bool(user.ps_tenant_id and user.ps_api_key_enc),
+        created_at=user.created_at,
+    )
+
+
+def _build_content(m: ChatMessage):
+    if m.image_url:
+        parts = [{"type": "image_url", "image_url": {"url": m.image_url}}]
+        if m.content:
+            parts.append({"type": "text", "text": m.content})
+        return parts
+    return m.content
+
+
+async def _log_msg(
+    db: AsyncSession,
+    session_id: str,
+    user_id: int,
+    role: str,
+    content: str,
+    model: Optional[str],
+    ps_scanned: bool = False,
+    ps_blocked: bool = False,
+    ps_action: str = "pass",
+    ps_violations: Optional[list] = None,
+    response_ms: Optional[int] = None,
+):
+    msg = Message(
+        session_id=session_id,
+        user_id=user_id,
+        role=role,
+        content=content,
+        model=model,
+        ps_scanned=ps_scanned,
+        ps_action=ps_action if not ps_blocked else "block",
+        ps_violations=ps_violations or [],
+        response_ms=response_ms,
+    )
+    db.add(msg)
+    await db.commit()

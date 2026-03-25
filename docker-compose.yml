@@ -1,0 +1,40 @@
+services:
+  app:
+    build: .
+    ports:
+      - "9000:8000"
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+      litellm:
+        condition: service_started
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: hgapp
+      POSTGRES_USER: hgapp
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hgapp_dev}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hgapp"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml
+    env_file: .env
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "1"]
+    restart: unless-stopped
+
+volumes:
+  pgdata:
