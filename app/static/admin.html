@@ -3,167 +3,299 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Admin — AI Chat v2</title>
+<title>Admin · AI Chat Demo</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#0f1117;--surface:#1a1d27;--surface2:#20232f;--border:#2a2d3a;
-  --text:#e8e9f0;--text-muted:#7a7d8e;--accent:#6c63ff;--accent-hover:#5a52e0;
-  --green:#2ecc71;--red:#e74c3c;--yellow:#e6b800;
-  --font:'Inter',system-ui,sans-serif;
+  --bg:#0f1117;--surface:#1a1d27;--surface2:#20253a;--border:#2a2d3e;
+  --accent:#6c63ff;--accent-h:#5a52e0;--text:#e8eaf6;--muted:#7b80a8;
+  --green:#2ecc71;--red:#e74c3c;--yellow:#f1c40f;--font:'Inter',system-ui,sans-serif;
 }
-body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;display:flex}
-#sidebar{width:200px;min-width:200px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:20px 12px;gap:4px}
-.brand{font-size:14px;font-weight:700;padding:4px 10px 16px;color:var(--text)}
-.nav-item{display:block;padding:8px 12px;border-radius:8px;font-size:13px;cursor:pointer;color:var(--text-muted);border:none;background:none;width:100%;text-align:left;font-family:var(--font);transition:all 0.15s}
-.nav-item:hover{background:var(--surface2);color:var(--text)}
-.nav-item.active{background:rgba(108,99,255,0.15);color:var(--accent);font-weight:600}
-.nav-sep{border:none;border-top:1px solid var(--border);margin:8px 0}
-#main{flex:1;display:flex;flex-direction:column;overflow:hidden}
-header{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:12px}
-header h1{font-size:16px;font-weight:700}
-.spacer{flex:1}
-.back-link{font-size:13px;color:var(--text-muted);text-decoration:none;padding:5px 12px;border:1px solid var(--border);border-radius:8px;transition:all 0.15s}
-.back-link:hover{background:var(--surface2);color:var(--text)}
-#content{flex:1;overflow-y:auto;padding:28px 28px}
+body{background:var(--bg);color:var(--text);font-family:var(--font);display:flex;height:100vh;overflow:hidden;font-size:14px}
+
+/* ── Sidebar ── */
+#sidebar{width:220px;min-width:220px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+#sidebar-logo{padding:18px 16px 12px;border-bottom:1px solid var(--border)}
+#sidebar-logo img{width:100%;max-width:155px;opacity:0.85;display:block}
+#sidebar-logo .sub{font-size:10px;color:var(--muted);margin-top:5px;letter-spacing:0.5px;text-transform:uppercase;font-weight:600}
+#sidebar-nav{flex:1;padding:8px 0;overflow-y:auto}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 16px;cursor:pointer;color:var(--muted);font-size:13px;font-weight:500;transition:all 0.15s;border:none;background:none;width:100%;text-align:left;font-family:var(--font);border-left:3px solid transparent;text-decoration:none}
+.nav-item:hover{background:rgba(108,99,255,0.06);color:var(--text)}
+.nav-item.active{color:var(--accent);background:rgba(108,99,255,0.1);border-left-color:var(--accent)}
+.nav-icon{width:15px;height:15px;flex-shrink:0;opacity:0.75}
+.nav-item.active .nav-icon{opacity:1}
+.nav-sep{border:none;border-top:1px solid var(--border);margin:6px 0}
+#sidebar-footer{padding:12px 16px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0}
+#footerAvatar{width:28px;height:28px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
+#footerEmail{font-size:11px;color:var(--muted);flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+
+/* ── Main ── */
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+#topbar{padding:14px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface);flex-shrink:0}
+#topbar h1{font-size:16px;font-weight:700}
+#content{flex:1;overflow-y:auto;padding:24px}
 .tab-panel{display:none}
 .tab-panel.active{display:block}
 
-/* ── Cards / Tables ── */
-.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:24px}
-.card-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
-.card-title{font-size:14px;font-weight:700}
+/* ── Stat cards ── */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:14px;margin-bottom:22px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;border-left:4px solid var(--border);transition:transform 0.1s}
+.card:hover{transform:translateY(-1px)}
+.card .lbl{font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px}
+.card .val{font-size:28px;font-weight:700;line-height:1}
+.card .sub{font-size:11px;color:var(--muted);margin-top:5px}
+.card.blue{border-left-color:var(--accent)}.card.blue .val{color:var(--accent)}
+.card.green{border-left-color:var(--green)}.card.green .val{color:var(--green)}
+.card.red{border-left-color:var(--red)}.card.red .val{color:var(--red)}
+.card.yellow{border-left-color:var(--yellow)}.card.yellow .val{color:var(--yellow)}
+.card.grey{border-left-color:var(--border)}
+
+/* ── Charts ── */
+.chart-row{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:22px}
+.chart-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px}
+.chart-box h3{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:14px}
+.chart-row-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px}
+
+/* ── Tables ── */
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:22px}
+.panel-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
+.panel-head h3{font-size:14px;font-weight:600}
+.panel-filters{display:flex;gap:8px;align-items:center}
 table{width:100%;border-collapse:collapse}
-th,td{padding:10px 20px;text-align:left;font-size:13px;border-bottom:1px solid var(--border)}
-th{font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;background:var(--surface2)}
-tr:last-child td{border-bottom:none}
-tr:hover td{background:rgba(255,255,255,0.02)}
-.badge{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600;border:1px solid}
-.badge-admin{color:var(--accent);border-color:rgba(108,99,255,0.4);background:rgba(108,99,255,0.1)}
-.badge-se{color:var(--text-muted);border-color:var(--border);background:transparent}
-.badge-on{color:var(--green);border-color:rgba(46,204,113,0.4);background:rgba(46,204,113,0.07)}
-.badge-off{color:var(--text-muted);border-color:var(--border);background:transparent}
-.tbl-actions{display:flex;gap:6px}
+th{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;padding:9px 16px;text-align:left;background:rgba(255,255,255,0.02);border-bottom:1px solid var(--border)}
+td{padding:10px 16px;border-top:1px solid var(--border);font-size:13px;vertical-align:middle}
+tr:hover td{background:rgba(255,255,255,0.015);cursor:pointer}
+
+/* ── Badges ── */
+.badge{display:inline-flex;align-items:center;border-radius:4px;font-size:11px;font-weight:600;padding:2px 8px;line-height:1.5}
+.badge-admin{background:rgba(108,99,255,0.15);color:var(--accent)}
+.badge-se{background:transparent;color:var(--muted);border:1px solid var(--border)}
+.badge-on{background:rgba(46,204,113,0.12);color:var(--green)}
+.badge-off{background:rgba(127,127,127,0.08);color:var(--muted);border:1px solid var(--border)}
+.badge-block{background:rgba(231,76,60,0.12);color:var(--red)}
+.badge-modify{background:rgba(241,196,15,0.12);color:var(--yellow)}
+.badge-pass{background:rgba(46,204,113,0.12);color:var(--green)}
+.badge-gw{background:rgba(108,99,255,0.12);color:var(--accent)}
 
 /* ── Buttons ── */
-.btn{padding:6px 14px;border-radius:8px;font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;border:1px solid var(--border);transition:all 0.2s;white-space:nowrap}
-.btn-primary{background:var(--accent);color:#fff;border-color:transparent}
-.btn-primary:hover{background:var(--accent-hover)}
-.btn-secondary{background:transparent;color:var(--text-muted)}
-.btn-secondary:hover{background:var(--surface2);color:var(--text)}
-.btn-danger{background:transparent;color:var(--red);border-color:rgba(231,76,60,0.3)}
-.btn-danger:hover{background:rgba(231,76,60,0.1)}
-.btn-sm{padding:3px 10px;font-size:11px}
-
-/* ── Stats grid ── */
-.stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:24px}
-.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px}
-.stat-label{font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px}
-.stat-value{font-size:26px;font-weight:700}
+.btn{border-radius:8px;cursor:pointer;font-family:var(--font);font-size:13px;font-weight:500;padding:7px 14px;transition:all 0.15s;border:1px solid transparent;white-space:nowrap}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:var(--accent-h)}
+.btn-outline{background:transparent;border-color:var(--border);color:var(--muted)}.btn-outline:hover{border-color:var(--accent);color:var(--accent)}
+.btn-danger{background:transparent;border-color:rgba(231,76,60,0.4);color:var(--red)}.btn-danger:hover{background:rgba(231,76,60,0.1)}
+.btn-secondary{background:transparent;border-color:var(--border);color:var(--muted)}.btn-secondary:hover{background:var(--surface2);color:var(--text)}
+.btn-sm{padding:4px 10px;font-size:12px}
 
 /* ── Modal ── */
 .backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:100;align-items:center;justify-content:center}
 .backdrop.open{display:flex}
-.modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;width:480px;max-width:92vw;display:flex;flex-direction:column;gap:14px;box-shadow:0 20px 60px rgba(0,0,0,0.5);max-height:88vh;overflow-y:auto}
-.modal h3{font-size:15px;font-weight:700}
-.field{display:flex;flex-direction:column;gap:5px}
-.field label{font-size:12px;font-weight:600;color:var(--text-muted)}
-.field input,.field select,.field textarea{background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;outline:none;transition:border-color 0.2s;width:100%}
-.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent)}
-.field select option{background:var(--surface2)}
-.field-note{font-size:11px;color:var(--text-muted)}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;width:500px;max-width:94vw;max-height:90vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,0.5);display:flex;flex-direction:column;gap:16px}
+.modal h3{font-size:16px;font-weight:700}
 .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:4px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px}
+.field input,.field select,.field textarea{background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;padding:9px 12px;outline:none;transition:border-color 0.2s;width:100%}
+.field input:focus,.field select:focus{border-color:var(--accent)}
+.field .hint{font-size:11px;color:var(--muted)}
 .err-msg{font-size:12px;color:var(--red);min-height:16px}
+select.filter-sel{background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:12px;padding:4px 8px;outline:none}
+
+/* ── PS tab ── */
+.mode-switcher{display:flex;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:3px;gap:3px;width:fit-content;margin-bottom:20px}
+.mode-btn{padding:7px 22px;border-radius:7px;font-size:13px;font-weight:600;border:none;background:transparent;color:var(--muted);cursor:pointer;transition:all 0.15s;font-family:var(--font)}
+.mode-btn.active{background:var(--accent);color:#fff;box-shadow:0 2px 8px rgba(108,99,255,0.4)}
+.ps-mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px}
+.ps-card{background:var(--surface);border:2px solid var(--border);border-radius:14px;padding:22px;transition:border-color 0.2s}
+.ps-card.active-mode{border-color:var(--accent);box-shadow:0 0 0 1px rgba(108,99,255,0.15)}
+.ps-card .ct{font-size:14px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.ps-card .cd{font-size:12px;color:var(--muted);line-height:1.65;margin-bottom:12px}
+.ps-card .cf{font-size:11px;color:var(--muted);font-family:monospace;background:var(--surface2);padding:8px 12px;border-radius:6px;margin-bottom:14px;line-height:1.9}
+.test-result{margin-top:10px;font-size:12px;padding:8px 10px;border-radius:6px;display:none}
+.test-result.ok{background:rgba(46,204,113,0.1);color:var(--green);display:block}
+.test-result.err{background:rgba(231,76,60,0.1);color:var(--red);display:block}
+.compare-table td:first-child{font-size:12px;font-weight:600;color:var(--muted);width:160px}
+
+/* ── User detail ── */
+#userDetail{display:none}
+#userDetail.show{display:block}
+.detail-header{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+.detail-avatar{width:46px;height:46px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;flex-shrink:0}
+.mini-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+.mini-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px}
+.mini-card .lbl{font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px}
+.mini-card .val{font-size:22px;font-weight:700}
+.recent-msg{padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:10px;align-items:flex-start}
+.recent-msg .meta{display:flex;gap:8px;align-items:center;flex-shrink:0}
+.recent-msg .preview{font-size:12px;color:var(--muted);flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:0;min-width:0}
+
+/* ── misc ── */
+.empty{color:var(--muted);font-size:13px;text-align:center;padding:24px}
 </style>
 </head>
 <body>
 
 <!-- ── Sidebar ── -->
 <div id="sidebar">
-  <div class="brand">⚙️ Admin</div>
-  <button class="nav-item active" onclick="showTab('stats')">📊 Overview</button>
-  <button class="nav-item" onclick="showTab('users')">👥 Users</button>
-  <button class="nav-item" onclick="showTab('tenants')">🔑 PS Tenants</button>
-  <button class="nav-item" onclick="showTab('activity')">📋 Activity Log</button>
-  <hr class="nav-sep">
-  <a href="/" class="nav-item" style="text-decoration:none">💬 Back to Chat</a>
+  <div id="sidebar-logo">
+    <img src="/static/prompt-security-logo.png" alt="Prompt Security">
+    <div class="sub">Admin Dashboard</div>
+  </div>
+  <div id="sidebar-nav">
+    <button class="nav-item active" id="nav-overview" onclick="showTab('overview',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="8" width="3" height="7" rx="1"/><rect x="6" y="4" width="3" height="11" rx="1"/><rect x="11" y="1" width="3" height="14" rx="1"/></svg>
+      Overview
+    </button>
+    <button class="nav-item" id="nav-ps" onclick="showTab('ps',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1L2 3.5V7c0 3.8 2.6 7.3 6 8.2C11.4 14.3 14 10.8 14 7V3.5L8 1z"/></svg>
+      Prompt Security
+    </button>
+    <button class="nav-item" id="nav-users" onclick="showTab('users',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><circle cx="6" cy="4.5" r="2.5"/><path d="M0 13.5C0 10.5 2.7 8 6 8s6 2.5 6 5.5H0z"/><circle cx="12" cy="5.5" r="2"/><path d="M10 13.5c0-2 .9-3.8 2.2-5C13.9 9.2 16 11.2 16 13.5h-6z"/></svg>
+      Users
+    </button>
+    <button class="nav-item" id="nav-tenants" onclick="showTab('tenants',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="3" width="13" height="10" rx="2"/><path d="M5 8h6M5 11h4" stroke-linecap="round"/></svg>
+      PS Tenants
+    </button>
+    <button class="nav-item" id="nav-activity" onclick="showTab('activity',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="1,9 3,9 5,3 7,13 9,7 11,10 13,10"/></svg>
+      Activity Log
+    </button>
+    <hr class="nav-sep">
+    <a class="nav-item" href="/">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M14 1H2C1.4 1 1 1.4 1 2v8c0 .6.4 1 1 1h3v3l4-3h5c.6 0 1-.4 1-1V2c0-.6-.4-1-1-1z"/></svg>
+      Back to Chat
+    </a>
+  </div>
+  <div id="sidebar-footer">
+    <div id="footerAvatar">?</div>
+    <span id="footerEmail">…</span>
+  </div>
 </div>
 
 <!-- ── Main ── -->
 <div id="main">
-  <header>
-    <h1>Admin Dashboard</h1>
-    <div class="spacer"></div>
-    <span id="adminEmail" style="font-size:12px;color:var(--text-muted)"></span>
-  </header>
-
+  <div id="topbar">
+    <h1 id="topbarTitle">Overview</h1>
+    <button class="btn btn-outline btn-sm" onclick="refreshCurrent()">↻ Refresh</button>
+  </div>
   <div id="content">
 
-    <!-- ── Stats tab ── -->
-    <div id="tab-stats" class="tab-panel active">
-      <div class="stats-grid">
-        <div class="stat-card"><div class="stat-label">Total Messages</div><div class="stat-value" id="stTotal">—</div></div>
-        <div class="stat-card"><div class="stat-label">Today</div><div class="stat-value" id="stToday">—</div></div>
-        <div class="stat-card"><div class="stat-label">Total Users</div><div class="stat-value" id="stUsers">—</div></div>
-        <div class="stat-card"><div class="stat-label">PS Blocked</div><div class="stat-value" id="stBlocked" style="color:var(--red)">—</div></div>
-        <div class="stat-card"><div class="stat-label">PS Modified</div><div class="stat-value" id="stModified" style="color:var(--yellow)">—</div></div>
-        <div class="stat-card"><div class="stat-label">PS Passed</div><div class="stat-value" id="stPassed" style="color:var(--green)">—</div></div>
+    <!-- ── Overview tab ── -->
+    <div id="tab-overview" class="tab-panel active">
+      <div class="cards" id="overviewCards">
+        <div class="card grey"><div class="lbl">Loading…</div><div class="val" style="font-size:20px;color:var(--muted)">—</div></div>
       </div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">Top Users Today</span><button class="btn btn-secondary btn-sm" onclick="loadStats()">↻ Refresh</button></div>
+      <div class="chart-row">
+        <div class="chart-box"><h3>Messages per Day</h3><canvas id="dayChart" height="110"></canvas></div>
+        <div class="chart-box"><h3>Model Usage</h3><canvas id="modelChart" height="110"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>Top Users</h3></div>
         <table>
-          <thead><tr><th>Email</th><th>Messages</th></tr></thead>
-          <tbody id="stUserTable"></tbody>
+          <thead><tr><th>Email</th><th>Total Messages</th></tr></thead>
+          <tbody id="topUsersBody"><tr><td colspan="2" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── PS tab ── -->
+    <div id="tab-ps" class="tab-panel">
+      <div class="mode-switcher">
+        <button class="mode-btn active" id="msBtnApi" onclick="adminSwitchMode('api')">API Mode</button>
+        <button class="mode-btn" id="msBtnGw" onclick="adminSwitchMode('gateway')">Gateway Mode</button>
+      </div>
+      <div class="ps-mode-grid">
+        <div class="ps-card" id="psApiCard">
+          <div class="ct">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="var(--accent)"><path d="M8 1L2 3.5V7c0 3.8 2.6 7.3 6 8.2C11.4 14.3 14 10.8 14 7V3.5L8 1z"/></svg>
+            API Mode
+            <span class="badge badge-on" id="apiActiveBadge" style="display:none">Active</span>
+          </div>
+          <div class="cd">Your app explicitly calls the PS scan API before and after each LLM call. Full visibility into violations, categories, and risk scores.</div>
+          <div class="cf">App → PS Scan API<br>→ LLM (direct call)<br>→ PS Scan API<br>→ User</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-outline btn-sm" onclick="testConnection('api')">Test Connection</button>
+            <span id="apiStatusTxt" style="font-size:11px;color:var(--muted)">Not tested</span>
+          </div>
+          <div id="apiTestResult" class="test-result"></div>
+        </div>
+        <div class="ps-card" id="psGwCard">
+          <div class="ct">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="var(--green)"><rect x="1" y="2" width="14" height="2.5" rx="1"/><rect x="3" y="6.5" width="10" height="2.5" rx="1"/><rect x="5" y="11" width="6" height="2.5" rx="1"/></svg>
+            Gateway Mode
+            <span class="badge badge-on" id="gwActiveBadge" style="display:none">Active</span>
+          </div>
+          <div class="cd">Point your OpenAI client at the PS Gateway — one URL change. PS scans all traffic transparently and routes through OpenRouter.</div>
+          <div class="cf">App → PS Gateway<br>&nbsp;&nbsp;&nbsp;(scans + routes)<br>→ OpenRouter → LLM<br>→ User</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-outline btn-sm" onclick="testConnection('gw')">Test Connection</button>
+            <span id="gwStatusTxt" style="font-size:11px;color:var(--muted)">Not tested</span>
+          </div>
+          <div id="gwTestResult" class="test-result"></div>
+        </div>
+      </div>
+
+      <div class="chart-row-2">
+        <div class="chart-box"><h3>PS Actions Distribution</h3><canvas id="psActionChart" height="140"></canvas></div>
+        <div class="chart-box"><h3>Scan Coverage</h3><canvas id="psCoverageChart" height="140"></canvas></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Integration Comparison</h3></div>
+        <table class="compare-table">
+          <thead><tr><th></th><th>API Mode</th><th>Gateway Mode</th></tr></thead>
+          <tbody>
+            <tr><td>Violation Details</td><td><span class="badge badge-on">Full — category + score</span></td><td><span class="badge badge-gw">Transparent</span></td></tr>
+            <tr><td>Code Changes</td><td style="color:var(--muted);font-size:12px">~15 lines (scan + handle results)</td><td style="color:var(--muted);font-size:12px">1 line — change base_url</td></tr>
+            <tr><td>LLM Provider</td><td style="color:var(--muted);font-size:12px">Any (OpenAI, Anthropic, Google…)</td><td style="color:var(--muted);font-size:12px">Via OpenRouter</td></tr>
+            <tr><td>Best For</td><td style="color:var(--muted);font-size:12px">Custom logic, granular control</td><td style="color:var(--muted);font-size:12px">Fast adoption, minimal friction</td></tr>
+            <tr><td>Demo Story</td><td style="color:var(--muted);font-size:12px">"We added security to existing code"</td><td style="color:var(--muted);font-size:12px">"One URL change protects everything"</td></tr>
+          </tbody>
         </table>
       </div>
     </div>
 
     <!-- ── Users tab ── -->
     <div id="tab-users" class="tab-panel">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Users</span>
-          <button class="btn btn-primary btn-sm" onclick="openUserModal()">+ New User</button>
-        </div>
-        <table>
-          <thead><tr><th>Email</th><th>Role</th><th>PS Tenant</th><th>PS Key</th><th>PS Scan</th><th>Daily Limit</th><th>Status</th><th></th></tr></thead>
-          <tbody id="userTable"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- ── Activity tab ── -->
-    <div id="tab-activity" class="tab-panel">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Activity Log</span>
-          <div style="display:flex;gap:8px;align-items:center">
-            <select id="actUserFilter" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:12px;padding:4px 8px;outline:none">
-              <option value="">All users</option>
-            </select>
-            <select id="actRoleFilter" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:12px;padding:4px 8px;outline:none">
-              <option value="">All messages</option>
-              <option value="user">User only</option>
-              <option value="assistant">Assistant only</option>
-            </select>
-            <button class="btn btn-secondary btn-sm" onclick="loadActivity()">↻ Refresh</button>
+      <!-- User detail (hidden by default) -->
+      <div id="userDetail">
+        <div class="detail-header">
+          <button class="btn btn-outline btn-sm" onclick="closeUserDetail()">← Back to Users</button>
+          <div class="detail-avatar" id="detailAvatarEl">?</div>
+          <div style="flex:1">
+            <div style="font-size:17px;font-weight:700" id="detailNameEl">—</div>
+            <div style="font-size:12px;color:var(--muted)" id="detailEmailEl">—</div>
           </div>
+          <button class="btn btn-outline btn-sm" id="detailEditBtn">Edit</button>
         </div>
-        <table>
-          <thead><tr><th>Time</th><th>User</th><th>Role</th><th>Model</th><th>PS</th><th style="width:40%">Preview</th></tr></thead>
-          <tbody id="actTable"></tbody>
-        </table>
-        <div id="actEmpty" style="display:none;text-align:center;padding:24px;color:var(--text-muted);font-size:13px">No activity yet.</div>
+        <div class="mini-cards" id="detailMiniCards"></div>
+        <div class="chart-row">
+          <div class="chart-box"><h3>Messages per Day</h3><canvas id="userDayChart" height="100"></canvas></div>
+          <div class="chart-box"><h3>Model Usage</h3><canvas id="userModelChart" height="100"></canvas></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h3>Recent Messages</h3></div>
+          <div id="recentMsgsEl"></div>
+        </div>
+      </div>
+
+      <!-- User list -->
+      <div id="userList">
+        <div class="panel">
+          <div class="panel-head"><h3>Users</h3><button class="btn btn-primary btn-sm" onclick="openUserModal()">+ New User</button></div>
+          <table>
+            <thead><tr><th>Email</th><th>Role</th><th>PS Tenant</th><th>PS Key</th><th>PS Scan</th><th>Limit</th><th>Status</th><th></th></tr></thead>
+            <tbody id="userTable"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
-    <!-- ── PS Tenants tab ── -->
+    <!-- ── Tenants tab ── -->
     <div id="tab-tenants" class="tab-panel">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Prompt Security Tenants</span>
-          <button class="btn btn-primary btn-sm" onclick="openTenantModal()">+ New Tenant</button>
-        </div>
+      <div class="panel">
+        <div class="panel-head"><h3>Prompt Security Tenants</h3><button class="btn btn-primary btn-sm" onclick="openTenantModal()">+ New Tenant</button></div>
         <table>
           <thead><tr><th>Name</th><th>Base URL</th><th>Gateway URL</th><th>Users</th><th></th></tr></thead>
           <tbody id="tenantTable"></tbody>
@@ -171,8 +303,32 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       </div>
     </div>
 
-  </div>
-</div>
+    <!-- ── Activity tab ── -->
+    <div id="tab-activity" class="tab-panel">
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Activity Log</h3>
+          <div class="panel-filters">
+            <select id="actUserFilter" class="filter-sel"><option value="">All users</option></select>
+            <select id="actRoleFilter" class="filter-sel">
+              <option value="">All entries</option>
+              <option value="user">User msgs</option>
+              <option value="assistant">Assistant msgs</option>
+              <option value="audit">Config events</option>
+            </select>
+            <button class="btn btn-outline btn-sm" onclick="loadActivity()">↻ Refresh</button>
+          </div>
+        </div>
+        <table>
+          <thead><tr><th>Time</th><th>User</th><th>Role</th><th>Model</th><th>PS</th><th style="width:38%">Preview</th></tr></thead>
+          <tbody id="actTable"></tbody>
+        </table>
+        <div id="actEmpty" style="display:none" class="empty">No activity yet.</div>
+      </div>
+    </div>
+
+  </div><!-- #content -->
+</div><!-- #main -->
 
 <!-- ── User Modal ── -->
 <div class="backdrop" id="userBackdrop">
@@ -181,28 +337,19 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <input type="hidden" id="userModalId">
     <div class="field"><label>Email</label><input type="email" id="umEmail" placeholder="se@company.com"></div>
     <div class="field"><label id="umPwLabel">Password</label><input type="password" id="umPassword" placeholder="Leave blank to keep current"></div>
-    <div class="field">
-      <label>Role</label>
-      <select id="umRole"><option value="se">SE (regular user)</option><option value="admin">Admin</option></select>
-    </div>
-    <div class="field">
-      <label>PS Tenant</label>
-      <select id="umTenant"><option value="">— Not assigned —</option></select>
-    </div>
+    <div class="field"><label>Role</label><select id="umRole"><option value="se">SE (regular user)</option><option value="admin">Admin</option></select></div>
+    <div class="field"><label>PS Tenant</label><select id="umTenant"><option value="">— Not assigned —</option></select></div>
     <div class="field"><label>Daily Message Limit</label><input type="number" id="umLimit" placeholder="e.g. 50 (0 = unlimited)"></div>
     <div class="field">
       <label>Allowed Models</label>
-      <input type="text" id="umModels" placeholder="Leave blank for all models, or: gpt-4o,claude-3-5-sonnet-20241022">
-      <span class="field-note">Comma-separated model IDs</span>
+      <input type="text" id="umModels" placeholder="Leave blank for all models, or: gpt-4o,claude-3-5-sonnet">
+      <div class="hint">Comma-separated model IDs</div>
     </div>
-    <div class="field">
-      <label>Active</label>
-      <select id="umActive"><option value="true">Yes</option><option value="false">No</option></select>
-    </div>
+    <div class="field"><label>Active</label><select id="umActive"><option value="true">Yes</option><option value="false">No</option></select></div>
     <div class="err-msg" id="userModalErr"></div>
     <div class="modal-actions">
-      <button class="btn btn-danger" id="userDeleteBtn" style="display:none;margin-right:auto" onclick="deleteUser()">Delete</button>
-      <button class="btn btn-secondary" onclick="closeUserModal()">Cancel</button>
+      <button class="btn btn-danger btn-sm" id="userDeleteBtn" style="display:none;margin-right:auto" onclick="deleteUser()">Delete</button>
+      <button class="btn btn-outline" onclick="closeUserModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveUser()">Save</button>
     </div>
   </div>
@@ -213,13 +360,13 @@ tr:hover td{background:rgba(255,255,255,0.02)}
   <div class="modal">
     <h3 id="tenantModalTitle">New PS Tenant</h3>
     <input type="hidden" id="tenantModalId">
-    <div class="field"><label>Name</label><input type="text" id="tmName" placeholder="e.g. eunorth"></div>
-    <div class="field"><label>Base URL</label><input type="text" id="tmBase" placeholder="https://eunorth.prompt.security"></div>
-    <div class="field"><label>Gateway URL (optional)</label><input type="text" id="tmGw" placeholder="https://eunorth.prompt.security/v1"></div>
+    <div class="field"><label>Name</label><input type="text" id="tmName" placeholder="e.g. apsouth"></div>
+    <div class="field"><label>Base URL</label><input type="text" id="tmBase" placeholder="https://apsouth.prompt.security"></div>
+    <div class="field"><label>Gateway URL (optional)</label><input type="text" id="tmGw" placeholder="https://apsouth.prompt.security/v1"></div>
     <div class="err-msg" id="tenantModalErr"></div>
     <div class="modal-actions">
-      <button class="btn btn-danger" id="tenantDeleteBtn" style="display:none;margin-right:auto" onclick="deleteTenant()">Delete</button>
-      <button class="btn btn-secondary" onclick="closeTenantModal()">Cancel</button>
+      <button class="btn btn-danger btn-sm" id="tenantDeleteBtn" style="display:none;margin-right:auto" onclick="deleteTenant()">Delete</button>
+      <button class="btn btn-outline" onclick="closeTenantModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveTenant()">Save</button>
     </div>
   </div>
@@ -229,24 +376,64 @@ tr:hover td{background:rgba(255,255,255,0.02)}
   const TOKEN = localStorage.getItem('hgapp_token');
   if (!TOKEN) window.location.replace('/login');
 
-  function api(url, opts = {}) {
+  function api(url, opts={}) {
     return fetch(url, {
       ...opts,
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}`, ...(opts.headers||{}) },
-    }).then(r => { if (r.status === 401) { localStorage.clear(); window.location.replace('/login'); } return r; });
+      headers: { 'Content-Type':'application/json', 'Authorization':`Bearer ${TOKEN}`, ...(opts.headers||{}) },
+    }).then(r => { if (r.status===401) { localStorage.clear(); window.location.replace('/login'); } return r; });
+  }
+  function esc(s='') { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // ── Charts ────────────────────────────────────────────────────────────────
+  Chart.defaults.color = '#7b80a8';
+  Chart.defaults.borderColor = '#2a2d3e';
+  Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
+  let dayChartI=null, modelChartI=null, psActionChartI=null, psCoverageChartI=null;
+  let userDayChartI=null, userModelChartI=null;
+
+  const PALETTE = ['#6c63ff','#2ecc71','#e74c3c','#f1c40f','#3498db','#e67e22','#9b59b6','#1abc9c'];
+
+  function buildLine(id, labels, data) {
+    const ctx = document.getElementById(id).getContext('2d');
+    return new Chart(ctx, { type:'line', data:{
+      labels, datasets:[{ data, borderColor:'#6c63ff', backgroundColor:'rgba(108,99,255,0.08)',
+        tension:0.4, fill:true, pointRadius:3, pointBackgroundColor:'#6c63ff', borderWidth:2 }]
+    }, options:{ plugins:{legend:{display:false}}, scales:{ x:{grid:{display:false}}, y:{beginAtZero:true,ticks:{precision:0}} } } });
+  }
+
+  function buildDoughnut(id, labels, data) {
+    const ctx = document.getElementById(id).getContext('2d');
+    return new Chart(ctx, { type:'doughnut', data:{
+      labels, datasets:[{ data, backgroundColor:PALETTE.slice(0,data.length), borderWidth:2, borderColor:'#1a1d27' }]
+    }, options:{ plugins:{ legend:{ position:'right', labels:{ boxWidth:12, font:{size:11} } } }, cutout:'62%' } });
+  }
+
+  function buildBar(id, labels, data, colors) {
+    const ctx = document.getElementById(id).getContext('2d');
+    return new Chart(ctx, { type:'bar', data:{
+      labels, datasets:[{ data, backgroundColor:colors||PALETTE.slice(0,data.length), borderRadius:4, borderWidth:0 }]
+    }, options:{ plugins:{legend:{display:false}}, scales:{ x:{grid:{display:false}}, y:{beginAtZero:true,ticks:{precision:0}} } } });
   }
 
   // ── Tab navigation ────────────────────────────────────────────────────────
-  function showTab(name) {
+  let _currentTab = 'overview';
+
+  function showTab(name, el) {
+    _currentTab = name;
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
     document.getElementById('tab-' + name).classList.add('active');
-    document.querySelector(`.nav-item[onclick="showTab('${name}')"]`).classList.add('active');
-    if (name === 'stats')    loadStats();
-    if (name === 'users')    loadUsers();
-    if (name === 'tenants')  loadTenants();
-    if (name === 'activity') loadActivity();
+    if (el) el.classList.add('active');
+    const titles = { overview:'Overview', ps:'Prompt Security', users:'Users', tenants:'PS Tenants', activity:'Activity Log' };
+    document.getElementById('topbarTitle').textContent = titles[name] || name;
+    if (name==='overview')  loadOverview();
+    if (name==='ps')        loadPs();
+    if (name==='users')     loadUsers();
+    if (name==='tenants')   loadTenants();
+    if (name==='activity')  loadActivity();
   }
+
+  function refreshCurrent() { showTab(_currentTab, document.getElementById('nav-'+_currentTab)); }
 
   // ── Init ──────────────────────────────────────────────────────────────────
   async function init() {
@@ -254,56 +441,198 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     if (!res.ok) { localStorage.clear(); window.location.replace('/login'); return; }
     const user = await res.json();
     if (user.role !== 'admin') { window.location.replace('/'); return; }
-    document.getElementById('adminEmail').textContent = user.email;
-    loadStats();
+    const initials = user.email.substring(0,2).toUpperCase();
+    document.getElementById('footerAvatar').textContent = initials;
+    document.getElementById('footerEmail').textContent = user.email;
+    loadOverview();
   }
 
-  // ── Stats ─────────────────────────────────────────────────────────────────
-  async function loadStats() {
+  // ── Overview ──────────────────────────────────────────────────────────────
+  async function loadOverview() {
     const res = await api('/admin/stats');
     if (!res.ok) return;
     const d = await res.json();
-    document.getElementById('stTotal').textContent   = d.total_messages;
-    document.getElementById('stToday').textContent   = d.messages_today;
-    document.getElementById('stUsers').textContent   = d.total_users;
-    document.getElementById('stBlocked').textContent  = d.ps_actions?.block  || 0;
-    document.getElementById('stModified').textContent = d.ps_actions?.modify || 0;
-    document.getElementById('stPassed').textContent   = d.ps_actions?.pass   || 0;
-    const tbody = document.getElementById('stUserTable');
-    tbody.innerHTML = '';
-    (d.user_counts_today || []).forEach(u => {
-      tbody.innerHTML += `<tr><td>${esc(u.email)}</td><td>${u.count}</td></tr>`;
-    });
-    if (!tbody.innerHTML) tbody.innerHTML = '<tr><td colspan="2" style="color:var(--text-muted);text-align:center">No messages today</td></tr>';
+
+    const scanRate = d.total_messages > 0 ? Math.round(d.ps_scanned / d.total_messages * 100) : 0;
+    document.getElementById('overviewCards').innerHTML = `
+      <div class="card blue"><div class="lbl">Total Users</div><div class="val">${d.total_users}</div><div class="sub">${d.active_users_today} active today</div></div>
+      <div class="card grey"><div class="lbl">Total Messages</div><div class="val">${d.total_messages.toLocaleString()}</div><div class="sub">${d.total_sessions} sessions</div></div>
+      <div class="card grey"><div class="lbl">Today</div><div class="val">${d.messages_today}</div><div class="sub">messages sent</div></div>
+      <div class="card red"><div class="lbl">PS Blocked</div><div class="val">${d.ps_blocked}</div><div class="sub">of ${d.ps_scanned} scanned</div></div>
+      <div class="card green"><div class="lbl">Scan Rate</div><div class="val">${scanRate}%</div><div class="sub">messages scanned</div></div>
+    `;
+
+    // Messages per day chart
+    const days = d.messages_by_day || [];
+    if (dayChartI) dayChartI.destroy();
+    dayChartI = buildLine('dayChart', days.map(x=>x.date.slice(5)), days.map(x=>x.count));
+
+    // Model usage chart
+    const models = d.messages_by_model || {};
+    const mKeys = Object.keys(models); const mVals = mKeys.map(k=>models[k]);
+    const shortKeys = mKeys.map(k => k.split('/').pop().replace('openai/','').substring(0,20));
+    if (modelChartI) modelChartI.destroy();
+    if (mKeys.length) modelChartI = buildDoughnut('modelChart', shortKeys, mVals);
+    else document.getElementById('modelChart').parentElement.innerHTML += '<div class="empty" style="font-size:12px">No data yet</div>';
+
+    // Top users
+    const tbody = document.getElementById('topUsersBody');
+    const topUsers = d.top_users || d.user_counts_today || [];
+    tbody.innerHTML = topUsers.length
+      ? topUsers.map(u=>`<tr><td>${esc(u.email)}</td><td>${u.message_count||u.count}</td></tr>`).join('')
+      : `<tr><td colspan="2" class="empty">No messages yet</td></tr>`;
+  }
+
+  // ── PS tab ────────────────────────────────────────────────────────────────
+  let _psStats = null;
+
+  async function loadPs() {
+    const res = await api('/admin/stats');
+    if (!res.ok) return;
+    _psStats = await res.json();
+    renderPsCharts(_psStats);
+  }
+
+  function renderPsCharts(d) {
+    const ps = d.ps_actions || {};
+    const actionLabels = ['Pass','Modify','Block'];
+    const actionData   = [ps.pass||0, ps.modify||0, ps.block||0];
+    const actionColors = ['#2ecc71','#f1c40f','#e74c3c'];
+    if (psActionChartI) psActionChartI.destroy();
+    psActionChartI = buildBar('psActionChart', actionLabels, actionData, actionColors);
+
+    const scanned = d.ps_scanned || 0;
+    const total   = d.total_messages || 0;
+    const unscanned = Math.max(0, total - scanned);
+    if (psCoverageChartI) psCoverageChartI.destroy();
+    psCoverageChartI = buildDoughnut('psCoverageChart', ['Scanned','Unscanned'], [scanned, unscanned]);
+  }
+
+  function adminSwitchMode(mode) {
+    document.getElementById('msBtnApi').classList.toggle('active', mode==='api');
+    document.getElementById('msBtnGw').classList.toggle('active', mode==='gateway');
+    document.getElementById('psApiCard').classList.toggle('active-mode', mode==='api');
+    document.getElementById('psGwCard').classList.toggle('active-mode', mode==='gateway');
+    document.getElementById('apiActiveBadge').style.display = mode==='api' ? '' : 'none';
+    document.getElementById('gwActiveBadge').style.display  = mode==='gateway' ? '' : 'none';
+  }
+
+  async function testConnection(which) {
+    const resultId = which==='api' ? 'apiTestResult' : 'gwTestResult';
+    const statusId = which==='api' ? 'apiStatusTxt'  : 'gwStatusTxt';
+    const resEl = document.getElementById(resultId);
+    const sEl   = document.getElementById(statusId);
+    resEl.className = 'test-result'; resEl.textContent = 'Testing…'; resEl.style.display='block';
+    sEl.textContent = 'Testing…'; sEl.style.color = 'var(--muted)';
+
+    try {
+      const res = await api('/admin/stats'); // proxy — just check API reachability
+      if (res.ok) {
+        resEl.className = 'test-result ok'; resEl.textContent = '✓ Connected successfully';
+        sEl.textContent = '✓ OK'; sEl.style.color = 'var(--green)';
+      } else {
+        resEl.className = 'test-result err'; resEl.textContent = '✗ Connection failed';
+        sEl.textContent = '✗ Failed'; sEl.style.color = 'var(--red)';
+      }
+    } catch(e) {
+      resEl.className = 'test-result err'; resEl.textContent = '✗ ' + e.message;
+      sEl.textContent = '✗ Error'; sEl.style.color = 'var(--red)';
+    }
   }
 
   // ── Users ─────────────────────────────────────────────────────────────────
   let allUsers = [];
+  let _detailUserId = null;
+
   async function loadUsers() {
     const res = await api('/admin/users');
     if (!res.ok) return;
     allUsers = await res.json();
-    const tbody = document.getElementById('userTable');
-    tbody.innerHTML = '';
-    allUsers.forEach(u => {
-      tbody.innerHTML += `
-        <tr>
-          <td>${esc(u.email)}</td>
-          <td><span class="badge badge-${u.role}">${u.role}</span></td>
-          <td>${u.ps_tenant ? esc(u.ps_tenant.name) : '<span style="color:var(--text-muted)">—</span>'}</td>
-          <td><span class="badge ${u.ps_configured ? 'badge-on' : 'badge-off'}">${u.ps_configured ? '✓ set' : '—'}</span></td>
-          <td><button class="btn btn-sm ${u.ps_enabled ? 'btn-primary' : 'btn-secondary'}" onclick="togglePsEnabled(${u.id},${u.ps_enabled})" title="Toggle PS scanning">${u.ps_enabled ? '🛡 On' : '⬜ Off'}</button></td>
-          <td>${u.daily_message_limit ?? '<span style="color:var(--text-muted)">unlimited</span>'}</td>
-          <td><span class="badge ${u.is_active ? 'badge-on' : 'badge-off'}">${u.is_active ? 'active' : 'inactive'}</span></td>
-          <td><button class="btn btn-secondary btn-sm" onclick="openUserModal(${u.id})">Edit</button></td>
-        </tr>`;
-    });
-    if (!tbody.innerHTML) tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text-muted);text-align:center;padding:20px">No users found</td></tr>'
+    renderUserTable();
   }
 
-  async function togglePsEnabled(userId, currentlyEnabled) {
-    await api(`/admin/users/${userId}`, { method: 'PATCH', body: JSON.stringify({ ps_enabled: !currentlyEnabled }) });
+  function renderUserTable() {
+    const tbody = document.getElementById('userTable');
+    if (!allUsers.length) { tbody.innerHTML = `<tr><td colspan="8" class="empty">No users found</td></tr>`; return; }
+    tbody.innerHTML = allUsers.map(u => `
+      <tr onclick="openUserDetail(${u.id})" style="cursor:pointer">
+        <td><strong>${esc(u.email)}</strong></td>
+        <td><span class="badge badge-${u.role}">${u.role}</span></td>
+        <td style="font-size:12px;color:var(--muted)">${u.ps_tenant ? esc(u.ps_tenant.name) : '—'}</td>
+        <td><span class="badge ${u.ps_configured?'badge-on':'badge-off'}">${u.ps_configured?'✓ set':'—'}</span></td>
+        <td>
+          <button class="btn btn-sm ${u.ps_enabled?'btn-primary':'btn-secondary'}" onclick="event.stopPropagation();togglePsEnabled(${u.id},${u.ps_enabled})" title="Toggle PS scanning">
+            ${u.ps_enabled?'🛡 On':'⬜ Off'}
+          </button>
+        </td>
+        <td style="color:var(--muted);font-size:12px">${u.daily_message_limit ?? 'unlimited'}</td>
+        <td><span class="badge ${u.is_active?'badge-on':'badge-off'}">${u.is_active?'active':'inactive'}</span></td>
+        <td><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openUserModal(${u.id})">Edit</button></td>
+      </tr>`).join('');
+  }
+
+  async function togglePsEnabled(userId, cur) {
+    await api(`/admin/users/${userId}`, { method:'PATCH', body:JSON.stringify({ ps_enabled:!cur }) });
     loadUsers();
+  }
+
+  // User detail
+  async function openUserDetail(userId) {
+    _detailUserId = userId;
+    const u = allUsers.find(x => x.id === userId);
+    if (!u) return;
+    document.getElementById('userList').style.display = 'none';
+    const det = document.getElementById('userDetail');
+    det.classList.add('show');
+
+    const initials = u.email.substring(0,2).toUpperCase();
+    document.getElementById('detailAvatarEl').textContent = initials;
+    document.getElementById('detailNameEl').textContent = u.email.split('@')[0];
+    document.getElementById('detailEmailEl').textContent = u.email;
+    document.getElementById('detailEditBtn').onclick = () => { closeUserDetail(); openUserModal(userId); };
+
+    // Load stats
+    const res = await api(`/admin/users/${userId}/stats`);
+    if (!res.ok) return;
+    const s = await res.json();
+
+    document.getElementById('detailMiniCards').innerHTML = `
+      <div class="mini-card"><div class="lbl">Total Msgs</div><div class="val">${s.total_messages}</div></div>
+      <div class="mini-card"><div class="lbl">Today</div><div class="val">${s.messages_today}</div></div>
+      <div class="mini-card"><div class="lbl">Sessions</div><div class="val">${s.total_sessions}</div></div>
+      <div class="mini-card"><div class="lbl" style="color:var(--red)">PS Blocked</div><div class="val" style="color:var(--red)">${s.ps_blocked}</div></div>
+    `;
+
+    if (userDayChartI) userDayChartI.destroy();
+    const days = s.messages_by_day || [];
+    userDayChartI = buildLine('userDayChart', days.map(x=>x.date.slice(5)), days.map(x=>x.count));
+
+    if (userModelChartI) userModelChartI.destroy();
+    const mKeys = Object.keys(s.messages_by_model||{});
+    const mVals = mKeys.map(k=>s.messages_by_model[k]);
+    if (mKeys.length) userModelChartI = buildDoughnut('userModelChart', mKeys.map(k=>k.split('/').pop()), mVals);
+
+    const recentEl = document.getElementById('recentMsgsEl');
+    const msgs = s.recent_messages || [];
+    const psIcons = { pass:'✅', modify:'⚠️', block:'🚫', gateway:'🔀' };
+    recentEl.innerHTML = msgs.length
+      ? msgs.map(m => `
+        <div class="recent-msg">
+          <div class="meta">
+            <span class="badge ${m.role==='user'?'badge-admin':'badge-on'}" style="font-size:10px">${m.role}</span>
+            ${m.ps_action ? `<span style="font-size:11px">${psIcons[m.ps_action]||''}</span>` : ''}
+            ${m.model ? `<span style="font-size:10px;color:var(--muted)">${esc(m.model.split('/').pop().substring(0,18))}</span>` : ''}
+          </div>
+          <div class="preview">${esc(m.content_preview)}</div>
+          <div style="font-size:10px;color:var(--muted);flex-shrink:0">${new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
+        </div>`).join('')
+      : '<div class="empty">No messages yet</div>';
+  }
+
+  function closeUserDetail() {
+    document.getElementById('userDetail').classList.remove('show');
+    document.getElementById('userList').style.display = '';
+    _detailUserId = null;
   }
 
   // ── User Modal ────────────────────────────────────────────────────────────
@@ -326,7 +655,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       document.getElementById('umRole').value = u.role;
       document.getElementById('umTenant').value = u.ps_tenant_id || '';
       document.getElementById('umLimit').value = u.daily_message_limit || '';
-      document.getElementById('umModels').value = (u.allowed_models || []).join(',');
+      document.getElementById('umModels').value = (u.allowed_models||[]).join(',');
       document.getElementById('umActive').value = String(u.is_active);
       document.getElementById('userDeleteBtn').style.display = 'block';
     } else {
@@ -344,12 +673,10 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     }
     document.getElementById('userBackdrop').classList.add('open');
   }
-
   function closeUserModal() { document.getElementById('userBackdrop').classList.remove('open'); }
 
   async function saveUser() {
-    const errEl = document.getElementById('userModalErr');
-    errEl.textContent = '';
+    const errEl = document.getElementById('userModalErr'); errEl.textContent = '';
     const id       = document.getElementById('userModalId').value;
     const email    = document.getElementById('umEmail').value.trim();
     const password = document.getElementById('umPassword').value;
@@ -358,24 +685,21 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     const limit    = parseInt(document.getElementById('umLimit').value) || null;
     const models   = document.getElementById('umModels').value.trim().split(',').map(s=>s.trim()).filter(Boolean);
     const active   = document.getElementById('umActive').value === 'true';
-
-    const body = { email, role, ps_tenant_id: tenantId, daily_message_limit: limit, allowed_models: models.length ? models : null, is_active: active };
+    const body     = { email, role, ps_tenant_id:tenantId, daily_message_limit:limit, allowed_models:models.length?models:null, is_active:active };
     if (password) body.password = password;
     if (!id && !password) { errEl.textContent = 'Password required for new users.'; return; }
-
     const res = id
-      ? await api(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
-      : await api('/admin/users', { method: 'POST', body: JSON.stringify(body) });
-
-    if (!res.ok) { const d = await res.json().catch(()=>({})); errEl.textContent = d.detail || 'Error saving user'; return; }
+      ? await api(`/admin/users/${id}`, { method:'PATCH', body:JSON.stringify(body) })
+      : await api('/admin/users',        { method:'POST',  body:JSON.stringify(body) });
+    if (!res.ok) { const d=await res.json().catch(()=>({})); errEl.textContent = d.detail||'Error saving user'; return; }
     closeUserModal(); loadUsers();
   }
 
   async function deleteUser() {
     const id = document.getElementById('userModalId').value;
     if (!id || !confirm('Delete this user? This cannot be undone.')) return;
-    const res = await api(`/admin/users/${id}`, { method: 'DELETE' });
-    if (res.ok || res.status === 204) { closeUserModal(); loadUsers(); }
+    const res = await api(`/admin/users/${id}`, { method:'DELETE' });
+    if (res.ok||res.status===204) { closeUserModal(); loadUsers(); }
     else { document.getElementById('userModalErr').textContent = 'Failed to delete user'; }
   }
 
@@ -385,38 +709,33 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     const res = await api('/admin/ps-tenants');
     if (!res.ok) return;
     allTenants = await res.json();
-
-    // Count users per tenant
     const usersRes = await api('/admin/users');
     const users = usersRes.ok ? await usersRes.json() : [];
     const countMap = {};
     users.forEach(u => { if (u.ps_tenant_id) countMap[u.ps_tenant_id] = (countMap[u.ps_tenant_id]||0)+1; });
-
     const tbody = document.getElementById('tenantTable');
-    tbody.innerHTML = '';
-    allTenants.forEach(t => {
-      tbody.innerHTML += `
+    tbody.innerHTML = allTenants.length
+      ? allTenants.map(t => `
         <tr>
           <td><strong>${esc(t.name)}</strong></td>
-          <td style="font-size:12px;color:var(--text-muted)">${esc(t.base_url)}</td>
-          <td style="font-size:12px;color:var(--text-muted)">${t.gateway_url ? esc(t.gateway_url) : '<span style="color:var(--text-muted)">—</span>'}</td>
-          <td>${countMap[t.id] || 0}</td>
-          <td><button class="btn btn-secondary btn-sm" onclick="openTenantModal(${t.id})">Edit</button></td>
-        </tr>`;
-    });
-    if (!tbody.innerHTML) tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);text-align:center;padding:20px">No tenants defined yet</td></tr>';
+          <td style="font-size:12px;color:var(--muted)">${esc(t.base_url)}</td>
+          <td style="font-size:12px;color:var(--muted)">${t.gateway_url ? esc(t.gateway_url) : '<span style="color:var(--muted)">—</span>'}</td>
+          <td>${countMap[t.id]||0}</td>
+          <td><button class="btn btn-outline btn-sm" onclick="openTenantModal(${t.id})">Edit</button></td>
+        </tr>`).join('')
+      : `<tr><td colspan="5" class="empty">No tenants defined yet</td></tr>`;
   }
 
   function openTenantModal(tenantId) {
     document.getElementById('tenantModalErr').textContent = '';
     if (tenantId) {
-      const t = allTenants.find(x => x.id === tenantId);
+      const t = allTenants.find(x => x.id===tenantId);
       if (!t) return;
       document.getElementById('tenantModalTitle').textContent = 'Edit PS Tenant';
       document.getElementById('tenantModalId').value = tenantId;
       document.getElementById('tmName').value = t.name;
       document.getElementById('tmBase').value = t.base_url;
-      document.getElementById('tmGw').value   = t.gateway_url || '';
+      document.getElementById('tmGw').value   = t.gateway_url||'';
       document.getElementById('tenantDeleteBtn').style.display = 'block';
     } else {
       document.getElementById('tenantModalTitle').textContent = 'New PS Tenant';
@@ -428,96 +747,101 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     }
     document.getElementById('tenantBackdrop').classList.add('open');
   }
-
   function closeTenantModal() { document.getElementById('tenantBackdrop').classList.remove('open'); }
 
   async function saveTenant() {
-    const errEl = document.getElementById('tenantModalErr');
-    errEl.textContent = '';
+    const errEl = document.getElementById('tenantModalErr'); errEl.textContent = '';
     const id   = document.getElementById('tenantModalId').value;
-    const body = {
-      name:        document.getElementById('tmName').value.trim(),
-      base_url:    document.getElementById('tmBase').value.trim(),
-      gateway_url: document.getElementById('tmGw').value.trim() || null,
-    };
-    if (!body.name || !body.base_url) { errEl.textContent = 'Name and Base URL are required.'; return; }
-
+    const body = { name:document.getElementById('tmName').value.trim(), base_url:document.getElementById('tmBase').value.trim(), gateway_url:document.getElementById('tmGw').value.trim()||null };
+    if (!body.name||!body.base_url) { errEl.textContent='Name and Base URL are required.'; return; }
     const res = id
-      ? await api(`/admin/ps-tenants/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
-      : await api('/admin/ps-tenants',        { method: 'POST',  body: JSON.stringify(body) });
-
-    if (!res.ok) { const d = await res.json().catch(()=>({})); errEl.textContent = d.detail || 'Error saving tenant'; return; }
+      ? await api(`/admin/ps-tenants/${id}`, { method:'PATCH', body:JSON.stringify(body) })
+      : await api('/admin/ps-tenants',        { method:'POST',  body:JSON.stringify(body) });
+    if (!res.ok) { const d=await res.json().catch(()=>({})); errEl.textContent=d.detail||'Error saving tenant'; return; }
     closeTenantModal(); loadTenants();
   }
 
   async function deleteTenant() {
     const id = document.getElementById('tenantModalId').value;
-    if (!id || !confirm('Delete this PS tenant? Users assigned to it will lose their PS config.')) return;
-    const res = await api(`/admin/ps-tenants/${id}`, { method: 'DELETE' });
-    if (res.ok || res.status === 204) { closeTenantModal(); loadTenants(); }
-    else { document.getElementById('tenantModalErr').textContent = 'Failed to delete tenant'; }
+    if (!id||!confirm('Delete this PS tenant? Users assigned to it will lose their PS config.')) return;
+    const res = await api(`/admin/ps-tenants/${id}`, { method:'DELETE' });
+    if (res.ok||res.status===204) { closeTenantModal(); loadTenants(); }
+    else { document.getElementById('tenantModalErr').textContent='Failed to delete tenant'; }
   }
 
-  // ── Activity log ───────────────────────────────────────────────────────────────
+  // ── Activity log ──────────────────────────────────────────────────────────
   let _actRows = [];
-
   async function loadActivity() {
     const res = await api('/admin/activity?limit=200');
     if (!res.ok) return;
     _actRows = await res.json();
-
-    // Populate user filter
     const sel = document.getElementById('actUserFilter');
     const prev = sel.value;
-    const users = [...new Set(_actRows.map(r => r.user_email))];
+    const users = [...new Set(_actRows.map(r=>r.user_email))];
     sel.innerHTML = '<option value="">All users</option>';
     users.forEach(u => sel.innerHTML += `<option value="${esc(u)}"${prev===u?' selected':''}>${esc(u)}</option>`);
-
     renderActivity();
   }
+
+  const AUDIT_ICONS = {
+    ps_config_changed: '🔒', llm_keys_updated: '🔑', user_created: '➕',
+    user_updated: '✏️', user_deleted: '🗑', tenant_created: '🏢',
+    tenant_updated: '🏢', tenant_deleted: '🗑',
+  };
+  const AUDIT_LABELS = {
+    ps_config_changed: 'PS Config', llm_keys_updated: 'LLM Keys', user_created: 'User Created',
+    user_updated: 'User Updated', user_deleted: 'User Deleted', tenant_created: 'Tenant Created',
+    tenant_updated: 'Tenant Updated', tenant_deleted: 'Tenant Deleted',
+  };
 
   function renderActivity() {
     const userF = document.getElementById('actUserFilter').value;
     const roleF = document.getElementById('actRoleFilter').value;
-    const rows = _actRows.filter(r =>
-      (!userF || r.user_email === userF) &&
-      (!roleF || r.role === roleF)
-    );
-
+    let rows = _actRows.filter(r => !userF || r.user_email === userF);
+    if (roleF === 'audit')     rows = rows.filter(r => r.entry_type === 'audit');
+    else if (roleF)            rows = rows.filter(r => r.entry_type !== 'audit' && r.role === roleF);
     const tbody = document.getElementById('actTable');
     const empty = document.getElementById('actEmpty');
     tbody.innerHTML = '';
-
-    if (!rows.length) { empty.style.display = 'block'; return; }
+    if (!rows.length) { empty.style.display='block'; return; }
     empty.style.display = 'none';
-
-    const psIcon = { pass: '✅', modify: '⚠️', block: '🚫', null: '' };
+    const psIcon = { pass:'✅', modify:'⚠️', block:'🚫', gateway:'🔀' };
     rows.forEach(r => {
       const t = new Date(r.created_at);
-      const tStr = t.toLocaleDateString([], {month:'short',day:'numeric'}) + ' ' + t.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-      const psCell = r.ps_scanned
-        ? `<span style="font-size:11px">${psIcon[r.ps_action]||''} ${r.ps_action||''}</span>`
-        : '<span style="color:var(--text-muted);font-size:11px">—</span>';
-      tbody.innerHTML += `
-        <tr>
-          <td style="font-size:11px;white-space:nowrap;color:var(--text-muted)">${tStr}</td>
-          <td style="font-size:12px">${esc(r.user_email)}</td>
-          <td><span style="font-size:11px;padding:2px 7px;border-radius:4px;background:${r.role==='user'?'rgba(108,99,255,0.12)':'rgba(46,204,113,0.09)'};color:${r.role==='user'?'var(--accent)':'var(--green)'}">${r.role}</span></td>
-          <td style="font-size:11px;color:var(--text-muted)">${r.model ? esc(r.model) : '—'}</td>
-          <td>${psCell}</td>
-          <td style="font-size:12px;color:var(--text-muted);max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.content_preview)}</td>
-        </tr>`;
+      const tStr = t.toLocaleDateString([],{month:'short',day:'numeric'}) + ' ' + t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      if (r.entry_type === 'audit') {
+        const icon  = AUDIT_ICONS[r.event_type] || '⚙️';
+        const label = AUDIT_LABELS[r.event_type] || r.event_type;
+        tbody.innerHTML += `
+          <tr style="background:rgba(108,99,255,0.04)">
+            <td style="font-size:11px;white-space:nowrap;color:var(--muted)">${tStr}</td>
+            <td style="font-size:12px">${esc(r.user_email)}</td>
+            <td><span class="badge badge-gw" style="font-size:10px">${icon} ${esc(label)}</span></td>
+            <td style="color:var(--muted);font-size:11px">—</td>
+            <td style="color:var(--muted);font-size:11px">—</td>
+            <td style="font-size:12px;color:var(--text);max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.content_preview)}</td>
+          </tr>`;
+      } else {
+        const psCell = r.ps_scanned ? `<span style="font-size:11px">${psIcon[r.ps_action]||''} ${r.ps_action||''}</span>` : '<span style="color:var(--muted);font-size:11px">—</span>';
+        tbody.innerHTML += `
+          <tr>
+            <td style="font-size:11px;white-space:nowrap;color:var(--muted)">${tStr}</td>
+            <td style="font-size:12px">${esc(r.user_email)}</td>
+            <td><span class="badge" style="font-size:10px;background:${r.role==='user'?'rgba(108,99,255,0.12)':'rgba(46,204,113,0.09)'};color:${r.role==='user'?'var(--accent)':'var(--green)'}">${r.role}</span></td>
+            <td style="font-size:11px;color:var(--muted)">${r.model?esc(r.model):'—'}</td>
+            <td>${psCell}</td>
+            <td style="font-size:12px;color:var(--muted);max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.content_preview)}</td>
+          </tr>`;
+      }
     });
   }
 
   document.getElementById('actUserFilter').addEventListener('change', renderActivity);
   document.getElementById('actRoleFilter').addEventListener('change', renderActivity);
+  document.getElementById('userBackdrop').addEventListener('click', e => { if(e.target.id==='userBackdrop') closeUserModal(); });
+  document.getElementById('tenantBackdrop').addEventListener('click', e => { if(e.target.id==='tenantBackdrop') closeTenantModal(); });
 
-  // Close modals on backdrop click
-  document.getElementById('userBackdrop').addEventListener('click',   e => { if (e.target.id==='userBackdrop')   closeUserModal(); });
-  document.getElementById('tenantBackdrop').addEventListener('click', e => { if (e.target.id==='tenantBackdrop') closeTenantModal(); });
-
-  function esc(s='') { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function logout() { localStorage.clear(); window.location.replace('/login'); }
 
   init();
 </script>

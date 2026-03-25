@@ -25,7 +25,7 @@ load_dotenv()
 from auth import create_access_token, get_current_user, hash_password, require_admin, verify_password
 from crypto import decrypt, encrypt
 from database import AsyncSessionLocal, Base, engine, get_db
-from models import ChatSession, Message, PSTenant, User
+from models import AuditEvent, ChatSession, Message, PSTenant, User
 from prompt_security import PromptSecurityClient
 from schemas import (
     ChatMessage, ChatRequest, ChatResponse,
@@ -271,6 +271,12 @@ async def update_my_ps_config(
 
     await db.commit()
     await db.refresh(current_user, ["ps_tenant"])
+    parts = []
+    if body.ps_api_key is not None: parts.append("App ID updated")
+    if body.ps_mode in ("api", "gateway"): parts.append(f"mode={body.ps_mode}")
+    if body.ps_enabled is not None: parts.append(f"enabled={body.ps_enabled}")
+    if body.ps_tenant_id is not None: parts.append(f"tenant_id={body.ps_tenant_id}")
+    await _log_audit(db, current_user.id, current_user.email, "ps_config_changed", "; ".join(parts) or None)
     return _user_out(current_user)
 
 
@@ -306,6 +312,7 @@ async def admin_create_user(
     db.add(user)
     await db.commit()
     await db.refresh(user, ["ps_tenant"])
+    await _log_audit(db, admin.id, admin.email, "user_created", f"email={user.email} role={user.role}")
     return _user_out(user)
 
 
@@ -357,6 +364,8 @@ async def admin_update_user(
 
     await db.commit()
     await db.refresh(user, ["ps_tenant"])
+    changed = [k for k in ("email","role","is_active","ps_enabled","ps_tenant_id") if getattr(body,k,None) is not None]
+    await _log_audit(db, admin.id, admin.email, "user_updated", f"{user.email}: {', '.join(changed)}")
     return _user_out(user)
 
 
@@ -371,8 +380,10 @@ async def admin_delete_user(
         raise HTTPException(status_code=404, detail="User not found")
     if user.id == admin.id:
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
+    email = user.email
     await db.delete(user)
     await db.commit()
+    await _log_audit(db, admin.id, admin.email, "user_deleted", f"email={email}")
 
 
 # ── Admin: PS Tenants ─────────────────────────────────────────────────────────
@@ -398,6 +409,7 @@ async def admin_create_ps_tenant(
     db.add(tenant)
     await db.commit()
     await db.refresh(tenant)
+    await _log_audit(db, admin.id, admin.email, "tenant_created", f"{tenant.name} — {tenant.base_url}")
     return tenant
 
 
@@ -419,6 +431,7 @@ async def admin_update_ps_tenant(
         tenant.gateway_url = body.gateway_url
     await db.commit()
     await db.refresh(tenant)
+    await _log_audit(db, admin.id, admin.email, "tenant_updated", f"{tenant.name}")
     return tenant
 
 
@@ -431,8 +444,10 @@ async def admin_delete_ps_tenant(
     tenant = await db.get(PSTenant, tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
+    name = tenant.name
     await db.delete(tenant)
     await db.commit()
+    await _log_audit(db, admin.id, admin.email, "tenant_deleted", f"name={name}")
 
 
 # ── Admin: PS Tenants (non-admin read — for settings dropdown) ────────────────
@@ -458,6 +473,14 @@ async def admin_stats(
         select(func.count(Message.id)).where(Message.created_at >= today_start)
     ) or 0
     total_users = await db.scalar(select(func.count(User.id))) or 0
+    total_sessions = await db.scalar(select(func.count(ChatSession.id))) or 0
+
+    # Active users today
+    active_result = await db.execute(
+        select(func.count(func.distinct(Message.user_id)))
+        .where(Message.created_at >= today_start)
+    )
+    active_users_today = active_result.scalar() or 0
 
     # PS actions distribution
     ps_actions_result = await db.execute(
@@ -466,6 +489,39 @@ async def admin_stats(
         .group_by(Message.ps_action)
     )
     ps_actions = {row[0]: row[1] for row in ps_actions_result.all() if row[0]}
+    ps_scanned = sum(ps_actions.values())
+    ps_blocked  = ps_actions.get("block", 0)
+
+    # Messages by day (last 14 days)
+    from sqlalchemy import cast, Date as SADate
+    days_result = await db.execute(
+        select(cast(Message.created_at, SADate).label("day"), func.count(Message.id))
+        .group_by("day")
+        .order_by("day")
+        .limit(14)
+    )
+    messages_by_day = [{"date": str(r[0]), "count": r[1]} for r in days_result.all()]
+
+    # Messages by model
+    model_result = await db.execute(
+        select(Message.model, func.count(Message.id))
+        .where(Message.model.isnot(None))
+        .group_by(Message.model)
+        .order_by(desc(func.count(Message.id)))
+        .limit(8)
+    )
+    messages_by_model = {r[0]: r[1] for r in model_result.all()}
+
+    # Top users (all time)
+    top_users_result = await db.execute(
+        select(User.email, func.count(Message.id).label("count"))
+        .join(Message, Message.user_id == User.id)
+        .where(Message.role == "user")
+        .group_by(User.email)
+        .order_by(desc("count"))
+        .limit(10)
+    )
+    top_users = [{"email": r[0], "message_count": r[1]} for r in top_users_result.all()]
 
     # Per-user message counts today
     user_counts_result = await db.execute(
@@ -481,8 +537,69 @@ async def admin_stats(
         "total_messages": total_messages,
         "messages_today": messages_today,
         "total_users": total_users,
+        "total_sessions": total_sessions,
+        "active_users_today": active_users_today,
         "ps_actions": ps_actions,
+        "ps_scanned": ps_scanned,
+        "ps_blocked": ps_blocked,
+        "messages_by_day": messages_by_day,
+        "messages_by_model": messages_by_model,
+        "top_users": top_users,
         "user_counts_today": user_counts,
+    }
+
+
+@app.get("/admin/users/{user_id}/stats")
+async def admin_user_stats(
+    user_id: int,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy import cast, Date as SADate
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    total = await db.scalar(select(func.count(Message.id)).where(Message.user_id == user_id)) or 0
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    today = await db.scalar(
+        select(func.count(Message.id)).where(Message.user_id == user_id, Message.created_at >= today_start)
+    ) or 0
+    sessions_count = await db.scalar(
+        select(func.count(ChatSession.id)).where(ChatSession.user_id == user_id)
+    ) or 0
+    ps_blocked = await db.scalar(
+        select(func.count(Message.id)).where(Message.user_id == user_id, Message.ps_action == "block")
+    ) or 0
+
+    days_result = await db.execute(
+        select(cast(Message.created_at, SADate).label("day"), func.count(Message.id))
+        .where(Message.user_id == user_id)
+        .group_by("day").order_by("day").limit(14)
+    )
+    messages_by_day = [{"date": str(r[0]), "count": r[1]} for r in days_result.all()]
+
+    model_result = await db.execute(
+        select(Message.model, func.count(Message.id))
+        .where(Message.user_id == user_id, Message.model.isnot(None))
+        .group_by(Message.model).order_by(desc(func.count(Message.id))).limit(6)
+    )
+    messages_by_model = {r[0]: r[1] for r in model_result.all()}
+
+    recent_result = await db.execute(
+        select(Message).where(Message.user_id == user_id).order_by(desc(Message.id)).limit(10)
+    )
+    recent = [
+        {"role": m.role, "content_preview": (m.content or "")[:120],
+         "model": m.model, "ps_action": m.ps_action, "created_at": m.created_at.isoformat()}
+        for m in recent_result.scalars().all()
+    ]
+
+    return {
+        "total_messages": total, "messages_today": today,
+        "total_sessions": sessions_count, "ps_blocked": ps_blocked,
+        "messages_by_day": messages_by_day, "messages_by_model": messages_by_model,
+        "recent_messages": recent,
     }
 
 
@@ -623,6 +740,7 @@ async def chat_stream(
     ps_mode        = current_user.ps_mode or "api"
     ps_client: Optional[PromptSecurityClient] = None
     ps_gw_client: Optional[AsyncOpenAI]       = None  # gateway-mode LLM client
+    ps_gw_no_key  = False  # set True when gateway mode lacks an LLM key
 
     if current_user.ps_enabled and current_user.ps_tenant and current_user.ps_api_key_enc:
         try:
@@ -639,11 +757,17 @@ async def chat_stream(
                     )
                 elif ps_mode == "gateway" and current_user.ps_tenant.gateway_url:
                     llm_key = _get_llm_key(current_user, model)
-                    ps_gw_client = AsyncOpenAI(
-                        api_key=llm_key or "no-key",
-                        base_url=current_user.ps_tenant.gateway_url,
-                        default_headers={"ps-app-id": ps_app_id},
-                    )
+                    logger.info("PS gateway init for %s → %s (llm_key set: %s)",
+                                current_user.email, current_user.ps_tenant.gateway_url, bool(llm_key))
+                    if llm_key:
+                        ps_gw_client = AsyncOpenAI(
+                            api_key=llm_key,
+                            base_url=current_user.ps_tenant.gateway_url,
+                            default_headers={"ps-app-id": ps_app_id},
+                        )
+                    else:
+                        ps_gw_no_key = True
+                        logger.warning("Gateway mode: no LLM key for %s, will error in stream", current_user.email)
             except Exception as e:
                 logger.warning("Could not init PS client for %s: %s", current_user.email, e)
 
@@ -669,6 +793,9 @@ async def chat_stream(
         ]
 
         # ── Gateway mode: route through PS proxy, skip explicit scanning ───────
+        if ps_gw_no_key:
+            yield f"data: {json.dumps({'type': 'error', 'detail': 'Gateway mode requires an LLM API key. Add your OpenRouter key in ⚙ Settings → LLM API Keys, or set OPENROUTER_API_KEY in .env.'})}\n\n"
+            return
         if ps_gw_client:
             try:
                 stream = await ps_gw_client.chat.completions.create(
@@ -832,6 +959,8 @@ async def update_my_llm_keys(
     current_user.llm_api_keys_enc = encrypt(json.dumps(existing)) if existing else None
     await db.commit()
     await db.refresh(current_user, ["ps_tenant"])
+    updated = [p for p in ("openai","anthropic","google","openrouter") if getattr(body, p) is not None]
+    await _log_audit(db, current_user.id, current_user.email, "llm_keys_updated", "providers: " + ", ".join(updated))
     return _user_out(current_user)
 
 
@@ -842,15 +971,16 @@ async def admin_activity(
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
+    msg_result = await db.execute(
         select(Message, User.email)
         .join(User, User.id == Message.user_id)
         .order_by(desc(Message.created_at))
         .limit(min(limit, 500))
     )
-    return [
+    chat_rows = [
         {
-            "id": msg.id,
+            "id": f"msg-{msg.id}",
+            "entry_type": "chat",
             "user_email": email,
             "session_id": msg.session_id,
             "role": msg.role,
@@ -862,8 +992,32 @@ async def admin_activity(
             "response_ms": msg.response_ms,
             "created_at": msg.created_at.isoformat(),
         }
-        for msg, email in result.all()
+        for msg, email in msg_result.all()
     ]
+
+    audit_result = await db.execute(
+        select(AuditEvent)
+        .order_by(desc(AuditEvent.created_at))
+        .limit(min(limit, 200))
+    )
+    audit_rows = [
+        {
+            "id": f"audit-{ev.id}",
+            "entry_type": "audit",
+            "user_email": ev.user_email,
+            "role": "system",
+            "event_type": ev.event_type,
+            "content_preview": ev.detail or ev.event_type,
+            "model": None,
+            "ps_scanned": False,
+            "ps_action": None,
+            "created_at": ev.created_at.isoformat(),
+        }
+        for ev in audit_result.scalars().all()
+    ]
+
+    combined = sorted(chat_rows + audit_rows, key=lambda r: r["created_at"], reverse=True)
+    return combined[:min(limit, 500)]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -898,6 +1052,18 @@ def _build_content(m: ChatMessage):
             parts.append({"type": "text", "text": m.content})
         return parts
     return m.content
+
+
+async def _log_audit(
+    db: AsyncSession,
+    user_id: int,
+    user_email: str,
+    event_type: str,
+    detail: Optional[str] = None,
+):
+    ev = AuditEvent(user_id=user_id, user_email=user_email, event_type=event_type, detail=detail)
+    db.add(ev)
+    await db.commit()
 
 
 async def _log_msg(

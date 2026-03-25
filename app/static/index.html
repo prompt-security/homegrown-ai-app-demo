@@ -102,6 +102,26 @@ header .spacer { flex: 1; }
 .ps-detail.open { display: block; }
 .ps-detail-row { display: flex; justify-content: space-between; padding: 2px 0; border-top: 1px solid var(--border); margin-top: 4px; }
 .ps-detail-row:first-child { border-top: none; margin-top: 0; }
+.ps-insight { margin: 4px 0 0; }
+/* ── Code View modal ── */
+.cv-tab { padding: 7px 18px; font-size: 12px; font-weight: 600; border: 1px solid var(--border); border-bottom: none; border-radius: 8px 8px 0 0; cursor: pointer; color: var(--text-muted); background: transparent; transition: all 0.15s; margin-right: 4px; font-family: var(--font); }
+.cv-tab.active { background: var(--surface2); color: var(--text); }
+.cv-pane { display: none; }
+.cv-pane.active { display: block; }
+.cv-desc { font-size: 12px; color: var(--text-muted); line-height: 1.6; padding: 14px 0 10px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+.cv-desc strong { color: var(--text); }
+.cv-desc code { background: var(--surface2); padding: 1px 5px; border-radius: 4px; }
+.cv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+.cv-cell { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+.cv-cell-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px; }
+.cv-api .cv-cell-title { color: var(--accent); }
+.cv-gw  .cv-cell-title { color: var(--green); }
+.cv-cell pre { font-size: 11px; line-height: 1.6; color: var(--text); white-space: pre; overflow-x: auto; }
+.cv-block { position: relative; margin-bottom: 14px; }
+.cv-block-label { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.cv-copy { position: absolute; top: 28px; right: 8px; padding: 3px 9px; font-size: 11px; border-radius: 5px; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; font-family: var(--font); z-index: 1; }
+.cv-copy:hover { color: var(--text); }
+pre.cv-code { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; overflow-x: auto; font-size: 12px; line-height: 1.7; white-space: pre; }
 .bubble-image { max-width: 320px; max-height: 240px; border-radius: 8px; display: block; margin-bottom: 6px; }
 
 /* ── Markdown ── */
@@ -168,6 +188,9 @@ header .spacer { flex: 1; }
 <!-- ── Sidebar ── -->
 <div id="sidebar">
   <div id="sidebar-header">
+    <div style="padding:4px 2px 6px;">
+      <img src="/static/prompt-security-logo.png" alt="Prompt Security" style="width:100%;max-width:160px;opacity:0.88;display:block">
+    </div>
     <button class="sidebar-btn" id="newChatBtn">✏️ New Chat</button>
   </div>
   <div id="sidebar-label">History</div>
@@ -185,6 +208,7 @@ header .spacer { flex: 1; }
     <div class="spacer"></div>
     <select id="modelSelect"><option disabled selected>Loading…</option></select>
     <button class="icon-btn" id="sysPromptBtn" title="System prompt">⚙️</button>
+    <button class="icon-btn" id="codeViewBtn" title="View integration code" style="font-size:12px;font-family:monospace;padding:5px 10px">&lt;/&gt;</button>
     <div id="psWidget">
       <button id="psToggleBtn" class="off" title="Click to toggle PS on/off">PS off</button>
       <button id="psGearBtn" title="Configure PS settings">⚙</button>
@@ -222,6 +246,147 @@ header .spacer { flex: 1; }
       <button id="attachBtn" title="Attach file">📎</button>
       <textarea id="userInput" rows="1" placeholder="Type a message… (Enter to send, Shift+Enter for newline)"></textarea>
       <button id="sendBtn" title="Send">&#10148;</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Code View Modal ── -->
+<div class="backdrop" id="codeViewBackdrop">
+  <div id="codeViewModal" style="background:var(--surface);border:1px solid var(--border);border-radius:16px;width:900px;max-width:96vw;max-height:88vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.6)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px 0;flex-shrink:0">
+      <h2 style="font-size:15px;font-weight:700">Prompt Security Integration Code</h2>
+      <button id="cvClose" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:4px 8px;border-radius:6px">&times;</button>
+    </div>
+    <div style="display:flex;gap:0;padding:14px 22px 0;flex-shrink:0;border-bottom:1px solid var(--border)">
+      <button class="cv-tab active" id="cvTabCompare" onclick="cvShow('compare')">Side-by-Side</button>
+      <button class="cv-tab" id="cvTabApi"     onclick="cvShow('api')">API Mode</button>
+      <button class="cv-tab" id="cvTabGateway" onclick="cvShow('gateway')">Gateway Mode</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:0 22px 22px">
+      <!-- Side-by-Side -->
+      <div class="cv-pane active" id="cvPaneCompare">
+        <div class="cv-desc"><strong>Two ways to protect your AI app with Prompt Security.</strong> Both achieve the same security outcome — the difference is where the logic lives. <em>API Mode</em> gives full visibility into every scan result. <em>Gateway Mode</em> is one URL change.</div>
+        <div class="cv-grid">
+          <div class="cv-cell cv-api">
+            <div class="cv-cell-title">API Mode — explicit scans (~15 lines)</div>
+<pre>from prompt_security import Client
+
+ps = Client(
+  base_url="https://apsouth.prompt.security",
+  app_id=PS_APP_ID
+)
+
+# Before calling the LLM:
+result = ps.protect_prompt(user_prompt=user_msg)
+if not result.allowed:
+  return "Blocked"
+
+# &lt;your LLM call here&gt;
+
+# After the LLM responds:
+resp = ps.protect_response(response_text=llm_reply)
+return resp.modified_text or llm_reply</pre>
+          </div>
+          <div class="cv-cell cv-gw">
+            <div class="cv-cell-title">Gateway Mode — one URL change</div>
+<pre># Before (direct OpenAI):
+client = OpenAI(
+  api_key=OPENAI_API_KEY
+)
+
+# After (via PS Gateway):
+client = OpenAI(
+  base_url="https://apsouth.prompt.security/v1",
+  api_key=OPENROUTER_API_KEY,
+  default_headers={"ps-app-id": PS_APP_ID}
+)
+
+# Your LLM call is UNCHANGED:
+reply = client.chat.completions.create(
+  model="openai/gpt-4o-mini",
+  messages=messages
+)</pre>
+          </div>
+        </div>
+      </div>
+      <!-- API Mode detail -->
+      <div class="cv-pane" id="cvPaneApi">
+        <div class="cv-desc"><strong>API Mode</strong> makes two explicit calls to the PS scan API — once before the LLM (prompt scan) and once after (response scan). You receive full violation details: category, risk score, and whether the text was modified or blocked.</div>
+        <div class="cv-block">
+          <div class="cv-block-label">Scan the prompt before calling the LLM</div>
+          <button class="cv-copy" onclick="cvCopy(this)">Copy</button>
+<pre class="cv-code">import httpx, os
+
+PS_BASE = os.getenv("PS_BASE_URL")   # https://apsouth.prompt.security
+PS_APP_ID = os.getenv("PS_APP_ID")
+
+async def protect_prompt(user_msg: str) -&gt; str | None:
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            f"{PS_BASE}/api/protect/prompt",
+            headers={"APP-ID": PS_APP_ID},
+            json={"prompt": user_msg}
+        )
+    data   = r.json()
+    action = data["result"]["prompt"]["action"]   # pass | modify | block
+    if action == "block":
+        return None                                # blocked
+    if action == "modify":
+        return data["result"]["prompt"]["modified_text"]
+    return user_msg</pre>
+        </div>
+        <div class="cv-block">
+          <div class="cv-block-label">Scan the response before returning to user</div>
+          <button class="cv-copy" onclick="cvCopy(this)">Copy</button>
+<pre class="cv-code">async def protect_response(reply: str, original_prompt: str) -&gt; str | None:
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            f"{PS_BASE}/api/protect/response",
+            headers={"APP-ID": PS_APP_ID},
+            json={"response": reply, "prompt": original_prompt}
+        )
+    data   = r.json()
+    action = data["result"]["response"]["action"]
+    if action == "block":  return None
+    if action == "modify": return data["result"]["response"]["modified_text"]
+    return reply</pre>
+        </div>
+      </div>
+      <!-- Gateway Mode detail -->
+      <div class="cv-pane" id="cvPaneGateway">
+        <div class="cv-desc"><strong>Gateway Mode</strong> requires changing exactly one thing: the <code>base_url</code> of your OpenAI-compatible client. The PS Gateway intercepts every request and response, scans them transparently, and routes to the LLM via OpenRouter. <em>No other code changes needed.</em></div>
+        <div class="cv-block">
+          <div class="cv-block-label">Before — standard OpenAI client</div>
+          <button class="cv-copy" onclick="cvCopy(this)">Copy</button>
+<pre class="cv-code">from openai import AsyncOpenAI
+
+client = AsyncOpenAI(
+    api_key=os.getenv("OPENAI_API_KEY")
+)
+
+reply = await client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=messages
+)</pre>
+        </div>
+        <div class="cv-block">
+          <div class="cv-block-label">After — route through PS Gateway (1 change highlighted)</div>
+          <button class="cv-copy" onclick="cvCopy(this)">Copy</button>
+<pre class="cv-code">from openai import AsyncOpenAI
+
+client = AsyncOpenAI(
+    base_url="https://apsouth.prompt.security/v1",  # &lt;&lt; only change
+    api_key=os.getenv("OPENROUTER_API_KEY"),
+    default_headers={"ps-app-id": os.getenv("PS_APP_ID")}
+)
+
+# Existing call — UNCHANGED:
+reply = await client.chat.completions.create(
+    model="openai/gpt-4o-mini",   # OpenRouter model format
+    messages=messages
+)</pre>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -694,19 +859,23 @@ header .spacer { flex: 1; }
     if (!scanned) return;
     const wrap = document.createElement('div'); wrap.className = 'ps-insight';
     const badge = document.createElement('span'); badge.className = `ps-badge ${action}`;
-    const icons = { pass:'✅', modify:'⚠️', block:'🚫' };
+    const icons = { pass:'✅', modify:'⚠️', block:'🚫', gateway:'🔀' };
     badge.textContent = `${icons[action]||'🔍'} PS: ${action}`;
     wrap.appendChild(badge);
-    if (violations?.length) {
-      const detail = document.createElement('div'); detail.className = 'ps-detail';
+    const detail = document.createElement('div'); detail.className = 'ps-detail';
+    if (violations && violations.length) {
       violations.forEach(v => {
         const row = document.createElement('div'); row.className = 'ps-detail-row';
-        row.innerHTML = `<span>${typeof v === 'string' ? v : (v.type||v.category||JSON.stringify(v))}</span>${v.score !== undefined ? `<span style="color:var(--accent);font-size:10px">${Math.round(v.score*100)}%</span>` : ''}`;
+        const type = typeof v === 'string' ? v : (v.type || v.category || v.name || JSON.stringify(v));
+        const score = typeof v === 'object' && (v.score ?? v.confidence) != null ? `${Math.round((v.score ?? v.confidence) * 100)}%` : '';
+        row.innerHTML = `<span style="color:var(--text);font-weight:500">${esc(type)}</span>${score ? `<span style="color:var(--accent);font-size:10px">${esc(score)}</span>` : ''}`;
         detail.appendChild(row);
       });
-      badge.addEventListener('click', () => detail.classList.toggle('open'));
-      wrap.appendChild(detail);
+    } else {
+      detail.innerHTML = `<span>Action: <strong>${esc(action || 'pass')}</strong> — no violation details recorded</span>`;
     }
+    badge.addEventListener('click', () => detail.classList.toggle('open'));
+    wrap.appendChild(detail);
     inner.appendChild(wrap);
   }
 
@@ -801,6 +970,24 @@ header .spacer { flex: 1; }
       sendBtn.disabled = input.disabled = false; input.focus();
     }
   }
+
+  // ── Code View modal ───────────────────────────────────────────────────────
+  function cvShow(pane) {
+    document.querySelectorAll('.cv-pane').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.cv-tab').forEach(t => t.classList.remove('active'));
+    const p = pane.charAt(0).toUpperCase() + pane.slice(1);
+    document.getElementById('cvPane' + p).classList.add('active');
+    document.getElementById('cvTab'  + p).classList.add('active');
+  }
+  function cvCopy(btn) {
+    const code = btn.nextElementSibling.textContent;
+    navigator.clipboard.writeText(code).then(() => {
+      btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy', 1500);
+    });
+  }
+  document.getElementById('codeViewBtn').addEventListener('click', () => document.getElementById('codeViewBackdrop').classList.add('open'));
+  document.getElementById('cvClose').addEventListener('click',    () => document.getElementById('codeViewBackdrop').classList.remove('open'));
+  document.getElementById('codeViewBackdrop').addEventListener('click', e => { if (e.target.id === 'codeViewBackdrop') document.getElementById('codeViewBackdrop').classList.remove('open'); });
 
   // ── Event listeners ───────────────────────────────────────────────────────
   input.addEventListener('input', () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 140) + 'px'; });

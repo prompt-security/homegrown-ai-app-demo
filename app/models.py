@@ -82,3 +82,16 @@ class Message(Base):
 
     session: Mapped[ChatSession] = relationship("ChatSession", back_populates="messages")
     user: Mapped[User] = relationship("User", back_populates="messages")
+
+
+class AuditEvent(Base):
+    __tablename__ = "audit_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    user_email: Mapped[str] = mapped_column(String(255))
+    event_type: Mapped[str] = mapped_column(String(60))   # ps_config_changed | llm_key_added | user_created | etc.
+    detail: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
