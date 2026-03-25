@@ -84,6 +84,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
   <button class="nav-item active" onclick="showTab('stats')">📊 Overview</button>
   <button class="nav-item" onclick="showTab('users')">👥 Users</button>
   <button class="nav-item" onclick="showTab('tenants')">🔑 PS Tenants</button>
+  <button class="nav-item" onclick="showTab('activity')">📋 Activity Log</button>
   <hr class="nav-sep">
   <a href="/" class="nav-item" style="text-decoration:none">💬 Back to Chat</a>
 </div>
@@ -128,6 +129,31 @@ tr:hover td{background:rgba(255,255,255,0.02)}
           <thead><tr><th>Email</th><th>Role</th><th>PS Tenant</th><th>PS Key</th><th>Daily Limit</th><th>Status</th><th></th></tr></thead>
           <tbody id="userTable"></tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- ── Activity tab ── -->
+    <div id="tab-activity" class="tab-panel">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Activity Log</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="actUserFilter" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:12px;padding:4px 8px;outline:none">
+              <option value="">All users</option>
+            </select>
+            <select id="actRoleFilter" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:12px;padding:4px 8px;outline:none">
+              <option value="">All messages</option>
+              <option value="user">User only</option>
+              <option value="assistant">Assistant only</option>
+            </select>
+            <button class="btn btn-secondary btn-sm" onclick="loadActivity()">↻ Refresh</button>
+          </div>
+        </div>
+        <table>
+          <thead><tr><th>Time</th><th>User</th><th>Role</th><th>Model</th><th>PS</th><th style="width:40%">Preview</th></tr></thead>
+          <tbody id="actTable"></tbody>
+        </table>
+        <div id="actEmpty" style="display:none;text-align:center;padding:24px;color:var(--text-muted);font-size:13px">No activity yet.</div>
       </div>
     </div>
 
@@ -216,9 +242,10 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
     document.getElementById('tab-' + name).classList.add('active');
     document.querySelector(`.nav-item[onclick="showTab('${name}')"]`).classList.add('active');
-    if (name === 'stats')   loadStats();
-    if (name === 'users')   loadUsers();
-    if (name === 'tenants') loadTenants();
+    if (name === 'stats')    loadStats();
+    if (name === 'users')    loadUsers();
+    if (name === 'tenants')  loadTenants();
+    if (name === 'activity') loadActivity();
   }
 
   // ── Init ──────────────────────────────────────────────────────────────────
@@ -424,6 +451,61 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     if (res.ok || res.status === 204) { closeTenantModal(); loadTenants(); }
     else { document.getElementById('tenantModalErr').textContent = 'Failed to delete tenant'; }
   }
+
+  // ── Activity log ───────────────────────────────────────────────────────────────
+  let _actRows = [];
+
+  async function loadActivity() {
+    const res = await api('/admin/activity?limit=200');
+    if (!res.ok) return;
+    _actRows = await res.json();
+
+    // Populate user filter
+    const sel = document.getElementById('actUserFilter');
+    const prev = sel.value;
+    const users = [...new Set(_actRows.map(r => r.user_email))];
+    sel.innerHTML = '<option value="">All users</option>';
+    users.forEach(u => sel.innerHTML += `<option value="${esc(u)}"${prev===u?' selected':''}>${esc(u)}</option>`);
+
+    renderActivity();
+  }
+
+  function renderActivity() {
+    const userF = document.getElementById('actUserFilter').value;
+    const roleF = document.getElementById('actRoleFilter').value;
+    const rows = _actRows.filter(r =>
+      (!userF || r.user_email === userF) &&
+      (!roleF || r.role === roleF)
+    );
+
+    const tbody = document.getElementById('actTable');
+    const empty = document.getElementById('actEmpty');
+    tbody.innerHTML = '';
+
+    if (!rows.length) { empty.style.display = 'block'; return; }
+    empty.style.display = 'none';
+
+    const psIcon = { pass: '✅', modify: '⚠️', block: '🚫', null: '' };
+    rows.forEach(r => {
+      const t = new Date(r.created_at);
+      const tStr = t.toLocaleDateString([], {month:'short',day:'numeric'}) + ' ' + t.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+      const psCell = r.ps_scanned
+        ? `<span style="font-size:11px">${psIcon[r.ps_action]||''} ${r.ps_action||''}</span>`
+        : '<span style="color:var(--text-muted);font-size:11px">—</span>';
+      tbody.innerHTML += `
+        <tr>
+          <td style="font-size:11px;white-space:nowrap;color:var(--text-muted)">${tStr}</td>
+          <td style="font-size:12px">${esc(r.user_email)}</td>
+          <td><span style="font-size:11px;padding:2px 7px;border-radius:4px;background:${r.role==='user'?'rgba(108,99,255,0.12)':'rgba(46,204,113,0.09)'};color:${r.role==='user'?'var(--accent)':'var(--green)'}">${r.role}</span></td>
+          <td style="font-size:11px;color:var(--text-muted)">${r.model ? esc(r.model) : '—'}</td>
+          <td>${psCell}</td>
+          <td style="font-size:12px;color:var(--text-muted);max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.content_preview)}</td>
+        </tr>`;
+    });
+  }
+
+  document.getElementById('actUserFilter').addEventListener('change', renderActivity);
+  document.getElementById('actRoleFilter').addEventListener('change', renderActivity);
 
   // Close modals on backdrop click
   document.getElementById('userBackdrop').addEventListener('click',   e => { if (e.target.id==='userBackdrop')   closeUserModal(); });

@@ -134,6 +134,9 @@ header .spacer { flex: 1; }
 .modal h3 { font-size: 15px; font-weight: 700; }
 .modal p  { font-size: 12px; color: var(--text-muted); margin-top: -8px; }
 .modal label { font-size: 12px; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 5px; }
+.stab { background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-muted); cursor: pointer; font-family: var(--font); font-size: 12px; font-weight: 500; padding: 6px 12px 8px; transition: all 0.15s; margin-bottom: -1px; }
+.stab:hover { color: var(--text); }
+.stab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
 .modal textarea, .modal select, .modal input[type=text], .modal input[type=password] {
   width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
   color: var(--text); font-family: var(--font); font-size: 13px; padding: 8px 12px;
@@ -229,20 +232,38 @@ header .spacer { flex: 1; }
   </div>
 </div>
 
-<!-- ── PS Settings Modal ── -->
+<!-- ── Settings Modal (PS + LLM keys) ── -->
 <div class="backdrop" id="psBackdrop">
-  <div class="modal">
-    <h3>Prompt Security Settings</h3>
-    <p>Select your PS tenant and enter your App ID. Keys are stored encrypted.</p>
-    <div>
-      <label for="psTenantSel">PS Tenant</label>
-      <select id="psTenantSel"><option value="">— Select tenant —</option></select>
+  <div class="modal" style="width:520px">
+    <h3>⚙️ My Settings</h3>
+    <!-- Tab bar -->
+    <div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:4px">
+      <button class="stab active" id="stab-ps"  onclick="switchSettingsTab('ps')">🔒 Prompt Security</button>
+      <button class="stab"        id="stab-llm" onclick="switchSettingsTab('llm')">🤖 LLM API Keys</button>
     </div>
-    <div>
-      <label for="psKeyInput">PS App ID / API Key</label>
-      <input type="password" id="psKeyInput" placeholder="Leave blank to keep existing key">
+    <!-- PS tab -->
+    <div id="settingsPs">
+      <p style="font-size:12px;color:var(--text-muted);margin:6px 0 10px">Select your PS tenant and enter your App ID. Keys are stored encrypted server-side.</p>
+      <div style="margin-bottom:10px">
+        <label for="psTenantSel" style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px">PS Tenant</label>
+        <select id="psTenantSel" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;outline:none"><option value="">— Select tenant —</option></select>
+      </div>
+      <div>
+        <label for="psKeyInput" style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px">PS App ID / API Key</label>
+        <input type="password" id="psKeyInput" placeholder="Leave blank to keep existing key" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;outline:none">
+      </div>
     </div>
-    <div class="modal-actions">
+    <!-- LLM Keys tab -->
+    <div id="settingsLlm" style="display:none">
+      <p style="font-size:12px;color:var(--text-muted);margin:6px 0 10px">Optional: enter your own API keys to use instead of the shared keys. Leave blank to use the shared key. Enter a single space to <em>clear</em> a saved key.</p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">OpenAI <span id="llmBadge-openai" class="llm-set-badge"></span></label><input type="password" id="llmKey-openai" placeholder="sk-…" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;outline:none"></div>
+        <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">Anthropic <span id="llmBadge-anthropic" class="llm-set-badge"></span></label><input type="password" id="llmKey-anthropic" placeholder="sk-ant-…" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;outline:none"></div>
+        <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">Google Gemini <span id="llmBadge-google" class="llm-set-badge"></span></label><input type="password" id="llmKey-google" placeholder="AIza…" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;outline:none"></div>
+        <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">OpenRouter <span id="llmBadge-openrouter" class="llm-set-badge"></span></label><input type="password" id="llmKey-openrouter" placeholder="sk-or-…" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;outline:none"></div>
+      </div>
+    </div>
+    <div class="modal-actions" style="margin-top:12px">
       <button class="btn btn-secondary" id="psCancelBtn">Cancel</button>
       <button class="btn btn-primary" id="psSaveBtn">Save</button>
     </div>
@@ -429,10 +450,22 @@ header .spacer { flex: 1; }
   });
   sysBackdrop.addEventListener('click', e => { if (e.target === sysBackdrop) sysBackdrop.classList.remove('open'); });
 
-  // ── PS Settings modal ─────────────────────────────────────────────────────
+  // ── Settings modal (PS + LLM keys) ──────────────────────────────────────
   const psBackdrop = document.getElementById('psBackdrop');
-  async function openPsSettings() {
+  let _settingsTab = 'ps';
+
+  function switchSettingsTab(tab) {
+    _settingsTab = tab;
+    document.getElementById('settingsPs').style.display  = tab === 'ps'  ? '' : 'none';
+    document.getElementById('settingsLlm').style.display = tab === 'llm' ? '' : 'none';
+    document.getElementById('stab-ps').classList.toggle('active',  tab === 'ps');
+    document.getElementById('stab-llm').classList.toggle('active', tab === 'llm');
+  }
+
+  async function openPsSettings(tab = 'ps') {
     userDropdown.classList.remove('open');
+    switchSettingsTab(tab);
+    // Load PS tenants
     const res = await authFetch('/ps-tenants');
     const tenants = res.ok ? await res.json() : [];
     const sel = document.getElementById('psTenantSel');
@@ -443,26 +476,48 @@ header .spacer { flex: 1; }
       sel.appendChild(opt);
     });
     document.getElementById('psKeyInput').value = '';
+    // Show LLM key badges
+    ['openai','anthropic','google','openrouter'].forEach(p => {
+      const badge = document.getElementById(`llmBadge-${p}`);
+      const set = AUTH_USER?.llm_keys_configured?.includes(p);
+      badge.textContent = set ? '✓ set' : '';
+      badge.style.color = set ? 'var(--green)' : '';
+      document.getElementById(`llmKey-${p}`).value = '';
+    });
     psBackdrop.classList.add('open');
   }
-  document.getElementById('psSettingsBtn').addEventListener('click', openPsSettings);
-  psStatusEl.addEventListener('click', () => { if (!AUTH_USER?.ps_configured) openPsSettings(); });
+
+  document.getElementById('psSettingsBtn').addEventListener('click', () => openPsSettings('ps'));
+  psStatusEl.addEventListener('click', () => { if (!AUTH_USER?.ps_configured) openPsSettings('ps'); });
   document.getElementById('psCancelBtn').addEventListener('click', () => psBackdrop.classList.remove('open'));
   psBackdrop.addEventListener('click', e => { if (e.target === psBackdrop) psBackdrop.classList.remove('open'); });
+
   document.getElementById('psSaveBtn').addEventListener('click', async () => {
-    const tenantId = parseInt(document.getElementById('psTenantSel').value) || null;
-    const key = document.getElementById('psKeyInput').value.trim() || null;
-    const body = {};
-    if (tenantId) body.ps_tenant_id = tenantId;
-    if (key) body.ps_api_key = key;
-    const res = await authFetch('/users/me/ps-config', { method: 'PATCH', body: JSON.stringify(body) });
-    if (res.ok) {
-      AUTH_USER = await res.json();
-      localStorage.setItem('hgapp_user', JSON.stringify(AUTH_USER));
-      updatePsStatus();
-      psBackdrop.classList.remove('open');
+    if (_settingsTab === 'ps') {
+      const tenantId = parseInt(document.getElementById('psTenantSel').value) || null;
+      const key = document.getElementById('psKeyInput').value.trim() || null;
+      const body = {};
+      if (tenantId) body.ps_tenant_id = tenantId;
+      if (key) body.ps_api_key = key;
+      const res = await authFetch('/users/me/ps-config', { method: 'PATCH', body: JSON.stringify(body) });
+      if (res.ok) {
+        AUTH_USER = await res.json();
+        localStorage.setItem('hgapp_user', JSON.stringify(AUTH_USER));
+        updatePsStatus();
+        psBackdrop.classList.remove('open');
+      } else { alert('Failed to save PS settings'); }
     } else {
-      alert('Failed to save PS settings');
+      const body = {};
+      ['openai','anthropic','google','openrouter'].forEach(p => {
+        const v = document.getElementById(`llmKey-${p}`).value;
+        if (v !== '') body[p] = v;  // empty string = clear, non-empty = update
+      });
+      const res = await authFetch('/users/me/llm-keys', { method: 'PATCH', body: JSON.stringify(body) });
+      if (res.ok) {
+        AUTH_USER = await res.json();
+        localStorage.setItem('hgapp_user', JSON.stringify(AUTH_USER));
+        psBackdrop.classList.remove('open');
+      } else { alert('Failed to save LLM keys'); }
     }
   });
 

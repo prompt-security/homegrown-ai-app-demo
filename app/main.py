@@ -28,7 +28,7 @@ from models import ChatSession, Message, PSTenant, User
 from prompt_security import PromptSecurityClient
 from schemas import (
     ChatMessage, ChatRequest, ChatResponse,
-    LoginRequest, MessageOut, PSConfigUpdate, PSTenantCreate, PSTenantOut, PSTenantUpdate,
+    LLMKeysUpdate, LoginRequest, MessageOut, PSConfigUpdate, PSTenantCreate, PSTenantOut, PSTenantUpdate,
     SessionOut, TokenResponse, UserCreate, UserOut, UserStats, UserUpdate,
 )
 
@@ -55,6 +55,43 @@ litellm_client = AsyncOpenAI(
     api_key=LITELLM_MASTER_KEY or "no-key",
     base_url=f"{LITELLM_BASE_URL}/v1",
 )
+
+# ── Provider base URLs for per-user direct calls ────────────────────────────
+_PROVIDER_URLS = {
+    "openai":     "https://api.openai.com/v1",
+    "anthropic":  "https://api.anthropic.com/v1",
+    "google":     "https://generativelanguage.googleapis.com/v1beta/openai/",
+    "openrouter": "https://openrouter.ai/api/v1",
+}
+
+
+def _detect_provider(model_id: str) -> str:
+    m = model_id.lower()
+    if m.startswith(("gpt-", "o1", "o3", "o4")):
+        return "openai"
+    if m.startswith("claude-"):
+        return "anthropic"
+    if m.startswith("gemini-"):
+        return "google"
+    return "openrouter"
+
+
+def _user_llm_client(user: User, model_id: str):
+    """Returns (AsyncOpenAI client, model_id) — uses per-user key if set, else shared LiteLLM."""
+    if not user.llm_api_keys_enc:
+        return litellm_client, model_id
+    try:
+        keys = json.loads(decrypt(user.llm_api_keys_enc))
+    except Exception:
+        return litellm_client, model_id
+    provider = _detect_provider(model_id)
+    key = keys.get(provider)
+    if not key:
+        return litellm_client, model_id
+    base_url = _PROVIDER_URLS[provider]
+    logger.info("Using per-user %s key for %s", provider, user.email)
+    return AsyncOpenAI(api_key=key, base_url=base_url), model_id
+
 
 # ── Cached model list ─────────────────────────────────────────────────────────
 _model_cache: list[dict] = []
@@ -597,13 +634,14 @@ async def chat_stream(
                     msgs[i] = ChatMessage(role="user", content=last_user_msg_eff)
                     break
 
-        # ── Stream from LiteLLM ───────────────────────────────────────────────
+        # ── Stream (per-user key or shared LiteLLM) ────────────────────────────
+        llm, effective_model = _user_llm_client(current_user, model)
         payload = [{"role": "system", "content": system_prompt}] + [
             {"role": m.role, "content": _build_content(m)} for m in msgs
         ]
         try:
-            stream = await litellm_client.chat.completions.create(
-                model=model, messages=payload, stream=True
+            stream = await llm.chat.completions.create(
+                model=effective_model, messages=payload, stream=True
             )
             async for chunk in stream:
                 if chunk.choices and chunk.choices[0].delta.content:
@@ -611,7 +649,7 @@ async def chat_stream(
                     reply += token
                     yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
         except Exception as e:
-            logger.error("LiteLLM stream error: %s", e)
+            logger.error("LLM stream error: %s", e)
             yield f"data: {json.dumps({'type': 'error', 'detail': str(e)})}\n\n"
             return
 
@@ -656,8 +694,74 @@ async def chat_stream(
     )
 
 
+# ── User: LLM key overrides ───────────────────────────────────────────────────
+@app.patch("/users/me/llm-keys", response_model=UserOut)
+async def update_my_llm_keys(
+    body: LLMKeysUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    existing: dict = {}
+    if current_user.llm_api_keys_enc:
+        try:
+            existing = json.loads(decrypt(current_user.llm_api_keys_enc))
+        except Exception:
+            pass
+
+    for provider in ("openai", "anthropic", "google", "openrouter"):
+        val = getattr(body, provider)
+        if val is None:
+            continue
+        if val.strip():
+            existing[provider] = val.strip()
+        else:
+            existing.pop(provider, None)
+
+    current_user.llm_api_keys_enc = encrypt(json.dumps(existing)) if existing else None
+    await db.commit()
+    await db.refresh(current_user, ["ps_tenant"])
+    return _user_out(current_user)
+
+
+# ── Admin: Activity log ───────────────────────────────────────────────────────
+@app.get("/admin/activity")
+async def admin_activity(
+    limit: int = 100,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Message, User.email)
+        .join(User, User.id == Message.user_id)
+        .order_by(desc(Message.created_at))
+        .limit(min(limit, 500))
+    )
+    return [
+        {
+            "id": msg.id,
+            "user_email": email,
+            "session_id": msg.session_id,
+            "role": msg.role,
+            "content_preview": msg.content[:120] + ("…" if len(msg.content) > 120 else ""),
+            "model": msg.model,
+            "ps_scanned": msg.ps_scanned,
+            "ps_action": msg.ps_action,
+            "ps_violations": msg.ps_violations,
+            "response_ms": msg.response_ms,
+            "created_at": msg.created_at.isoformat(),
+        }
+        for msg, email in result.all()
+    ]
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def _user_out(user: User) -> UserOut:
+    llm_providers: list[str] = []
+    if user.llm_api_keys_enc:
+        try:
+            llm_providers = list(json.loads(decrypt(user.llm_api_keys_enc)).keys())
+        except Exception:
+            pass
     return UserOut(
         id=user.id,
         email=user.email,
@@ -668,6 +772,7 @@ def _user_out(user: User) -> UserOut:
         ps_tenant_id=user.ps_tenant_id,
         ps_tenant=PSTenantOut.model_validate(user.ps_tenant) if user.ps_tenant else None,
         ps_configured=bool(user.ps_tenant_id and user.ps_api_key_enc),
+        llm_keys_configured=llm_providers,
         created_at=user.created_at,
     )
 
