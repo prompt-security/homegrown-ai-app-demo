@@ -46,9 +46,14 @@ header .spacer { flex: 1; }
 .icon-btn { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 16px; padding: 6px; border-radius: 8px; transition: color 0.15s, background 0.15s; line-height: 1; }
 .icon-btn:hover { color: var(--text); background: var(--surface2); }
 .icon-btn.active { color: var(--accent); }
-#psStatus { font-size: 11px; padding: 3px 10px; border-radius: 12px; font-weight: 600; white-space: nowrap; }
-#psStatus.on  { background: rgba(46,204,113,0.1); color: var(--green); border: 1px solid rgba(46,204,113,0.3); }
-#psStatus.off { background: rgba(122,125,142,0.1); color: var(--text-muted); border: 1px solid var(--border); cursor: pointer; }
+#psWidget { display: flex; align-items: center; gap: 2px; }
+#psToggleBtn { font-size: 11px; padding: 3px 10px; border-radius: 12px 0 0 12px; font-weight: 600; white-space: nowrap; cursor: pointer; border: 1px solid; border-right: none; transition: all 0.2s; }
+#psToggleBtn.on  { background: rgba(46,204,113,0.1); color: var(--green); border-color: rgba(46,204,113,0.3); }
+#psToggleBtn.off { background: rgba(122,125,142,0.1); color: var(--text-muted); border-color: var(--border); }
+#psToggleBtn:hover { filter: brightness(1.2); }
+#psGearBtn { font-size: 12px; padding: 3px 7px; border-radius: 0 12px 12px 0; border: 1px solid; border-left: none; cursor: pointer; background: rgba(122,125,142,0.1); color: var(--text-muted); border-color: var(--border); transition: all 0.2s; line-height: 1.4; }
+#psGearBtn:hover { background: var(--surface2); color: var(--text); }
+#psGearBtn.on { border-color: rgba(46,204,113,0.3); }
 #userMenuBtn { display: flex; align-items: center; gap: 6px; background: none; border: 1px solid var(--border); border-radius: 8px; color: var(--text-muted); font-family: var(--font); font-size: 12px; padding: 5px 10px; cursor: pointer; transition: all 0.15s; position: relative; }
 #userMenuBtn:hover { background: var(--surface2); color: var(--text); }
 #userDropdown { display: none; position: absolute; top: calc(100% + 6px); right: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 6px; min-width: 160px; z-index: 50; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
@@ -180,7 +185,10 @@ header .spacer { flex: 1; }
     <div class="spacer"></div>
     <select id="modelSelect"><option disabled selected>Loading…</option></select>
     <button class="icon-btn" id="sysPromptBtn" title="System prompt">⚙️</button>
-    <div id="psStatus" class="off" title="Configure PS in settings">PS off</div>
+    <div id="psWidget">
+      <button id="psToggleBtn" class="off" title="Click to toggle PS on/off">PS off</button>
+      <button id="psGearBtn" title="Configure PS settings">⚙</button>
+    </div>
     <div id="userMenuWrap">
       <button id="userMenuBtn">👤 <span id="userLabel">—</span></button>
       <div id="userDropdown">
@@ -330,7 +338,7 @@ header .spacer { flex: 1; }
   const sendBtn      = document.getElementById('sendBtn');
   const modelSelect  = document.getElementById('modelSelect');
   const historyList  = document.getElementById('historyList');
-  const psStatusEl   = document.getElementById('psStatus');
+  const psStatusEl   = document.getElementById('psToggleBtn');
 
   // ── State ─────────────────────────────────────────────────────────────────
   const SYS_KEY = 'hgapp_v2_sysprompt';
@@ -357,19 +365,36 @@ header .spacer { flex: 1; }
   }
 
   function updatePsStatus() {
+    const gear = document.getElementById('psGearBtn');
     if (AUTH_USER?.ps_configured && AUTH_USER?.ps_enabled) {
       const mode = AUTH_USER.ps_mode === 'gateway' ? 'GW' : 'API';
       psStatusEl.className = 'on';
-      psStatusEl.textContent = `PS: ${AUTH_USER.ps_tenant?.name || 'on'} [${mode}]`;
-      psStatusEl.title = `Mode: ${AUTH_USER.ps_mode} — ${AUTH_USER.ps_tenant?.base_url}`;
+      psStatusEl.textContent = `🛡 PS on [${mode}]`;
+      psStatusEl.title = 'Click to pause PS scanning';
+      gear.className = 'on';
     } else if (AUTH_USER?.ps_configured && !AUTH_USER?.ps_enabled) {
       psStatusEl.className = 'off';
-      psStatusEl.textContent = 'PS: paused';
-      psStatusEl.title = 'PS is configured but paused — enable in Settings';
+      psStatusEl.textContent = '⏸ PS paused';
+      psStatusEl.title = 'Click to resume PS scanning';
+      gear.className = '';
     } else {
       psStatusEl.className = 'off';
       psStatusEl.textContent = 'PS off';
-      psStatusEl.title = 'Click Settings → Prompt Security to configure';
+      psStatusEl.title = 'Not configured — click ⚙ to set up';
+      gear.className = '';
+    }
+  }
+
+  async function quickTogglePs() {
+    if (!AUTH_USER?.ps_configured) { openPsSettings('ps'); return; }
+    const res = await authFetch('/users/me/ps-config', {
+      method: 'PATCH',
+      body: JSON.stringify({ ps_enabled: !AUTH_USER.ps_enabled }),
+    });
+    if (res.ok) {
+      AUTH_USER = await res.json();
+      localStorage.setItem('hgapp_user', JSON.stringify(AUTH_USER));
+      updatePsStatus();
     }
   }
 
@@ -553,8 +578,9 @@ header .spacer { flex: 1; }
   document.getElementById('psTenantSel').addEventListener('change', _updateGwHint);
   document.querySelectorAll('input[name="psMode"]').forEach(r => r.addEventListener('change', _updateGwHint));
 
+  document.getElementById('psToggleBtn').addEventListener('click', quickTogglePs);
+  document.getElementById('psGearBtn').addEventListener('click', () => openPsSettings('ps'));
   document.getElementById('psSettingsBtn').addEventListener('click', () => openPsSettings('ps'));
-  psStatusEl.addEventListener('click', () => { if (!AUTH_USER?.ps_configured) openPsSettings('ps'); });
   document.getElementById('psCancelBtn').addEventListener('click', () => psBackdrop.classList.remove('open'));
   psBackdrop.addEventListener('click', e => { if (e.target === psBackdrop) psBackdrop.classList.remove('open'); });
 
