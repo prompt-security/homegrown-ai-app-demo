@@ -33,6 +33,8 @@ services:
     volumes:
       - ./litellm/config.yaml:/app/config.yaml
     env_file: .env
+    environment:
+      DATABASE_URL: "postgresql://hgapp:${POSTGRES_PASSWORD:-hgapp_dev}@db:5432/hgapp"
     command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "1"]
     restart: unless-stopped
 
