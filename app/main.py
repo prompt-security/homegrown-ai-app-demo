@@ -227,6 +227,9 @@ async def update_my_ps_config(
     if body.ps_api_key is not None:
         current_user.ps_api_key_enc = encrypt(body.ps_api_key) if body.ps_api_key else None
 
+    if body.ps_mode in ("api", "gateway"):
+        current_user.ps_mode = body.ps_mode
+
     await db.commit()
     await db.refresh(current_user, ["ps_tenant"])
     return _user_out(current_user)
@@ -574,14 +577,25 @@ async def chat_stream(
         db.add(session)
         await db.commit()
 
-    # ── Per-user PS client ────────────────────────────────────────────────────
+    # ── Per-user PS client / mode ─────────────────────────────────────────────
+    ps_mode        = current_user.ps_mode or "api"
     ps_client: Optional[PromptSecurityClient] = None
+    ps_gw_client: Optional[AsyncOpenAI]       = None  # gateway-mode LLM client
+
     if current_user.ps_tenant and current_user.ps_api_key_enc:
+        ps_app_id = decrypt(current_user.ps_api_key_enc)
         try:
-            ps_client = PromptSecurityClient(
-                base_url=current_user.ps_tenant.base_url,
-                app_id=decrypt(current_user.ps_api_key_enc),
-            )
+            if ps_mode == "api":
+                ps_client = PromptSecurityClient(
+                    base_url=current_user.ps_tenant.base_url,
+                    app_id=ps_app_id,
+                )
+            elif ps_mode == "gateway" and current_user.ps_tenant.gateway_url:
+                ps_gw_client = AsyncOpenAI(
+                    api_key=ps_app_id,
+                    base_url=current_user.ps_tenant.gateway_url,
+                    default_headers={"ps-app-id": ps_app_id},
+                )
         except Exception as e:
             logger.warning("Could not init PS client for %s: %s", current_user.email, e)
 
@@ -601,7 +615,42 @@ async def chat_stream(
         prompt_action = "pass"
         t0 = time.monotonic()
 
-        # ── PS: scan prompt ───────────────────────────────────────────────────
+        msgs = list(request.messages)
+        payload = [{"role": "system", "content": system_prompt}] + [
+            {"role": m.role, "content": _build_content(m)} for m in msgs
+        ]
+
+        # ── Gateway mode: route through PS proxy, skip explicit scanning ───────
+        if ps_gw_client:
+            try:
+                stream = await ps_gw_client.chat.completions.create(
+                    model=model, messages=payload, stream=True
+                )
+                async for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        token = chunk.choices[0].delta.content
+                        reply += token
+                        yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+            except Exception as e:
+                err = str(e)
+                logger.error("PS gateway stream error: %s", err)
+                # Gateway returns 400/403 when prompt is blocked
+                if "400" in err or "403" in err or "blocked" in err.lower():
+                    await _log_msg(db, session_id, current_user.id, "assistant", "", model,
+                                   ps_scanned=True, ps_blocked=True, ps_action="block")
+                    yield f"data: {json.dumps({'type': 'blocked', 'action': 'block', 'violations': []})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'type': 'error', 'detail': err})}\n\n"
+                return
+
+            resp_ms = round((time.monotonic() - t0) * 1000)
+            await _log_msg(db, session_id, current_user.id, "assistant", reply, model,
+                           ps_scanned=True, ps_action="pass", response_ms=resp_ms)
+            today_used = used_today + 1
+            yield f"data: {json.dumps({'type': 'done', 'model': model, 'session_id': session_id, 'ps_scanned': True, 'ps_action': 'gateway', 'ps_violations': [], 'messages_today': today_used, 'daily_limit': current_user.daily_message_limit})}\n\n"
+            return
+
+        # ── API mode: explicit PS scan + LiteLLM/per-user key ─────────────────
         if ps_client:
             try:
                 ps_result = await ps_client.protect_prompt(
@@ -618,6 +667,10 @@ async def chat_stream(
                 if ps_result.modified_text:
                     last_user_msg_eff = ps_result.modified_text
                     prompt_action = "modify"
+                    for i in range(len(payload) - 1, -1, -1):
+                        if payload[i]["role"] == "user":
+                            payload[i]["content"] = last_user_msg_eff
+                            break
                 else:
                     last_user_msg_eff = last_user_msg
             except Exception as e:
@@ -626,19 +679,8 @@ async def chat_stream(
         else:
             last_user_msg_eff = last_user_msg
 
-        # Rebuild messages with possibly-modified last user message
-        msgs = list(request.messages)
-        if last_user_msg_eff != last_user_msg:
-            for i in range(len(msgs) - 1, -1, -1):
-                if msgs[i].role == "user":
-                    msgs[i] = ChatMessage(role="user", content=last_user_msg_eff)
-                    break
-
         # ── Stream (per-user key or shared LiteLLM) ────────────────────────────
         llm, effective_model = _user_llm_client(current_user, model)
-        payload = [{"role": "system", "content": system_prompt}] + [
-            {"role": m.role, "content": _build_content(m)} for m in msgs
-        ]
         try:
             stream = await llm.chat.completions.create(
                 model=effective_model, messages=payload, stream=True
@@ -772,6 +814,7 @@ def _user_out(user: User) -> UserOut:
         ps_tenant_id=user.ps_tenant_id,
         ps_tenant=PSTenantOut.model_validate(user.ps_tenant) if user.ps_tenant else None,
         ps_configured=bool(user.ps_tenant_id and user.ps_api_key_enc),
+        ps_mode=user.ps_mode,
         llm_keys_configured=llm_providers,
         created_at=user.created_at,
     )

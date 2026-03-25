@@ -62,6 +62,7 @@ class UserOut(BaseModel):
     ps_tenant_id: Optional[int]
     ps_tenant: Optional[PSTenantOut]
     ps_configured: bool = False
+    ps_mode: str = "api"
     llm_keys_configured: list[str] = []  # list of providers with keys set, e.g. ["openai","openrouter"]
     created_at: datetime
     model_config = {"from_attributes": True}
@@ -71,6 +72,7 @@ class UserOut(BaseModel):
 class PSConfigUpdate(BaseModel):
     ps_tenant_id: Optional[int] = None
     ps_api_key: Optional[str] = None    # plaintext — encrypted server-side
+    ps_mode: Optional[str] = None       # "api" | "gateway"
 
 
 # ── User LLM key overrides (self-service) ────────────────────────────────────

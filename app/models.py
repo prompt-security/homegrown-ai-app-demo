@@ -35,6 +35,7 @@ class User(Base):
         Integer, ForeignKey("ps_tenants.id", ondelete="SET NULL"), nullable=True
     )
     ps_api_key_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Fernet-encrypted
+    ps_mode: Mapped[str] = mapped_column(String(10), default="api")              # api | gateway
     llm_api_keys_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # encrypted JSON {provider: key}
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

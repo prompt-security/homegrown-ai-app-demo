@@ -248,9 +248,34 @@ header .spacer { flex: 1; }
         <label for="psTenantSel" style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px">PS Tenant</label>
         <select id="psTenantSel" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;outline:none"><option value="">— Select tenant —</option></select>
       </div>
-      <div>
+      <div style="margin-bottom:10px">
         <label for="psKeyInput" style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px">PS App ID / API Key</label>
         <input type="password" id="psKeyInput" placeholder="Leave blank to keep existing key" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;outline:none">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px">Integration Mode</label>
+        <div style="display:flex;gap:8px">
+          <label style="flex:1;display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;cursor:pointer;transition:border-color 0.15s" id="modeApiLabel">
+            <input type="radio" name="psMode" id="modeApi" value="api" style="accent-color:var(--accent)">
+            <span>
+              <span style="font-size:13px;font-weight:600">API</span><br>
+              <span style="font-size:10px;color:var(--text-muted)">Explicit scan — shows violation details</span>
+            </span>
+          </label>
+          <label style="flex:1;display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;cursor:pointer;transition:border-color 0.15s" id="modeGwLabel">
+            <input type="radio" name="psMode" id="modeGw" value="gateway" style="accent-color:var(--accent)">
+            <span>
+              <span style="font-size:13px;font-weight:600">Gateway</span><br>
+              <span style="font-size:10px;color:var(--text-muted)">Proxy — PS scans transparently</span>
+            </span>
+          </label>
+        </div>
+        <div id="gwUrlNote" style="display:none;margin-top:6px;font-size:11px;color:var(--text-muted);padding:6px 10px;background:rgba(108,99,255,0.07);border-radius:6px;border:1px solid rgba(108,99,255,0.2)">
+          Gateway URL: <span id="gwUrlDisplay" style="color:var(--accent)">—</span>
+        </div>
+        <div id="gwMissingNote" style="display:none;margin-top:6px;font-size:11px;color:var(--red);padding:6px 10px;background:rgba(231,76,60,0.07);border-radius:6px;border:1px solid rgba(231,76,60,0.2)">
+          ⚠️ Selected tenant has no Gateway URL configured. Ask your admin to add one.
+        </div>
       </div>
     </div>
     <!-- LLM Keys tab -->
@@ -326,9 +351,10 @@ header .spacer { flex: 1; }
 
   function updatePsStatus() {
     if (AUTH_USER?.ps_configured) {
+      const mode = AUTH_USER.ps_mode === 'gateway' ? 'GW' : 'API';
       psStatusEl.className = 'on';
-      psStatusEl.textContent = `PS: ${AUTH_USER.ps_tenant?.name || 'on'}`;
-      psStatusEl.title = `Scanning via ${AUTH_USER.ps_tenant?.base_url}`;
+      psStatusEl.textContent = `PS: ${AUTH_USER.ps_tenant?.name || 'on'} [${mode}]`;
+      psStatusEl.title = `Mode: ${AUTH_USER.ps_mode} — ${AUTH_USER.ps_tenant?.base_url}`;
     } else {
       psStatusEl.className = 'off';
       psStatusEl.textContent = 'PS off';
@@ -462,20 +488,43 @@ header .spacer { flex: 1; }
     document.getElementById('stab-llm').classList.toggle('active', tab === 'llm');
   }
 
+  let _psTenants = [];
+
+  function _updateGwHint() {
+    const tenantId = parseInt(document.getElementById('psTenantSel').value) || null;
+    const mode = document.querySelector('input[name="psMode"]:checked')?.value || 'api';
+    const tenant = _psTenants.find(t => t.id === tenantId);
+    const gwNote     = document.getElementById('gwUrlNote');
+    const gwMissing  = document.getElementById('gwMissingNote');
+    gwNote.style.display = 'none'; gwMissing.style.display = 'none';
+    if (mode === 'gateway' && tenant) {
+      if (tenant.gateway_url) {
+        document.getElementById('gwUrlDisplay').textContent = tenant.gateway_url;
+        gwNote.style.display = 'block';
+      } else {
+        gwMissing.style.display = 'block';
+      }
+    }
+  }
+
   async function openPsSettings(tab = 'ps') {
     userDropdown.classList.remove('open');
     switchSettingsTab(tab);
     // Load PS tenants
     const res = await authFetch('/ps-tenants');
-    const tenants = res.ok ? await res.json() : [];
+    _psTenants = res.ok ? await res.json() : [];
     const sel = document.getElementById('psTenantSel');
     sel.innerHTML = '<option value="">— Select tenant —</option>';
-    tenants.forEach(t => {
+    _psTenants.forEach(t => {
       const opt = Object.assign(document.createElement('option'), { value: t.id, textContent: `${t.name} — ${t.base_url}` });
       if (AUTH_USER?.ps_tenant_id === t.id) opt.selected = true;
       sel.appendChild(opt);
     });
     document.getElementById('psKeyInput').value = '';
+    // Set mode radio
+    const currentMode = AUTH_USER?.ps_mode || 'api';
+    document.getElementById(currentMode === 'gateway' ? 'modeGw' : 'modeApi').checked = true;
+    _updateGwHint();
     // Show LLM key badges
     ['openai','anthropic','google','openrouter'].forEach(p => {
       const badge = document.getElementById(`llmBadge-${p}`);
@@ -487,6 +536,9 @@ header .spacer { flex: 1; }
     psBackdrop.classList.add('open');
   }
 
+  document.getElementById('psTenantSel').addEventListener('change', _updateGwHint);
+  document.querySelectorAll('input[name="psMode"]').forEach(r => r.addEventListener('change', _updateGwHint));
+
   document.getElementById('psSettingsBtn').addEventListener('click', () => openPsSettings('ps'));
   psStatusEl.addEventListener('click', () => { if (!AUTH_USER?.ps_configured) openPsSettings('ps'); });
   document.getElementById('psCancelBtn').addEventListener('click', () => psBackdrop.classList.remove('open'));
@@ -496,7 +548,8 @@ header .spacer { flex: 1; }
     if (_settingsTab === 'ps') {
       const tenantId = parseInt(document.getElementById('psTenantSel').value) || null;
       const key = document.getElementById('psKeyInput').value.trim() || null;
-      const body = {};
+      const mode = document.querySelector('input[name="psMode"]:checked')?.value || 'api';
+      const body = { ps_mode: mode };
       if (tenantId) body.ps_tenant_id = tenantId;
       if (key) body.ps_api_key = key;
       const res = await authFetch('/users/me/ps-config', { method: 'PATCH', body: JSON.stringify(body) });
