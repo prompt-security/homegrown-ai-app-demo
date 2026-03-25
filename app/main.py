@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
+import openai
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
@@ -41,6 +42,14 @@ LITELLM_MASTER_KEY = os.getenv("LITELLM_MASTER_KEY", "")
 ADMIN_EMAIL        = os.getenv("ADMIN_EMAIL", "admin@example.com")
 ADMIN_PASSWORD     = os.getenv("ADMIN_PASSWORD", "admin")
 DEFAULT_DAILY_LIMIT = int(os.getenv("DEFAULT_DAILY_LIMIT", "50")) or None
+
+# Shared LLM keys (fallback when user has no per-provider key)
+_SHARED_LLM_KEYS = {
+    "openai":     os.getenv("OPENAI_API_KEY", ""),
+    "anthropic":  os.getenv("ANTHROPIC_API_KEY", ""),
+    "google":     os.getenv("GOOGLE_API_KEY", ""),
+    "openrouter": os.getenv("OPENROUTER_API_KEY", ""),
+}
 
 # ── File upload limits ────────────────────────────────────────────────────────
 # Set MAX_FILE_SIZE_MB in .env to restrict upload size.
@@ -74,6 +83,19 @@ def _detect_provider(model_id: str) -> str:
     if m.startswith("gemini-"):
         return "google"
     return "openrouter"
+
+
+def _get_llm_key(user: User, model_id: str) -> str:
+    """Returns the best available API key for model_id: per-user → shared .env → empty."""
+    provider = _detect_provider(model_id)
+    if user.llm_api_keys_enc:
+        try:
+            keys = json.loads(decrypt(user.llm_api_keys_enc))
+            if keys.get(provider):
+                return keys[provider]
+        except Exception:
+            pass
+    return _SHARED_LLM_KEYS.get(provider, "")
 
 
 def _user_llm_client(user: User, model_id: str):
@@ -603,21 +625,27 @@ async def chat_stream(
     ps_gw_client: Optional[AsyncOpenAI]       = None  # gateway-mode LLM client
 
     if current_user.ps_enabled and current_user.ps_tenant and current_user.ps_api_key_enc:
-        ps_app_id = decrypt(current_user.ps_api_key_enc)
         try:
-            if ps_mode == "api":
-                ps_client = PromptSecurityClient(
-                    base_url=current_user.ps_tenant.base_url,
-                    app_id=ps_app_id,
-                )
-            elif ps_mode == "gateway" and current_user.ps_tenant.gateway_url:
-                ps_gw_client = AsyncOpenAI(
-                    api_key=ps_app_id,
-                    base_url=current_user.ps_tenant.gateway_url,
-                    default_headers={"ps-app-id": ps_app_id},
-                )
-        except Exception as e:
-            logger.warning("Could not init PS client for %s: %s", current_user.email, e)
+            ps_app_id = decrypt(current_user.ps_api_key_enc)
+        except ValueError:
+            logger.warning("PS key decrypt failed for %s — key rotated? Ask user to re-enter PS key.", current_user.email)
+            ps_app_id = None
+        if ps_app_id:
+            try:
+                if ps_mode == "api":
+                    ps_client = PromptSecurityClient(
+                        base_url=current_user.ps_tenant.base_url,
+                        app_id=ps_app_id,
+                    )
+                elif ps_mode == "gateway" and current_user.ps_tenant.gateway_url:
+                    llm_key = _get_llm_key(current_user, model)
+                    ps_gw_client = AsyncOpenAI(
+                        api_key=llm_key or "no-key",
+                        base_url=current_user.ps_tenant.gateway_url,
+                        default_headers={"ps-app-id": ps_app_id},
+                    )
+            except Exception as e:
+                logger.warning("Could not init PS client for %s: %s", current_user.email, e)
 
     # ── Store user message in DB ──────────────────────────────────────────────
     user_db_msg = Message(
@@ -651,16 +679,38 @@ async def chat_stream(
                         token = chunk.choices[0].delta.content
                         reply += token
                         yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
-            except Exception as e:
-                err = str(e)
-                logger.error("PS gateway stream error: %s", err)
-                # Gateway returns 400/403 when prompt is blocked
-                if "400" in err or "403" in err or "blocked" in err.lower():
+            except openai.BadRequestError as e:
+                body = str(e).lower()
+                logger.error("PS gateway 400 error: %s", e)
+                # Only treat as a PS policy block if the body explicitly says so
+                if "block" in body or "policy" in body or "violat" in body or "denied" in body:
                     await _log_msg(db, session_id, current_user.id, "assistant", "", model,
                                    ps_scanned=True, ps_blocked=True, ps_action="block")
                     yield f"data: {json.dumps({'type': 'blocked', 'action': 'block', 'violations': []})}\n\n"
                 else:
-                    yield f"data: {json.dumps({'type': 'error', 'detail': err})}\n\n"
+                    detail = f"Gateway config error (400): {e}"
+                    logger.error(detail)
+                    yield f"data: {json.dumps({'type': 'error', 'detail': detail})}\n\n"
+                return
+            except openai.AuthenticationError as e:
+                detail = f"Gateway auth failed — check PS App ID: {e}"
+                logger.error(detail)
+                yield f"data: {json.dumps({'type': 'error', 'detail': detail})}\n\n"
+                return
+            except openai.PermissionDeniedError as e:
+                body = str(e).lower()
+                logger.error("PS gateway 403: %s", e)
+                if "block" in body or "policy" in body or "violat" in body:
+                    await _log_msg(db, session_id, current_user.id, "assistant", "", model,
+                                   ps_scanned=True, ps_blocked=True, ps_action="block")
+                    yield f"data: {json.dumps({'type': 'blocked', 'action': 'block', 'violations': []})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'type': 'error', 'detail': f'Gateway permission denied: {e}'})}\n\n"
+                return
+            except Exception as e:
+                detail = f"Gateway error: {e}"
+                logger.error(detail)
+                yield f"data: {json.dumps({'type': 'error', 'detail': detail})}\n\n"
                 return
 
             resp_ms = round((time.monotonic() - t0) * 1000)
