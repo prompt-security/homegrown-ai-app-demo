@@ -252,6 +252,13 @@ header .spacer { flex: 1; }
         <label for="psKeyInput" style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px">PS App ID / API Key</label>
         <input type="password" id="psKeyInput" placeholder="Leave blank to keep existing key" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;outline:none">
       </div>
+      <div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">
+        <label style="font-size:12px;font-weight:600;color:var(--text-muted)">PS Scanning Enabled</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="psEnabledToggle" style="width:16px;height:16px;accent-color:var(--accent)">
+          <span id="psEnabledLabel" style="font-size:12px;color:var(--text-muted)">On</span>
+        </label>
+      </div>
       <div>
         <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px">Integration Mode</label>
         <div style="display:flex;gap:8px">
@@ -350,26 +357,40 @@ header .spacer { flex: 1; }
   }
 
   function updatePsStatus() {
-    if (AUTH_USER?.ps_configured) {
+    if (AUTH_USER?.ps_configured && AUTH_USER?.ps_enabled) {
       const mode = AUTH_USER.ps_mode === 'gateway' ? 'GW' : 'API';
       psStatusEl.className = 'on';
       psStatusEl.textContent = `PS: ${AUTH_USER.ps_tenant?.name || 'on'} [${mode}]`;
       psStatusEl.title = `Mode: ${AUTH_USER.ps_mode} — ${AUTH_USER.ps_tenant?.base_url}`;
+    } else if (AUTH_USER?.ps_configured && !AUTH_USER?.ps_enabled) {
+      psStatusEl.className = 'off';
+      psStatusEl.textContent = 'PS: paused';
+      psStatusEl.title = 'PS is configured but paused — enable in Settings';
     } else {
       psStatusEl.className = 'off';
       psStatusEl.textContent = 'PS off';
-      psStatusEl.title = 'Click Settings → PS Settings to configure';
+      psStatusEl.title = 'Click Settings → Prompt Security to configure';
     }
   }
 
   async function loadModels() {
     const res = await authFetch('/models');
     if (!res.ok) return;
-    const { models } = await res.json();
+    const { models, fallback } = await res.json();
+    populateModels(models, fallback);
+  }
+
+  function populateModels(models, fallback) {
     modelSelect.innerHTML = '';
     if (!models.length) {
       modelSelect.innerHTML = '<option disabled>No models available</option>';
       return;
+    }
+    if (fallback) {
+      const note = document.createElement('option');
+      note.disabled = true;
+      note.textContent = '── LiteLLM offline, using own keys ──';
+      modelSelect.appendChild(note);
     }
     models.forEach((m, i) => {
       const opt = document.createElement('option');
@@ -436,17 +457,6 @@ header .spacer { flex: 1; }
   function startNewChat() {
     currentSessionId = null; messages = [];
     chatEl.innerHTML = ''; renderHistory(); input.focus();
-  }
-
-  // ── Models ────────────────────────────────────────────────────────────────
-  function populateModels(models) {
-    modelSelect.innerHTML = '';
-    if (!models.length) { modelSelect.innerHTML = '<option disabled>No models</option>'; return; }
-    models.forEach((m, i) => {
-      const opt = Object.assign(document.createElement('option'), { value: m.id, textContent: m.id });
-      if (i === 0) opt.selected = true;
-      modelSelect.appendChild(opt);
-    });
   }
 
   // ── Quota ─────────────────────────────────────────────────────────────────
@@ -521,6 +531,10 @@ header .spacer { flex: 1; }
       sel.appendChild(opt);
     });
     document.getElementById('psKeyInput').value = '';
+    // PS enabled toggle
+    const enabled = AUTH_USER?.ps_enabled !== false;
+    document.getElementById('psEnabledToggle').checked = enabled;
+    document.getElementById('psEnabledLabel').textContent = enabled ? 'On' : 'Off';
     // Set mode radio
     const currentMode = AUTH_USER?.ps_mode || 'api';
     document.getElementById(currentMode === 'gateway' ? 'modeGw' : 'modeApi').checked = true;
@@ -549,7 +563,7 @@ header .spacer { flex: 1; }
       const tenantId = parseInt(document.getElementById('psTenantSel').value) || null;
       const key = document.getElementById('psKeyInput').value.trim() || null;
       const mode = document.querySelector('input[name="psMode"]:checked')?.value || 'api';
-      const body = { ps_mode: mode };
+      const body = { ps_mode: mode, ps_enabled: document.getElementById('psEnabledToggle').checked };
       if (tenantId) body.ps_tenant_id = tenantId;
       if (key) body.ps_api_key = key;
       const res = await authFetch('/users/me/ps-config', { method: 'PATCH', body: JSON.stringify(body) });

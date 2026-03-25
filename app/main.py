@@ -93,6 +93,19 @@ def _user_llm_client(user: User, model_id: str):
     return AsyncOpenAI(api_key=key, base_url=base_url), model_id
 
 
+# ── Fallback model list (used when LiteLLM is unreachable) ───────────────────
+_FALLBACK_MODELS = [
+    {"id": "gpt-4o"},
+    {"id": "gpt-4o-mini"},
+    {"id": "claude-3-5-sonnet-20241022"},
+    {"id": "claude-3-5-haiku-20241022"},
+    {"id": "gemini-2.0-flash"},
+    {"id": "gemini-1.5-pro"},
+    {"id": "meta-llama/llama-3.1-8b-instruct:free"},
+    {"id": "nvidia/nemotron-nano-9b-v2:free"},
+    {"id": "mistralai/mistral-7b-instruct:free"},
+]
+
 # ── Cached model list ─────────────────────────────────────────────────────────
 _model_cache: list[dict] = []
 
@@ -110,7 +123,7 @@ async def refresh_model_cache() -> list[dict]:
             _model_cache = [{"id": m["id"]} for m in data]
             logger.info("LiteLLM: %d models loaded", len(_model_cache))
     except Exception as e:
-        logger.warning("Could not reach LiteLLM (%s) — model list empty", e)
+        logger.warning("Could not reach LiteLLM (%s) — using fallback model list", e)
         _model_cache = []
     return _model_cache
 
@@ -188,11 +201,12 @@ async def health():
 
 @app.get("/models")
 async def models(current_user: User = Depends(get_current_user)):
-    models = _model_cache or await refresh_model_cache()
+    live = _model_cache or await refresh_model_cache()
+    available = live if live else _FALLBACK_MODELS
     allowed = current_user.allowed_models
     if allowed is not None:
-        models = [m for m in models if m["id"] in allowed]
-    return {"models": models}
+        available = [m for m in available if m["id"] in allowed]
+    return {"models": available, "fallback": not bool(live)}
 
 
 # ── User self-service ─────────────────────────────────────────────────────────
@@ -229,6 +243,9 @@ async def update_my_ps_config(
 
     if body.ps_mode in ("api", "gateway"):
         current_user.ps_mode = body.ps_mode
+
+    if body.ps_enabled is not None:
+        current_user.ps_enabled = body.ps_enabled
 
     await db.commit()
     await db.refresh(current_user, ["ps_tenant"])
@@ -313,6 +330,8 @@ async def admin_update_user(
         user.allowed_models = body.allowed_models
     if body.ps_tenant_id is not None:
         user.ps_tenant_id = body.ps_tenant_id
+    if body.ps_enabled is not None:
+        user.ps_enabled = body.ps_enabled
 
     await db.commit()
     await db.refresh(user, ["ps_tenant"])
@@ -543,7 +562,8 @@ async def chat_stream(
     if not request.messages:
         raise HTTPException(status_code=400, detail="messages list cannot be empty")
 
-    model = request.model or (_model_cache[0]["id"] if _model_cache else None)
+    available = _model_cache or _FALLBACK_MODELS
+    model = request.model or available[0]["id"]
     if not model:
         raise HTTPException(status_code=503, detail="No models available — check LiteLLM config")
 
@@ -582,7 +602,7 @@ async def chat_stream(
     ps_client: Optional[PromptSecurityClient] = None
     ps_gw_client: Optional[AsyncOpenAI]       = None  # gateway-mode LLM client
 
-    if current_user.ps_tenant and current_user.ps_api_key_enc:
+    if current_user.ps_enabled and current_user.ps_tenant and current_user.ps_api_key_enc:
         ps_app_id = decrypt(current_user.ps_api_key_enc)
         try:
             if ps_mode == "api":
@@ -815,6 +835,7 @@ def _user_out(user: User) -> UserOut:
         ps_tenant=PSTenantOut.model_validate(user.ps_tenant) if user.ps_tenant else None,
         ps_configured=bool(user.ps_tenant_id and user.ps_api_key_enc),
         ps_mode=user.ps_mode,
+        ps_enabled=user.ps_enabled,
         llm_keys_configured=llm_providers,
         created_at=user.created_at,
     )

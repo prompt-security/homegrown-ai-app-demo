@@ -51,6 +51,7 @@ class UserUpdate(BaseModel):
     daily_message_limit: Optional[int] = None
     allowed_models: Optional[list[str]] = None
     ps_tenant_id: Optional[int] = None
+    ps_enabled: Optional[bool] = None
 
 class UserOut(BaseModel):
     id: int
@@ -63,6 +64,7 @@ class UserOut(BaseModel):
     ps_tenant: Optional[PSTenantOut]
     ps_configured: bool = False
     ps_mode: str = "api"
+    ps_enabled: bool = True
     llm_keys_configured: list[str] = []  # list of providers with keys set, e.g. ["openai","openrouter"]
     created_at: datetime
     model_config = {"from_attributes": True}
@@ -73,6 +75,7 @@ class PSConfigUpdate(BaseModel):
     ps_tenant_id: Optional[int] = None
     ps_api_key: Optional[str] = None    # plaintext — encrypted server-side
     ps_mode: Optional[str] = None       # "api" | "gateway"
+    ps_enabled: Optional[bool] = None
 
 
 # ── User LLM key overrides (self-service) ────────────────────────────────────
