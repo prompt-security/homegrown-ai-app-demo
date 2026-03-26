@@ -68,6 +68,51 @@ model_list:
       model: openrouter/nvidia/nemotron-nano-9b-v2:free
       api_key: os.environ/OPENROUTER_API_KEY
 
+  - model_name: nvidia/nemotron-3-super-120b-a12b:free
+    litellm_params:
+      model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: minimax/minimax-m2.5:free
+    litellm_params:
+      model: openrouter/minimax/minimax-m2.5:free
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: stepfun/step-3.5-flash:free
+    litellm_params:
+      model: openrouter/stepfun/step-3.5-flash:free
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: liquid/lfm-2.5-1.2b-thinking:free
+    litellm_params:
+      model: openrouter/liquid/lfm-2.5-1.2b-thinking:free
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: qwen/qwen3-next-80b-a3b-instruct:free
+    litellm_params:
+      model: openrouter/qwen/qwen3-next-80b-a3b-instruct:free
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: qwen/qwen3-coder:free
+    litellm_params:
+      model: openrouter/qwen/qwen3-coder:free
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: nousresearch/hermes-3-llama-3.1-405b:free
+    litellm_params:
+      model: openrouter/nousresearch/hermes-3-llama-3.1-405b:free
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: bytedance/seedance-1-5-pro
+    litellm_params:
+      model: openrouter/bytedance/seedance-1-5-pro
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: sourceful/riverflow-v2-fast-preview
+    litellm_params:
+      model: openrouter/sourceful/riverflow-v2-fast-preview
+      api_key: os.environ/OPENROUTER_API_KEY
+
 litellm_settings:
   drop_params: true
   request_timeout: 60
