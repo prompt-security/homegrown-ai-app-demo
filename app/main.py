@@ -231,6 +231,12 @@ async def models(current_user: User = Depends(get_current_user)):
     return {"models": available, "fallback": not bool(live)}
 
 
+@app.post("/admin/refresh-models")
+async def admin_refresh_models(admin: User = Depends(require_admin)):
+    updated = await refresh_model_cache()
+    return {"models_loaded": len(updated), "fallback": not bool(updated)}
+
+
 # ── User self-service ─────────────────────────────────────────────────────────
 @app.get("/users/me/stats", response_model=UserStats)
 async def my_stats(

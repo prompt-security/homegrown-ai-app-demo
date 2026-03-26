@@ -21,31 +21,66 @@ model_list:
       model: anthropic/claude-3-5-haiku-20241022
       api_key: os.environ/ANTHROPIC_API_KEY
 
-  # ── Google ────────────────────────────────────────────────────────────────
+  # ── Google (via OpenRouter) ───────────────────────────────────────────────
   - model_name: gemini-2.0-flash
     litellm_params:
-      model: gemini/gemini-2.0-flash
-      api_key: os.environ/GOOGLE_API_KEY
+      model: openrouter/google/gemini-2.0-flash-001
+      api_key: os.environ/OPENROUTER_API_KEY
 
   - model_name: gemini-1.5-pro
     litellm_params:
-      model: gemini/gemini-1.5-pro
-      api_key: os.environ/GOOGLE_API_KEY
+      model: openrouter/google/gemini-pro-1.5
+      api_key: os.environ/OPENROUTER_API_KEY
 
   # ── Free models via OpenRouter ────────────────────────────────────────────
+  - model_name: meta-llama/llama-3.3-70b-instruct:free
+    litellm_params:
+      model: openrouter/meta-llama/llama-3.3-70b-instruct:free
+      api_key: os.environ/OPENROUTER_API_KEY
+
   - model_name: meta-llama/llama-3.1-8b-instruct:free
     litellm_params:
       model: openrouter/meta-llama/llama-3.1-8b-instruct:free
       api_key: os.environ/OPENROUTER_API_KEY
 
-  - model_name: nvidia/nemotron-nano-9b-v2:free
+  - model_name: deepseek/deepseek-r1:free
     litellm_params:
-      model: openrouter/nvidia/nemotron-nano-9b-v2:free
+      model: openrouter/deepseek/deepseek-r1:free
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: deepseek/deepseek-r1-distill-llama-70b:free
+    litellm_params:
+      model: openrouter/deepseek/deepseek-r1-distill-llama-70b:free
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: qwen/qwen-2.5-72b-instruct:free
+    litellm_params:
+      model: openrouter/qwen/qwen-2.5-72b-instruct:free
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: google/gemma-3-27b-it:free
+    litellm_params:
+      model: openrouter/google/gemma-3-27b-it:free
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: mistralai/mistral-nemo:free
+    litellm_params:
+      model: openrouter/mistralai/mistral-nemo:free
       api_key: os.environ/OPENROUTER_API_KEY
 
   - model_name: mistralai/mistral-7b-instruct:free
     litellm_params:
       model: openrouter/mistralai/mistral-7b-instruct:free
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: microsoft/phi-3-mini-128k-instruct:free
+    litellm_params:
+      model: openrouter/microsoft/phi-3-mini-128k-instruct:free
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: nvidia/nemotron-nano-9b-v2:free
+    litellm_params:
+      model: openrouter/nvidia/nemotron-nano-9b-v2:free
       api_key: os.environ/OPENROUTER_API_KEY
 
 litellm_settings:
