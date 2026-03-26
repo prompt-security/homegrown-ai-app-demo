@@ -48,24 +48,9 @@ model_list:
       model: openrouter/deepseek/deepseek-r1:free
       api_key: os.environ/OPENROUTER_API_KEY
 
-  - model_name: deepseek/deepseek-r1-distill-llama-70b:free
-    litellm_params:
-      model: openrouter/deepseek/deepseek-r1-distill-llama-70b:free
-      api_key: os.environ/OPENROUTER_API_KEY
-
   - model_name: qwen/qwen-2.5-72b-instruct:free
     litellm_params:
       model: openrouter/qwen/qwen-2.5-72b-instruct:free
-      api_key: os.environ/OPENROUTER_API_KEY
-
-  - model_name: google/gemma-3-27b-it:free
-    litellm_params:
-      model: openrouter/google/gemma-3-27b-it:free
-      api_key: os.environ/OPENROUTER_API_KEY
-
-  - model_name: mistralai/mistral-nemo:free
-    litellm_params:
-      model: openrouter/mistralai/mistral-nemo:free
       api_key: os.environ/OPENROUTER_API_KEY
 
   - model_name: mistralai/mistral-7b-instruct:free
