@@ -45,6 +45,7 @@ class User(Base):
     ps_tenant: Mapped[Optional["PSTenant"]] = relationship("PSTenant", back_populates="users")
     sessions: Mapped[list["ChatSession"]] = relationship("ChatSession", back_populates="user")
     messages: Mapped[list["Message"]] = relationship("Message", back_populates="user")
+    api_keys: Mapped[list["APIKey"]] = relationship("APIKey", back_populates="user")
 
 
 class ChatSession(Base):
@@ -95,3 +96,20 @@ class AuditEvent(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
+
+
+class APIKey(Base):
+    __tablename__ = "api_keys"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    key_prefix: Mapped[str] = mapped_column(String(24), index=True)
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    user: Mapped[User] = relationship("User", back_populates="api_keys")

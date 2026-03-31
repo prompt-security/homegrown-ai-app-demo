@@ -3,6 +3,7 @@ import io
 import json
 import logging
 import os
+import secrets
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -22,14 +23,19 @@ from sqlalchemy.orm import selectinload
 
 load_dotenv()
 
-from auth import create_access_token, get_current_user, hash_password, require_admin, verify_password
+from auth import (
+    create_access_token, create_api_key, get_current_api_key, get_current_user,
+    hash_api_key, hash_password, require_admin, verify_password,
+)
 from crypto import decrypt, encrypt
 from database import AsyncSessionLocal, Base, engine, get_db
-from models import AuditEvent, ChatSession, Message, PSTenant, User
+from models import APIKey, AuditEvent, ChatSession, Message, PSTenant, User
 from prompt_security import PromptSecurityClient
 from schemas import (
+    APIKeyCreateRequest, APIKeyCreateResponse, APIKeyOut,
     ChatMessage, ChatRequest, ChatResponse,
     LLMKeysUpdate, LoginRequest, MessageOut, PSConfigUpdate, PSTenantCreate, PSTenantOut, PSTenantUpdate,
+    PublicResponseOut, PublicResponseOutput, PublicResponseRequest, PublicResponseUsage,
     SessionOut, TokenEstimateResponse, TokenResponse, UserCreate, UserOut, UserStats, UserUpdate,
 )
 from token_counter import estimate_message_tokens, estimate_text_tokens
@@ -43,6 +49,10 @@ LITELLM_MASTER_KEY = os.getenv("LITELLM_MASTER_KEY", "")
 ADMIN_EMAIL        = os.getenv("ADMIN_EMAIL", "admin@example.com")
 ADMIN_PASSWORD     = os.getenv("ADMIN_PASSWORD", "admin")
 DEFAULT_DAILY_LIMIT = int(os.getenv("DEFAULT_DAILY_LIMIT", "50")) or None
+PUBLIC_API_ENABLED = os.getenv("PUBLIC_API_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+PUBLIC_API_MAX_PROMPT_TOKENS = int(os.getenv("PUBLIC_API_MAX_PROMPT_TOKENS", "4000"))
+PUBLIC_API_MAX_OUTPUT_TOKENS = int(os.getenv("PUBLIC_API_MAX_OUTPUT_TOKENS", "600"))
+PUBLIC_API_ALLOW_SYSTEM_PROMPT = os.getenv("PUBLIC_API_ALLOW_SYSTEM_PROMPT", "false").lower() in {"1", "true", "yes", "on"}
 
 # Shared LLM keys (fallback when user has no per-provider key)
 _SHARED_LLM_KEYS = {
@@ -213,6 +223,61 @@ async def me(current_user: User = Depends(get_current_user)):
     return _user_out(current_user)
 
 
+@app.get("/users/me/api-keys", response_model=list[APIKeyOut])
+async def list_my_api_keys(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(APIKey)
+        .where(APIKey.user_id == current_user.id)
+        .order_by(desc(APIKey.created_at))
+    )
+    return [_api_key_out(k) for k in result.scalars().all()]
+
+
+@app.post("/users/me/api-keys", response_model=APIKeyCreateResponse, status_code=201)
+async def create_my_api_key(
+    body: APIKeyCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Key name is required")
+
+    raw_key = create_api_key()
+    prefix = raw_key[:16]
+    record = APIKey(
+        user_id=current_user.id,
+        name=name,
+        key_prefix=prefix,
+        key_hash=hash_api_key(raw_key),
+        is_active=True,
+    )
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    await _log_audit(db, current_user.id, current_user.email, "api_key_created", f"name={name}")
+    return APIKeyCreateResponse(api_key=raw_key, key=_api_key_out(record))
+
+
+@app.delete("/users/me/api-keys/{key_id}", status_code=204)
+async def delete_my_api_key(
+    key_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    key = await db.scalar(
+        select(APIKey).where(APIKey.id == key_id, APIKey.user_id == current_user.id)
+    )
+    if not key:
+        raise HTTPException(status_code=404, detail="API key not found")
+    await db.delete(key)
+    await db.commit()
+    await _log_audit(db, current_user.id, current_user.email, "api_key_deleted", f"id={key_id} name={key.name}")
+
+
 # ── Health + Models ───────────────────────────────────────────────────────────
 @app.get("/health")
 async def health():
@@ -258,6 +323,141 @@ async def chat_token_estimate(
     return TokenEstimateResponse(
         estimated_prompt_tokens=estimate_message_tokens(payload, model=model),
         model=model,
+    )
+
+
+@app.post("/v1/responses", response_model=PublicResponseOut)
+async def public_responses(
+    body: PublicResponseRequest,
+    auth_ctx: tuple[APIKey, User] = Depends(get_current_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    _ensure_public_api_enabled()
+    api_key, current_user = auth_ctx
+
+    available = _model_cache or await refresh_model_cache() or _FALLBACK_MODELS
+    model = body.model or available[0]["id"]
+    if not model:
+        raise HTTPException(status_code=503, detail="No models available — check LiteLLM config")
+    if current_user.allowed_models is not None and model not in current_user.allowed_models:
+        raise HTTPException(status_code=403, detail="Model not allowed for this API key")
+
+    user_prompt = (body.input or "").strip()
+    if not user_prompt:
+        raise HTTPException(status_code=400, detail="input is required")
+
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    used_today = await db.scalar(
+        select(func.count(Message.id)).where(
+            Message.user_id == current_user.id,
+            Message.role == "user",
+            Message.created_at >= today_start,
+        )
+    ) or 0
+    if current_user.daily_message_limit and used_today >= current_user.daily_message_limit:
+        raise HTTPException(status_code=429, detail="Daily message limit reached")
+
+    system_prompt = "You are a helpful AI assistant."
+    if PUBLIC_API_ALLOW_SYSTEM_PROMPT and body.system_prompt:
+        system_prompt = body.system_prompt
+
+    payload = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+    prompt_tokens = estimate_message_tokens(payload, model=model)
+    if prompt_tokens > PUBLIC_API_MAX_PROMPT_TOKENS:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Prompt too large for public test endpoint ({prompt_tokens} > {PUBLIC_API_MAX_PROMPT_TOKENS} tokens).",
+        )
+
+    ps_client = _build_ps_api_client(current_user)
+    prompt_action = "pass"
+    ps_violations: list = []
+    effective_prompt = user_prompt
+    if ps_client:
+        try:
+            ps_result = await ps_client.protect_prompt(
+                user_prompt=user_prompt,
+                system_prompt=system_prompt,
+                user=current_user.email,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Prompt Security scan failed: {exc}")
+        if not ps_result.allowed:
+            raise HTTPException(status_code=403, detail={"ps_action": "block", "violations": ps_result.violations})
+        if ps_result.modified_text:
+            effective_prompt = ps_result.modified_text
+            prompt_action = "modify"
+            payload[-1]["content"] = effective_prompt
+
+    llm, effective_model = _user_llm_client(current_user, model)
+    try:
+        resp = await llm.chat.completions.create(
+            model=effective_model,
+            messages=payload,
+            max_tokens=PUBLIC_API_MAX_OUTPUT_TOKENS,
+        )
+    except Exception as exc:
+        logger.error("Public API completion error: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    text = _extract_response_text(resp)
+    if not text:
+        raise HTTPException(status_code=502, detail="Model returned an empty response")
+
+    if ps_client:
+        try:
+            ps_resp = await ps_client.protect_response(
+                response_text=text,
+                user_prompt=user_prompt,
+                system_prompt=system_prompt,
+                user=current_user.email,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Prompt Security response scan failed: {exc}")
+        ps_violations = ps_resp.violations
+        if not ps_resp.allowed:
+            raise HTTPException(status_code=403, detail={"ps_action": "block", "violations": ps_violations})
+        if ps_resp.modified_text:
+            text = ps_resp.modified_text
+            prompt_action = "modify"
+
+    usage = getattr(resp, "usage", None)
+    prompt_tokens = int(getattr(usage, "prompt_tokens", prompt_tokens) or prompt_tokens)
+    completion_tokens = int(getattr(usage, "completion_tokens", estimate_text_tokens(text, model=effective_model)))
+    total_tokens = int(getattr(usage, "total_tokens", prompt_tokens + completion_tokens))
+
+    session = ChatSession(
+        id=str(uuid.uuid4()),
+        user_id=current_user.id,
+        title=f"API Test: {user_prompt[:48]}" + ("…" if len(user_prompt) > 48 else ""),
+    )
+    db.add(session)
+    await db.commit()
+    await _log_msg(db, session.id, current_user.id, "user", user_prompt, model)
+    await _log_msg(
+        db, session.id, current_user.id, "assistant", text, model,
+        ps_scanned=bool(ps_client), ps_action=prompt_action, ps_violations=ps_violations,
+    )
+    await _log_audit(
+        db, current_user.id, current_user.email, "public_api_invoked",
+        f"model={model} key={api_key.name} total_tokens={total_tokens}",
+    )
+
+    return PublicResponseOut(
+        id=f"resp_{uuid.uuid4().hex}",
+        model=model,
+        output=[PublicResponseOutput(text=text)],
+        usage=PublicResponseUsage(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+        ),
+        ps_scanned=bool(ps_client),
+        ps_action=prompt_action,
+        ps_violations=ps_violations,
     )
 
 
@@ -1107,6 +1307,17 @@ def _user_out(user: User) -> UserOut:
     )
 
 
+def _api_key_out(key: APIKey) -> APIKeyOut:
+    return APIKeyOut(
+        id=key.id,
+        name=key.name,
+        key_preview=f"{key.key_prefix}…",
+        is_active=key.is_active,
+        last_used_at=key.last_used_at,
+        created_at=key.created_at,
+    )
+
+
 def _build_content(m: ChatMessage):
     if m.image_url:
         parts = [{"type": "image_url", "image_url": {"url": m.image_url}}]
@@ -1114,6 +1325,40 @@ def _build_content(m: ChatMessage):
             parts.append({"type": "text", "text": m.content})
         return parts
     return m.content
+
+
+def _ensure_public_api_enabled():
+    if not PUBLIC_API_ENABLED:
+        raise HTTPException(
+            status_code=403,
+            detail="Public API is disabled. Set PUBLIC_API_ENABLED=true to use /v1/responses.",
+        )
+
+
+def _build_ps_api_client(user: User) -> Optional[PromptSecurityClient]:
+    if not (user.ps_enabled and user.ps_tenant and user.ps_api_key_enc):
+        return None
+    try:
+        ps_app_id = decrypt(user.ps_api_key_enc)
+    except ValueError:
+        logger.warning("PS key decrypt failed for %s", user.email)
+        return None
+    if not ps_app_id:
+        return None
+    return PromptSecurityClient(base_url=user.ps_tenant.base_url, app_id=ps_app_id)
+
+
+def _extract_response_text(resp) -> str:
+    text = getattr(resp, "output_text", None)
+    if text:
+        return text
+
+    choices = getattr(resp, "choices", None) or []
+    if choices:
+        msg = getattr(choices[0], "message", None)
+        if msg and getattr(msg, "content", None):
+            return msg.content
+    return ""
 
 
 async def _log_audit(

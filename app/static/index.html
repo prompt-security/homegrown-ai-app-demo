@@ -419,6 +419,7 @@ reply = await client.chat.completions.create(
     <div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:4px">
       <button class="stab active" id="stab-ps"  onclick="switchSettingsTab('ps')">🔒 Prompt Security</button>
       <button class="stab"        id="stab-llm" onclick="switchSettingsTab('llm')">🤖 LLM API Keys</button>
+      <button class="stab"        id="stab-api" onclick="switchSettingsTab('api')">🔑 App API Keys</button>
     </div>
     <!-- PS tab -->
     <div id="settingsPs">
@@ -472,6 +473,35 @@ reply = await client.chat.completions.create(
         <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">Anthropic <span id="llmBadge-anthropic" class="llm-set-badge"></span></label><input type="password" id="llmKey-anthropic" placeholder="sk-ant-…" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;outline:none"></div>
         <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">Google Gemini <span id="llmBadge-google" class="llm-set-badge"></span></label><input type="password" id="llmKey-google" placeholder="AIza…" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;outline:none"></div>
         <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">OpenRouter <span id="llmBadge-openrouter" class="llm-set-badge"></span></label><input type="password" id="llmKey-openrouter" placeholder="sk-or-…" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;outline:none"></div>
+      </div>
+    </div>
+    <div id="settingsApi" style="display:none">
+      <p style="font-size:12px;color:var(--text-muted);margin:6px 0 10px">Create a narrow app-issued key for the public <code>/v1/responses</code> test endpoint. The plaintext key is shown only once when created.</p>
+      <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:12px">
+        <div style="flex:1">
+          <label for="apiKeyNameInput" style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px">Key name</label>
+          <input type="text" id="apiKeyNameInput" placeholder="saas-test" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;outline:none">
+        </div>
+        <button class="btn btn-primary" id="apiKeyCreateBtn" type="button">Create Key</button>
+      </div>
+      <div id="apiKeyFlash" style="display:none;margin-bottom:12px;padding:10px 12px;background:rgba(46,204,113,0.08);border:1px solid rgba(46,204,113,0.25);border-radius:8px">
+        <div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:6px">Copy This Key Now</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <code id="apiKeyPlaintext" style="flex:1;overflow:auto;white-space:nowrap;font-size:12px;color:var(--text)"></code>
+          <button class="btn btn-secondary" id="apiKeyCopyBtn" type="button">Copy</button>
+        </div>
+      </div>
+      <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Existing Keys</div>
+      <div id="apiKeyList" style="display:flex;flex-direction:column;gap:8px"></div>
+      <div style="margin-top:12px">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">cURL Template</div>
+        <pre style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;overflow:auto;font-size:11px;line-height:1.6;white-space:pre-wrap;color:var(--text-muted)">curl http://localhost:9000/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer &lt;your_app_api_key&gt;" \
+  -d '{
+    "model": "meta-llama/llama-3.1-8b-instruct:free",
+    "input": "Hello from ngrok"
+  }'</pre>
       </div>
     </div>
     <div class="modal-actions" style="margin-top:12px">
@@ -689,16 +719,75 @@ reply = await client.chat.completions.create(
   // ── Settings modal (PS + LLM keys) ──────────────────────────────────────
   const psBackdrop = document.getElementById('psBackdrop');
   let _settingsTab = 'ps';
+  let _apiKeys = [];
+  let _latestPlainApiKey = '';
 
-  function switchSettingsTab(tab) {
+  async function switchSettingsTab(tab) {
     _settingsTab = tab;
     document.getElementById('settingsPs').style.display  = tab === 'ps'  ? '' : 'none';
     document.getElementById('settingsLlm').style.display = tab === 'llm' ? '' : 'none';
+    document.getElementById('settingsApi').style.display = tab === 'api' ? '' : 'none';
     document.getElementById('stab-ps').classList.toggle('active',  tab === 'ps');
     document.getElementById('stab-llm').classList.toggle('active', tab === 'llm');
+    document.getElementById('stab-api').classList.toggle('active', tab === 'api');
+    document.getElementById('psSaveBtn').style.display = tab === 'api' ? 'none' : '';
+    if (tab === 'api') await loadApiKeys();
   }
 
   let _psTenants = [];
+
+  function renderApiKeys() {
+    const list = document.getElementById('apiKeyList');
+    list.innerHTML = '';
+    if (!_apiKeys.length) {
+      list.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">No app API keys yet.</div>';
+      return;
+    }
+    _apiKeys.forEach(key => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px';
+      row.innerHTML = `
+        <div style="min-width:0">
+          <div style="font-size:13px;font-weight:600;color:var(--text)">${esc(key.name)}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${esc(key.key_preview)} · created ${formatDate(key.created_at)}${key.last_used_at ? ` · used ${formatDate(key.last_used_at)}` : ''}</div>
+        </div>
+      `;
+      const del = document.createElement('button');
+      del.className = 'btn btn-danger';
+      del.type = 'button';
+      del.textContent = 'Delete';
+      del.addEventListener('click', () => deleteApiKey(key.id));
+      row.appendChild(del);
+      list.appendChild(row);
+    });
+  }
+
+  async function loadApiKeys() {
+    const res = await authFetch('/users/me/api-keys');
+    _apiKeys = res.ok ? await res.json() : [];
+    renderApiKeys();
+  }
+
+  async function createApiKeyFromUi() {
+    const name = document.getElementById('apiKeyNameInput').value.trim() || 'saas-test';
+    const res = await authFetch('/users/me/api-keys', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok) { alert('Failed to create API key'); return; }
+    const data = await res.json();
+    _latestPlainApiKey = data.api_key;
+    document.getElementById('apiKeyNameInput').value = '';
+    document.getElementById('apiKeyPlaintext').textContent = data.api_key;
+    document.getElementById('apiKeyFlash').style.display = 'block';
+    await loadApiKeys();
+  }
+
+  async function deleteApiKey(id) {
+    const res = await authFetch(`/users/me/api-keys/${id}`, { method: 'DELETE' });
+    if (!res.ok) { alert('Failed to delete API key'); return; }
+    await loadApiKeys();
+  }
 
   function _updateGwHint() {
     const tenantId = parseInt(document.getElementById('psTenantSel').value) || null;
@@ -719,7 +808,7 @@ reply = await client.chat.completions.create(
 
   async function openPsSettings(tab = 'ps') {
     userDropdown.classList.remove('open');
-    switchSettingsTab(tab);
+    await switchSettingsTab(tab);
     // Load PS tenants
     const res = await authFetch('/ps-tenants');
     _psTenants = res.ok ? await res.json() : [];
@@ -747,6 +836,9 @@ reply = await client.chat.completions.create(
       badge.style.color = set ? 'var(--green)' : '';
       document.getElementById(`llmKey-${p}`).value = '';
     });
+    document.getElementById('apiKeyNameInput').value = '';
+    document.getElementById('apiKeyFlash').style.display = 'none';
+    _latestPlainApiKey = '';
     psBackdrop.classList.add('open');
   }
 
@@ -756,6 +848,11 @@ reply = await client.chat.completions.create(
   document.getElementById('psToggleBtn').addEventListener('click', quickTogglePs);
   document.getElementById('psGearBtn').addEventListener('click', () => openPsSettings('ps'));
   document.getElementById('psSettingsBtn').addEventListener('click', () => openPsSettings('ps'));
+  document.getElementById('apiKeyCreateBtn').addEventListener('click', createApiKeyFromUi);
+  document.getElementById('apiKeyCopyBtn').addEventListener('click', async () => {
+    if (!_latestPlainApiKey) return;
+    await navigator.clipboard.writeText(_latestPlainApiKey);
+  });
   document.getElementById('psCancelBtn').addEventListener('click', () => psBackdrop.classList.remove('open'));
   psBackdrop.addEventListener('click', e => { if (e.target === psBackdrop) psBackdrop.classList.remove('open'); });
   input.addEventListener('input', scheduleTokenEstimate);
