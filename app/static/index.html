@@ -89,6 +89,7 @@ header .spacer { flex: 1; }
 @keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-6px)} }
 .msg-footer { display: flex; align-items: center; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
 .model-badge { font-size: 10px; color: var(--text-muted); background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+.usage-badge { font-size: 10px; color: var(--text-muted); background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
 .copy-btn { font-size: 11px; padding: 1px 8px; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer; font-family: var(--font); opacity: 0; transition: opacity 0.15s; }
 .msg-inner:hover .copy-btn { opacity: 1; }
 .copy-btn:hover { background: var(--surface2); color: var(--text); }
@@ -139,6 +140,8 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
 #inputArea { display: flex; flex-direction: column; gap: 0; padding: 12px 16px 16px; background: var(--surface); border-top: 1px solid var(--border); flex-shrink: 0; }
 #attachmentBadge { display: none; align-items: center; gap: 6px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; font-size: 12px; color: var(--text); margin-bottom: 6px; }
 #attachmentBadge.visible { display: flex; }
+.composer-meta { display: flex; justify-content: flex-end; min-height: 18px; margin-top: 6px; }
+#tokenEstimate { font-size: 11px; color: var(--text-muted); }
 .att-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .att-remove { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 16px; line-height: 1; padding: 0 2px; }
 .att-remove:hover { color: var(--red); }
@@ -246,6 +249,9 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
       <button id="attachBtn" title="Attach file">📎</button>
       <textarea id="userInput" rows="1" placeholder="Type a message… (Enter to send, Shift+Enter for newline)"></textarea>
       <button id="sendBtn" title="Send">&#10148;</button>
+    </div>
+    <div class="composer-meta">
+      <span id="tokenEstimate">Estimated prompt tokens: 0</span>
     </div>
   </div>
 </div>
@@ -511,6 +517,8 @@ reply = await client.chat.completions.create(
   let messages = [];
   let serverSessions = [];
   let attachment = null;
+  let estimateReqSeq = 0;
+  let estimateTimer = null;
 
   // ── Init ──────────────────────────────────────────────────────────────────
   async function init() {
@@ -527,6 +535,7 @@ reply = await client.chat.completions.create(
     }
     updatePsStatus();
     await Promise.all([loadModels(), loadSessions(), loadStats()]);
+    scheduleTokenEstimate();
   }
 
   function updatePsStatus() {
@@ -634,7 +643,7 @@ reply = await client.chat.completions.create(
       if (m.role === 'user') appendMessage('user', m.content);
       else appendMessage('bot', m.content, { model: m.model, psScanned: m.ps_scanned, psAction: m.ps_action || 'pass', violations: m.ps_violations || [] });
     });
-    renderHistory(); scrollToBottom();
+    renderHistory(); scrollToBottom(); scheduleTokenEstimate();
   }
 
   async function deleteSession(id) {
@@ -646,7 +655,7 @@ reply = await client.chat.completions.create(
 
   function startNewChat() {
     currentSessionId = null; messages = [];
-    chatEl.innerHTML = ''; renderHistory(); input.focus();
+    chatEl.innerHTML = ''; renderHistory(); input.focus(); scheduleTokenEstimate();
   }
 
   // ── Quota ─────────────────────────────────────────────────────────────────
@@ -667,12 +676,13 @@ reply = await client.chat.completions.create(
     sysBackdrop.classList.add('open');
   });
   document.getElementById('sysCancelBtn').addEventListener('click', () => sysBackdrop.classList.remove('open'));
-  document.getElementById('sysResetBtn').addEventListener('click', () => { localStorage.removeItem(SYS_KEY); document.getElementById('sysPromptBtn').classList.remove('active'); sysBackdrop.classList.remove('open'); });
+  document.getElementById('sysResetBtn').addEventListener('click', () => { localStorage.removeItem(SYS_KEY); document.getElementById('sysPromptBtn').classList.remove('active'); sysBackdrop.classList.remove('open'); scheduleTokenEstimate(); });
   document.getElementById('sysSaveBtn').addEventListener('click', () => {
     const v = sysTextarea.value.trim();
     if (v) localStorage.setItem(SYS_KEY, v); else localStorage.removeItem(SYS_KEY);
     document.getElementById('sysPromptBtn').classList.toggle('active', !!v);
     sysBackdrop.classList.remove('open');
+    scheduleTokenEstimate();
   });
   sysBackdrop.addEventListener('click', e => { if (e.target === sysBackdrop) sysBackdrop.classList.remove('open'); });
 
@@ -748,6 +758,8 @@ reply = await client.chat.completions.create(
   document.getElementById('psSettingsBtn').addEventListener('click', () => openPsSettings('ps'));
   document.getElementById('psCancelBtn').addEventListener('click', () => psBackdrop.classList.remove('open'));
   psBackdrop.addEventListener('click', e => { if (e.target === psBackdrop) psBackdrop.classList.remove('open'); });
+  input.addEventListener('input', scheduleTokenEstimate);
+  modelSelect.addEventListener('change', scheduleTokenEstimate);
 
   document.getElementById('psSaveBtn').addEventListener('click', async () => {
     if (_settingsTab === 'ps') {
@@ -795,7 +807,12 @@ reply = await client.chat.completions.create(
 
   // ── File attachment ───────────────────────────────────────────────────────
   const badge = document.getElementById('attachmentBadge');
-  function clearAttachment() { attachment = null; badge.classList.remove('visible'); document.getElementById('fileInput').value = ''; }
+  function clearAttachment() {
+    attachment = null;
+    badge.classList.remove('visible');
+    document.getElementById('fileInput').value = '';
+    scheduleTokenEstimate();
+  }
   document.getElementById('attachBtn').addEventListener('click', () => document.getElementById('fileInput').click());
   document.getElementById('attRemoveBtn').addEventListener('click', clearAttachment);
   document.getElementById('fileInput').addEventListener('change', async e => {
@@ -808,6 +825,7 @@ reply = await client.chat.completions.create(
       attachment = await res.json();
       document.getElementById('attIcon').textContent = attachment.type === 'image' ? '🖼️' : '📄';
       document.getElementById('attName').textContent = attachment.filename;
+      scheduleTokenEstimate();
     } catch (err) { alert('Upload error: ' + err.message); clearAttachment(); }
   });
 
@@ -825,8 +843,55 @@ reply = await client.chat.completions.create(
     return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
   function scrollToBottom() { chatEl.scrollTop = chatEl.scrollHeight; }
+  function setTokenEstimate(text, muted = true) {
+    const el = document.getElementById('tokenEstimate');
+    el.textContent = text;
+    el.style.color = muted ? 'var(--text-muted)' : 'var(--yellow)';
+  }
+  function buildDraftMessage() {
+    const text = input.value.trim();
+    if (!text && !attachment) return null;
+    const draft = { role: 'user', content: text };
+    if (attachment?.type === 'image') draft.image_url = attachment.content;
+    else if (attachment?.type === 'text') draft.content = `[File: ${attachment.filename}]\n${attachment.content}${text ? '\n\n' + text : ''}`;
+    return draft;
+  }
+  function scheduleTokenEstimate() {
+    clearTimeout(estimateTimer);
+    estimateTimer = setTimeout(refreshTokenEstimate, 220);
+  }
+  async function refreshTokenEstimate() {
+    const draft = buildDraftMessage();
+    if (!draft) {
+      setTokenEstimate('Estimated prompt tokens: 0');
+      return;
+    }
 
-  function appendMessage(role, text, { blocked=false, violations=[], model:mdl=null, psScanned=false, psAction='pass', rawHtml=null } = {}) {
+    const seq = ++estimateReqSeq;
+    try {
+      const res = await authFetch('/chat/token-estimate', {
+        method: 'POST',
+        body: JSON.stringify({
+          messages: [...messages, draft],
+          model: modelSelect.value || undefined,
+          system_prompt: localStorage.getItem(SYS_KEY) || undefined,
+          session_id: currentSessionId || undefined,
+        }),
+      });
+      if (seq !== estimateReqSeq) return;
+      if (!res.ok) {
+        setTokenEstimate('Estimated prompt tokens: unavailable', false);
+        return;
+      }
+      const data = await res.json();
+      setTokenEstimate(`Estimated prompt tokens: ${data.estimated_prompt_tokens}`);
+    } catch {
+      if (seq !== estimateReqSeq) return;
+      setTokenEstimate('Estimated prompt tokens: unavailable', false);
+    }
+  }
+
+  function appendMessage(role, text, { blocked=false, violations=[], model:mdl=null, psScanned=false, psAction='pass', rawHtml=null, usage=null } = {}) {
     const wrap = document.createElement('div');
     wrap.className = `message ${role}` + (blocked ? ' blocked' : '');
     const av = Object.assign(document.createElement('div'), { className:'avatar', textContent: role==='user'?'👤':'🤖' });
@@ -839,15 +904,22 @@ reply = await client.chat.completions.create(
     else bub.textContent = text;
 
     inner.appendChild(bub);
-    if (role === 'bot' && !blocked) addFooter(inner, () => text || bub.innerText, mdl, psScanned, violations, psAction);
+    if (role === 'bot' && !blocked) addFooter(inner, () => text || bub.innerText, mdl, psScanned, violations, psAction, usage);
     else if (blocked) renderPsInsight(inner, true, 'block', violations);
     wrap.append(av, inner); chatEl.appendChild(wrap); scrollToBottom();
     return { wrap, bub, inner };
   }
 
-  function addFooter(inner, getText, mdl, psScanned, violations, psAction) {
+  function addFooter(inner, getText, mdl, psScanned, violations, psAction, usage=null) {
     const footer = document.createElement('div'); footer.className = 'msg-footer';
     if (mdl) { const mb = document.createElement('span'); mb.className = 'model-badge'; mb.textContent = mdl; footer.appendChild(mb); }
+    if (usage?.total_tokens != null) {
+      const ub = document.createElement('span');
+      ub.className = 'usage-badge';
+      ub.title = `Prompt: ${usage.prompt_tokens ?? '?'} · Completion: ${usage.completion_tokens ?? '?'}`;
+      ub.textContent = `${usage.total_tokens} tok`;
+      footer.appendChild(ub);
+    }
     const cp = document.createElement('button'); cp.className = 'copy-btn'; cp.textContent = 'Copy';
     cp.addEventListener('click', () => { navigator.clipboard.writeText(getText()); cp.className = 'copy-btn copied'; cp.textContent = 'Copied!'; setTimeout(() => { cp.className = 'copy-btn'; cp.textContent = 'Copy'; }, 1500); });
     footer.appendChild(cp);
@@ -952,7 +1024,11 @@ reply = await client.chat.completions.create(
                 currentSessionId = evt.session_id;
                 await loadSessions();
               }
-              addFooter(inner, () => fullText, finalModel, evt.ps_scanned, evt.ps_violations || [], evt.ps_action || 'pass');
+              addFooter(inner, () => fullText, finalModel, evt.ps_scanned, evt.ps_violations || [], evt.ps_action || 'pass', {
+                prompt_tokens: evt.prompt_tokens,
+                completion_tokens: evt.completion_tokens,
+                total_tokens: evt.total_tokens,
+              });
               updateQuota(evt.messages_today, evt.daily_limit);
               messages.push({ role: 'assistant', content: fullText }); done = true;
             }
@@ -968,6 +1044,7 @@ reply = await client.chat.completions.create(
       messages.pop();
     } finally {
       sendBtn.disabled = input.disabled = false; input.focus();
+      scheduleTokenEstimate();
     }
   }
 

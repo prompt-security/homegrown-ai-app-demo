@@ -30,8 +30,9 @@ from prompt_security import PromptSecurityClient
 from schemas import (
     ChatMessage, ChatRequest, ChatResponse,
     LLMKeysUpdate, LoginRequest, MessageOut, PSConfigUpdate, PSTenantCreate, PSTenantOut, PSTenantUpdate,
-    SessionOut, TokenResponse, UserCreate, UserOut, UserStats, UserUpdate,
+    SessionOut, TokenEstimateResponse, TokenResponse, UserCreate, UserOut, UserStats, UserUpdate,
 )
+from token_counter import estimate_message_tokens, estimate_text_tokens
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-8s %(name)s  %(message)s")
 logger = logging.getLogger("main")
@@ -235,6 +236,29 @@ async def models(current_user: User = Depends(get_current_user)):
 async def admin_refresh_models(admin: User = Depends(require_admin)):
     updated = await refresh_model_cache()
     return {"models_loaded": len(updated), "fallback": not bool(updated)}
+
+
+@app.post("/chat/token-estimate", response_model=TokenEstimateResponse)
+async def chat_token_estimate(
+    request: ChatRequest,
+    current_user: User = Depends(get_current_user),
+):
+    available = _model_cache or _FALLBACK_MODELS
+    model = request.model or available[0]["id"]
+    if not model:
+        raise HTTPException(status_code=503, detail="No models available — check LiteLLM config")
+
+    if current_user.allowed_models is not None and model not in current_user.allowed_models:
+        raise HTTPException(status_code=403, detail="Model not allowed for this user")
+
+    system_prompt = request.system_prompt or "You are a helpful AI assistant."
+    payload = [{"role": "system", "content": system_prompt}] + [
+        {"role": m.role, "content": _build_content(m)} for m in request.messages
+    ]
+    return TokenEstimateResponse(
+        estimated_prompt_tokens=estimate_message_tokens(payload, model=model),
+        model=model,
+    )
 
 
 # ── User self-service ─────────────────────────────────────────────────────────
@@ -715,6 +739,8 @@ async def chat_stream(
     model = request.model or available[0]["id"]
     if not model:
         raise HTTPException(status_code=503, detail="No models available — check LiteLLM config")
+    if current_user.allowed_models is not None and model not in current_user.allowed_models:
+        raise HTTPException(status_code=403, detail="Model not allowed for this user")
 
     last_user_msg = next((m.content for m in reversed(request.messages) if m.role == "user"), None)
     if not last_user_msg:
@@ -796,6 +822,9 @@ async def chat_stream(
         reply = ""
         prompt_action = "pass"
         t0 = time.monotonic()
+        prompt_tokens: Optional[int] = None
+        completion_tokens: Optional[int] = None
+        total_tokens: Optional[int] = None
 
         msgs = list(request.messages)
         payload = [{"role": "system", "content": system_prompt}] + [
@@ -808,10 +837,15 @@ async def chat_stream(
             return
         if ps_gw_client:
             try:
+                prompt_tokens = estimate_message_tokens(payload, model=model)
                 stream = await ps_gw_client.chat.completions.create(
                     model=model, messages=payload, stream=True
                 )
                 async for chunk in stream:
+                    if getattr(chunk, "usage", None):
+                        prompt_tokens = getattr(chunk.usage, "prompt_tokens", prompt_tokens)
+                        completion_tokens = getattr(chunk.usage, "completion_tokens", completion_tokens)
+                        total_tokens = getattr(chunk.usage, "total_tokens", total_tokens)
                     if chunk.choices and chunk.choices[0].delta.content:
                         token = chunk.choices[0].delta.content
                         reply += token
@@ -851,10 +885,13 @@ async def chat_stream(
                 return
 
             resp_ms = round((time.monotonic() - t0) * 1000)
+            completion_tokens = completion_tokens or estimate_text_tokens(reply, model=model)
+            prompt_tokens = prompt_tokens or estimate_message_tokens(payload, model=model)
+            total_tokens = total_tokens or (prompt_tokens + completion_tokens)
             await _log_msg(db, session_id, current_user.id, "assistant", reply, model,
                            ps_scanned=True, ps_action="pass", response_ms=resp_ms)
             today_used = used_today + 1
-            yield f"data: {json.dumps({'type': 'done', 'model': model, 'session_id': session_id, 'ps_scanned': True, 'ps_action': 'gateway', 'ps_violations': [], 'messages_today': today_used, 'daily_limit': current_user.daily_message_limit})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'model': model, 'session_id': session_id, 'ps_scanned': True, 'ps_action': 'gateway', 'ps_violations': [], 'messages_today': today_used, 'daily_limit': current_user.daily_message_limit, 'prompt_tokens': prompt_tokens, 'completion_tokens': completion_tokens, 'total_tokens': total_tokens})}\n\n"
             return
 
         # ── API mode: explicit PS scan + LiteLLM/per-user key ─────────────────
@@ -891,10 +928,16 @@ async def chat_stream(
         # ── Stream (per-user key or shared LiteLLM) ────────────────────────────
         llm, effective_model = _user_llm_client(current_user, model)
         try:
-            stream = await llm.chat.completions.create(
-                model=effective_model, messages=payload, stream=True
-            )
+            prompt_tokens = estimate_message_tokens(payload, model=effective_model)
+            stream_kwargs = {"model": effective_model, "messages": payload, "stream": True}
+            if llm is litellm_client:
+                stream_kwargs["stream_options"] = {"include_usage": True}
+            stream = await llm.chat.completions.create(**stream_kwargs)
             async for chunk in stream:
+                if getattr(chunk, "usage", None):
+                    prompt_tokens = getattr(chunk.usage, "prompt_tokens", prompt_tokens)
+                    completion_tokens = getattr(chunk.usage, "completion_tokens", completion_tokens)
+                    total_tokens = getattr(chunk.usage, "total_tokens", total_tokens)
                 if chunk.choices and chunk.choices[0].delta.content:
                     token = chunk.choices[0].delta.content
                     reply += token
@@ -934,12 +977,16 @@ async def chat_stream(
                 yield ("data: " + json.dumps({'type': 'error', 'detail': f'PS response scan failed: {e}. {err_hint}'}) + "\n\n")
                 return
 
+        completion_tokens = completion_tokens or estimate_text_tokens(reply, model=effective_model)
+        prompt_tokens = prompt_tokens or estimate_message_tokens(payload, model=effective_model)
+        total_tokens = total_tokens or (prompt_tokens + completion_tokens)
+
         await _log_msg(db, session_id, current_user.id, "assistant", reply, model,
                        ps_scanned=bool(ps_client), ps_action=final_action,
                        ps_violations=ps_violations, response_ms=resp_ms)
 
         today_used = used_today + 1
-        yield f"data: {json.dumps({'type': 'done', 'model': model, 'session_id': session_id, 'ps_scanned': bool(ps_client), 'ps_action': final_action, 'ps_violations': ps_violations, 'messages_today': today_used, 'daily_limit': current_user.daily_message_limit})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'model': model, 'session_id': session_id, 'ps_scanned': bool(ps_client), 'ps_action': final_action, 'ps_violations': ps_violations, 'messages_today': today_used, 'daily_limit': current_user.daily_message_limit, 'prompt_tokens': prompt_tokens, 'completion_tokens': completion_tokens, 'total_tokens': total_tokens})}\n\n"
 
     return StreamingResponse(
         generate(),

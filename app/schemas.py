@@ -98,6 +98,11 @@ class ChatRequest(BaseModel):
     system_prompt: Optional[str] = None
     session_id: Optional[str] = None
 
+
+class TokenEstimateResponse(BaseModel):
+    estimated_prompt_tokens: int
+    model: str
+
 class ChatResponse(BaseModel):
     reply: str
     model: str
