@@ -12,6 +12,8 @@ A multi-user AI chat application with deep [Prompt Security](https://www.prompt.
   - **Gateway mode** — route all LLM traffic through the PS proxy
 - **LiteLLM proxy** — unified gateway to OpenAI, Anthropic, Google, and OpenRouter (free models included)
 - **Per-user LLM API keys** — users can supply their own provider keys, stored encrypted at rest
+- **App-issued API keys** — users can create scoped bearer keys for the public test endpoint
+- **Public test API** — optional `POST /v1/responses` endpoint for SaaS scanners and external prompt testing
 - **Admin dashboard** — overview stats, charts, PS tenant management, user management, activity log with config change events
 - **Audit log** — all config changes (PS settings, LLM keys, user/tenant CRUD) appear in the activity log alongside chat messages
 
@@ -110,6 +112,13 @@ LITELLM_BASE_URL=http://litellm:4000
 # Generate with: python -c "import secrets; print(secrets.token_hex(32))"
 LITELLM_MASTER_KEY=your_litellm_master_key
 
+# ── Optional public test API ──────────────────────────────────────────────────
+# Enables POST /v1/responses for app-issued bearer API keys
+PUBLIC_API_ENABLED=false
+PUBLIC_API_MAX_PROMPT_TOKENS=4000
+PUBLIC_API_MAX_OUTPUT_TOKENS=600
+PUBLIC_API_ALLOW_SYSTEM_PROMPT=false
+
 # ── LLM provider keys ─────────────────────────────────────────────────────────
 # At least one is required; OpenRouter covers free models with a single key.
 OPENROUTER_API_KEY=sk-or-v1-...
@@ -169,6 +178,77 @@ Get a free OpenRouter key at [openrouter.ai](https://openrouter.ai).
 
 ---
 
+## Public Test API
+
+This app can optionally expose a narrow public endpoint for external scanners, SaaS tools, or simple prompt testing without exposing the full app surface.
+
+### What it exposes
+
+- `POST /v1/responses`
+- Bearer auth using app-issued keys
+- One prompt in, one text response out
+- Existing user model restrictions and daily limits still apply
+- Prompt Security still runs if configured for that user
+
+### How to enable it
+
+Set the following in `.env`:
+
+```bash
+PUBLIC_API_ENABLED=true
+PUBLIC_API_MAX_PROMPT_TOKENS=4000
+PUBLIC_API_MAX_OUTPUT_TOKENS=600
+PUBLIC_API_ALLOW_SYSTEM_PROMPT=false
+```
+
+Then rebuild the app:
+
+```bash
+docker compose up -d --build app
+```
+
+### How to create an app API key
+
+1. Open the chat UI.
+2. Click the user menu in the top right.
+3. Open **PS Settings**.
+4. Go to **App API Keys**.
+5. Create a key such as `saas-test`.
+6. Copy the plaintext `hg_live_...` key immediately. It is shown only once.
+
+### Example request
+
+```bash
+curl http://localhost:9000/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_APP_API_KEY" \
+  -d '{
+    "model": "meta-llama/llama-3.1-8b-instruct:free",
+    "input": "Hello from the public test API"
+  }'
+```
+
+### ngrok example
+
+```bash
+curl https://YOUR-NGROK-URL.ngrok-free.app/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_APP_API_KEY" \
+  -d '{
+    "model": "meta-llama/llama-3.1-8b-instruct:free",
+    "input": "Hello from ngrok"
+  }'
+```
+
+### Safety notes
+
+- The endpoint is disabled by default.
+- It does not expose admin routes.
+- It is intended for temporary, low-risk external testing.
+- Prefer using a dedicated low-privilege user, free models, and low daily limits.
+
+---
+
 ## Admin Dashboard
 
 Located at `/admin` (admin role required).
@@ -204,7 +284,15 @@ Located at `/admin` (admin role required).
 |--------|------|-------------|
 | `PATCH` | `/users/me/ps-config` | Update PS tenant, App ID, mode |
 | `PATCH` | `/users/me/llm-keys` | Update per-user LLM API keys |
+| `GET` | `/users/me/api-keys` | List app-issued API keys |
+| `POST` | `/users/me/api-keys` | Create an app-issued API key |
+| `DELETE` | `/users/me/api-keys/{id}` | Delete an app-issued API key |
 | `GET` | `/users/me/stats` | Personal usage stats |
+
+### Public Test API
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/responses` | Narrow public prompt endpoint authenticated by app API key |
 
 ### Admin
 | Method | Path | Description |
@@ -248,10 +336,11 @@ uvicorn main:app --reload --port 8000
 │   ├── main.py             # FastAPI app, all routes
 │   ├── models.py           # SQLAlchemy ORM models
 │   ├── schemas.py          # Pydantic request/response schemas
-│   ├── auth.py             # JWT auth, password hashing
+│   ├── auth.py             # JWT auth, API key auth, password hashing
 │   ├── crypto.py           # Fernet encryption for stored API keys
 │   ├── database.py         # Async SQLAlchemy engine + session
 │   ├── prompt_security.py  # PS API client (protect_prompt / protect_response)
+│   ├── token_counter.py    # Token estimation helpers via LiteLLM
 │   └── static/
 │       ├── index.html      # Chat UI
 │       ├── admin.html      # Admin dashboard
