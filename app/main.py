@@ -53,6 +53,7 @@ PUBLIC_API_ENABLED = os.getenv("PUBLIC_API_ENABLED", "false").lower() in {"1", "
 PUBLIC_API_MAX_PROMPT_TOKENS = int(os.getenv("PUBLIC_API_MAX_PROMPT_TOKENS", "4000"))
 PUBLIC_API_MAX_OUTPUT_TOKENS = int(os.getenv("PUBLIC_API_MAX_OUTPUT_TOKENS", "600"))
 PUBLIC_API_ALLOW_SYSTEM_PROMPT = os.getenv("PUBLIC_API_ALLOW_SYSTEM_PROMPT", "false").lower() in {"1", "true", "yes", "on"}
+SHOW_LLM_KEY_SETTINGS = os.getenv("SHOW_LLM_KEY_SETTINGS", "false").lower() in {"1", "true", "yes", "on"}
 
 # Shared LLM keys (fallback when user has no per-provider key)
 _SHARED_LLM_KEYS = {
@@ -1302,6 +1303,7 @@ def _user_out(user: User) -> UserOut:
         ps_configured=bool(user.ps_tenant_id and user.ps_api_key_enc),
         ps_mode=user.ps_mode,
         ps_enabled=user.ps_enabled,
+        llm_key_settings_visible=SHOW_LLM_KEY_SETTINGS,
         llm_keys_configured=llm_providers,
         created_at=user.created_at,
     )

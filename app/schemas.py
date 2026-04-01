@@ -83,6 +83,7 @@ class UserOut(BaseModel):
     ps_configured: bool = False
     ps_mode: str = "api"
     ps_enabled: bool = True
+    llm_key_settings_visible: bool = False
     llm_keys_configured: list[str] = []  # list of providers with keys set, e.g. ["openai","openrouter"]
     created_at: datetime
     model_config = {"from_attributes": True}

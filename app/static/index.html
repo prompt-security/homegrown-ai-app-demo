@@ -418,7 +418,7 @@ reply = await client.chat.completions.create(
     <!-- Tab bar -->
     <div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:4px">
       <button class="stab active" id="stab-ps"  onclick="switchSettingsTab('ps')">🔒 Prompt Security</button>
-      <button class="stab"        id="stab-llm" onclick="switchSettingsTab('llm')">🤖 LLM API Keys</button>
+      <button class="stab"        id="stab-llm" onclick="switchSettingsTab('llm')" style="display:none">🤖 LLM API Keys</button>
       <button class="stab"        id="stab-api" onclick="switchSettingsTab('api')">🔑 App API Keys</button>
     </div>
     <!-- PS tab -->
@@ -723,12 +723,13 @@ reply = await client.chat.completions.create(
   let _latestPlainApiKey = '';
 
   async function switchSettingsTab(tab) {
+    if (tab === 'llm' && !AUTH_USER?.llm_key_settings_visible) tab = 'ps';
     _settingsTab = tab;
     document.getElementById('settingsPs').style.display  = tab === 'ps'  ? '' : 'none';
-    document.getElementById('settingsLlm').style.display = tab === 'llm' ? '' : 'none';
+    document.getElementById('settingsLlm').style.display = AUTH_USER?.llm_key_settings_visible && tab === 'llm' ? '' : 'none';
     document.getElementById('settingsApi').style.display = tab === 'api' ? '' : 'none';
     document.getElementById('stab-ps').classList.toggle('active',  tab === 'ps');
-    document.getElementById('stab-llm').classList.toggle('active', tab === 'llm');
+    document.getElementById('stab-llm').classList.toggle('active', AUTH_USER?.llm_key_settings_visible && tab === 'llm');
     document.getElementById('stab-api').classList.toggle('active', tab === 'api');
     document.getElementById('psSaveBtn').style.display = tab === 'api' ? 'none' : '';
     if (tab === 'api') await loadApiKeys();
@@ -828,14 +829,16 @@ reply = await client.chat.completions.create(
     const currentMode = AUTH_USER?.ps_mode || 'api';
     document.getElementById(currentMode === 'gateway' ? 'modeGw' : 'modeApi').checked = true;
     _updateGwHint();
-    // Show LLM key badges
-    ['openai','anthropic','google','openrouter'].forEach(p => {
-      const badge = document.getElementById(`llmBadge-${p}`);
-      const set = AUTH_USER?.llm_keys_configured?.includes(p);
-      badge.textContent = set ? '✓ set' : '';
-      badge.style.color = set ? 'var(--green)' : '';
-      document.getElementById(`llmKey-${p}`).value = '';
-    });
+    document.getElementById('stab-llm').style.display = AUTH_USER?.llm_key_settings_visible ? '' : 'none';
+    if (AUTH_USER?.llm_key_settings_visible) {
+      ['openai','anthropic','google','openrouter'].forEach(p => {
+        const badge = document.getElementById(`llmBadge-${p}`);
+        const set = AUTH_USER?.llm_keys_configured?.includes(p);
+        badge.textContent = set ? '✓ set' : '';
+        badge.style.color = set ? 'var(--green)' : '';
+        document.getElementById(`llmKey-${p}`).value = '';
+      });
+    }
     document.getElementById('apiKeyNameInput').value = '';
     document.getElementById('apiKeyFlash').style.display = 'none';
     _latestPlainApiKey = '';
@@ -873,7 +876,7 @@ reply = await client.chat.completions.create(
         updatePsStatus();
         psBackdrop.classList.remove('open');
       } else { alert('Failed to save PS settings'); }
-    } else {
+    } else if (_settingsTab === 'llm') {
       const body = {};
       ['openai','anthropic','google','openrouter'].forEach(p => {
         const v = document.getElementById(`llmKey-${p}`).value;

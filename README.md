@@ -11,7 +11,7 @@ A multi-user AI chat application with deep [Prompt Security](https://www.prompt.
   - **API mode** — explicit prompt/response scanning with violation details shown on click
   - **Gateway mode** — route all LLM traffic through the PS proxy
 - **LiteLLM proxy** — unified gateway to OpenAI, Anthropic, Google, and OpenRouter (free models included)
-- **Per-user LLM API keys** — users can supply their own provider keys, stored encrypted at rest
+- **Hidden per-user LLM API key support** — provider key overrides remain available in code and can be re-enabled if needed
 - **App-issued API keys** — users can create scoped bearer keys for the public test endpoint
 - **Public test API** — optional `POST /v1/responses` endpoint for SaaS scanners and external prompt testing
 - **Admin dashboard** — overview stats, charts, PS tenant management, user management, activity log with config change events
@@ -119,6 +119,10 @@ PUBLIC_API_MAX_PROMPT_TOKENS=4000
 PUBLIC_API_MAX_OUTPUT_TOKENS=600
 PUBLIC_API_ALLOW_SYSTEM_PROMPT=false
 
+# ── Optional advanced UI toggles ──────────────────────────────────────────────
+# Keeps per-user LLM override support in code, but hides it from the UI by default
+SHOW_LLM_KEY_SETTINGS=false
+
 # ── LLM provider keys ─────────────────────────────────────────────────────────
 # At least one is required; OpenRouter covers free models with a single key.
 OPENROUTER_API_KEY=sk-or-v1-...
@@ -156,6 +160,8 @@ Models are configured in `litellm/config.yaml`. By default the following are ena
 | `mistralai/mistral-7b-instruct:free` | OpenRouter | **Free** — requires `OPENROUTER_API_KEY` |
 
 Get a free OpenRouter key at [openrouter.ai](https://openrouter.ai).
+
+> **Note:** Per-user LLM override settings are hidden from the UI by default. If you need them later, set `SHOW_LLM_KEY_SETTINGS=true` and rebuild the app.
 
 ---
 
