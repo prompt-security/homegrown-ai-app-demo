@@ -97,6 +97,17 @@ def _detect_provider(model_id: str) -> str:
     return "openrouter"
 
 
+def _model_meta(model_id: str) -> dict:
+    """Return category, provider, and required key info for a model."""
+    provider = _detect_provider(model_id)
+    is_free = model_id.lower().endswith(":free")
+    return {
+        "category": "free" if is_free else "paid",
+        "provider": {"openai": "OpenAI", "anthropic": "Anthropic", "google": "Google", "openrouter": "OpenRouter"}[provider],
+        "requires_key": None if is_free else provider,
+    }
+
+
 def _get_llm_key(user: User, model_id: str) -> str:
     """Returns the best available API key for model_id: per-user → shared .env → empty."""
     provider = _detect_provider(model_id)
@@ -295,7 +306,24 @@ async def models(current_user: User = Depends(get_current_user)):
     allowed = current_user.allowed_models
     if allowed is not None:
         available = [m for m in available if m["id"] in allowed]
-    return {"models": available, "fallback": not bool(live)}
+
+    # Build set of providers that have a usable key (user-level or shared)
+    user_providers: set[str] = set()
+    if current_user.llm_api_keys_enc:
+        try:
+            user_providers = {k for k, v in json.loads(decrypt(current_user.llm_api_keys_enc)).items() if v}
+        except Exception:
+            pass
+    shared_providers = {k for k, v in _SHARED_LLM_KEYS.items() if v}
+
+    enriched = []
+    for m in available:
+        meta = _model_meta(m["id"])
+        provider = _detect_provider(m["id"])
+        key_set = provider in user_providers or provider in shared_providers
+        enriched.append({**m, **meta, "key_set": key_set})
+
+    return {"models": enriched, "fallback": not bool(live)}
 
 
 @app.post("/admin/refresh-models")
@@ -1098,11 +1126,16 @@ async def chat_stream(
         # ── API mode: explicit PS scan + LiteLLM/per-user key ─────────────────
         if ps_client:
             try:
+                prompt_tok_est = estimate_text_tokens(last_user_msg)
+                logger.info("PS prompt scan: user=%s, prompt_chars=%d, estimated_tokens=%d, prompt_preview=%.120s",
+                            current_user.email, len(last_user_msg), prompt_tok_est, last_user_msg)
                 ps_result = await ps_client.protect_prompt(
                     user_prompt=last_user_msg,
                     system_prompt=system_prompt,
                     user=current_user.email,
                 )
+                logger.info("PS prompt result: action=%s, allowed=%s, violations=%s, modified=%s",
+                            ps_result.action, ps_result.allowed, ps_result.violations, bool(ps_result.modified_text))
                 if not ps_result.allowed:
                     await _log_msg(db, session_id, current_user.id, "assistant", "", model,
                                    ps_scanned=True, ps_blocked=True, ps_action="block",
@@ -1131,6 +1164,8 @@ async def chat_stream(
         try:
             prompt_tokens = estimate_message_tokens(payload, model=effective_model)
             stream_kwargs = {"model": effective_model, "messages": payload, "stream": True}
+            if not ps_client:
+                stream_kwargs["max_tokens"] = 150
             if llm is litellm_client:
                 stream_kwargs["stream_options"] = {"include_usage": True}
             stream = await llm.chat.completions.create(**stream_kwargs)
@@ -1157,8 +1192,6 @@ async def chat_stream(
             try:
                 ps_resp = await ps_client.protect_response(
                     response_text=reply,
-                    user_prompt=last_user_msg,
-                    system_prompt=system_prompt,
                     user=current_user.email,
                 )
                 ps_violations = ps_resp.violations
@@ -1225,6 +1258,62 @@ async def update_my_llm_keys(
     updated = [p for p in ("openai","anthropic","google","openrouter") if getattr(body, p) is not None]
     await _log_audit(db, current_user.id, current_user.email, "llm_keys_updated", "providers: " + ", ".join(updated))
     return _user_out(current_user)
+
+
+# ── User: Validate LLM API key ──────────────────────────────────────────────
+@app.post("/users/me/validate-llm-key")
+async def validate_llm_key(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    body = await request.json()
+    provider = body.get("provider", "")
+    api_key = body.get("api_key", "")
+    if not provider or not api_key:
+        raise HTTPException(status_code=400, detail="provider and api_key are required")
+
+    urls = {
+        "openai": "https://api.openai.com/v1/models",
+        "google": "https://generativelanguage.googleapis.com/v1beta/models",
+        "openrouter": "https://openrouter.ai/api/v1/models",
+    }
+
+    if provider == "anthropic":
+        # Anthropic has no /models endpoint; verify with a small messages call
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={"x-api-key": api_key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"},
+                    json={"model": "claude-3-5-haiku-20241022", "max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]},
+                )
+                if resp.status_code in (200, 201):
+                    return {"valid": True, "provider": provider}
+                elif resp.status_code == 401:
+                    return {"valid": False, "provider": provider, "error": "Invalid API key"}
+                else:
+                    return {"valid": True, "provider": provider}  # non-401 likely means key is valid but other issue
+        except Exception as e:
+            return {"valid": False, "provider": provider, "error": str(e)}
+
+    url = urls.get(provider)
+    if not url:
+        raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            headers = {"Authorization": f"Bearer {api_key}"}
+            resp = await client.get(url, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                model_count = len(data.get("data", data.get("models", [])))
+                return {"valid": True, "provider": provider, "models_count": model_count}
+            elif resp.status_code == 401:
+                return {"valid": False, "provider": provider, "error": "Invalid API key"}
+            else:
+                return {"valid": False, "provider": provider, "error": f"HTTP {resp.status_code}"}
+    except Exception as e:
+        return {"valid": False, "provider": provider, "error": str(e)}
 
 
 # ── Admin: Activity log ───────────────────────────────────────────────────────

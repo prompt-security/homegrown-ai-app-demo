@@ -1,3 +1,4 @@
+import json
 import httpx
 import logging
 from typing import Literal, Optional
@@ -79,14 +80,44 @@ class PromptSecurityClient:
             logger.error("PS connection error: %s", e)
             raise
 
-        section = data.get("result", {}).get(scan_type, {})
+        logger.info("PS raw response [%s]: %s", scan_type, json.dumps(data, default=str)[:1000])
+
+        result = data.get("result", {})
+        section = result.get(scan_type, {})
         action = section.get("action", "pass")
+
+        # Log detected entities from findings
+        findings = section.get("findings", {})
+        for detector_name, detections in findings.items():
+            if not isinstance(detections, list):
+                continue
+            for d in detections:
+                if isinstance(d, dict) and "entity_type" in d:
+                    logger.info("PS [%s] detected: %s = %r (score=%.2f, sanitized=%s)",
+                                scan_type, d["entity_type"], d.get("entity", ""),
+                                d.get("score", 0), d.get("sanitized_entity", ""))
         allowed = action != "block"
         modified_text = section.get("modified_text") if action == "modify" else None
-        violations = section.get("violations", [])
 
-        logger.info("PS [%s] → action=%s violations=%s", scan_type, action, violations)
+        # Extract violations — PS may return them at section level or result level
+        violations = section.get("violations", [])
+        if not violations:
+            violations = result.get("violations", [])
+
+        # Normalize violations to a consistent format for the frontend
+        normalized = []
+        for v in violations:
+            if isinstance(v, str):
+                normalized.append({"type": v})
+            elif isinstance(v, dict):
+                # Ensure a displayable type/name field exists
+                v.setdefault("type", v.get("category", v.get("name", v.get("entity_type", "unknown"))))
+                normalized.append(v)
+            else:
+                normalized.append({"type": str(v)})
+
+        logger.info("PS [%s] → action=%s violations=%s", scan_type, action, normalized)
         return PromptSecurityResult(
             allowed=allowed, action=action,
-            modified_text=modified_text, violations=violations, raw=data,
+            modified_text=modified_text, violations=normalized, raw=data,
         )
