@@ -919,6 +919,20 @@ async def delete_session(
     await db.commit()
 
 
+@app.delete("/sessions", status_code=204)
+async def delete_all_sessions(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete all chat sessions for the current user."""
+    result = await db.execute(
+        select(ChatSession).where(ChatSession.user_id == current_user.id)
+    )
+    for session in result.scalars().all():
+        await db.delete(session)
+    await db.commit()
+
+
 # ── File upload ───────────────────────────────────────────────────────────────
 @app.post("/upload")
 async def upload_file(
@@ -1124,6 +1138,7 @@ async def chat_stream(
             return
 
         # ── API mode: explicit PS scan + LiteLLM/per-user key ─────────────────
+        prompt_violations: list = []
         if ps_client:
             try:
                 prompt_tok_est = estimate_text_tokens(last_user_msg)
@@ -1136,6 +1151,7 @@ async def chat_stream(
                 )
                 logger.info("PS prompt result: action=%s, allowed=%s, violations=%s, modified=%s",
                             ps_result.action, ps_result.allowed, ps_result.violations, bool(ps_result.modified_text))
+                prompt_violations = ps_result.violations
                 if not ps_result.allowed:
                     await _log_msg(db, session_id, current_user.id, "assistant", "", model,
                                    ps_scanned=True, ps_blocked=True, ps_action="block",
@@ -1187,14 +1203,14 @@ async def chat_stream(
 
         # ── PS: scan response ─────────────────────────────────────────────────
         final_action = prompt_action
-        ps_violations: list = []
+        ps_violations: list = list(prompt_violations)
         if ps_client and reply:
             try:
                 ps_resp = await ps_client.protect_response(
                     response_text=reply,
                     user=current_user.email,
                 )
-                ps_violations = ps_resp.violations
+                ps_violations = prompt_violations + ps_resp.violations
                 if not ps_resp.allowed:
                     await _log_msg(db, session_id, current_user.id, "assistant", reply, model,
                                    ps_scanned=True, ps_blocked=True, ps_action="block",

@@ -828,8 +828,7 @@ reply = await client.chat.completions.create(
 
   async function clearAllHistory() {
     if (!serverSessions.length) return;
-    if (!confirm('Delete all conversations? This cannot be undone.')) return;
-    await Promise.all(serverSessions.map(s => authFetch(`/sessions/${s.id}`, { method: 'DELETE' })));
+    await authFetch('/sessions', { method: 'DELETE' });
     currentSessionId = null; messages = []; chatEl.innerHTML = '';
     serverSessions = [];
     renderHistory();
@@ -1438,47 +1437,47 @@ reply = await client.chat.completions.create(
         IN: {
           name: 'India', flag: '\u{1F1EE}\u{1F1F3}',
           entities: ['IN_AADHAAR', 'IN_PAN', 'PHONE_NUMBER', 'EMAIL_ADDRESS'],
-          prompt: 'Write an email to billing@prompt.security confirming the payment from Rajesh Kumar Sharma. His Aadhaar is 2345 6789 0009 and PAN card ABCPK1234D. CC him at rajesh.sharma@infosys.co.in and include his phone +91 98765 43210 for follow-up.'
+          prompt: 'Write an email to billing@prompt.security confirming the payment from Rajesh Kumar Sharma. His Aadhaar number is 2345 6789 0009 and PAN number is ABCPK1234D. CC him at email rajesh.sharma@infosys.co.in and include his phone number +91 98765 43210 for follow-up.'
         },
         IL: {
           name: 'Israel', flag: '\u{1F1EE}\u{1F1F1}',
           entities: ['IL_ID_NUMBER', 'IBAN_CODE', 'PHONE_NUMBER', 'EMAIL_ADDRESS'],
-          prompt: 'Write an email to transfer@prompt.security asking to wire transfer 10K USD to IBAN IL520108350000000012345 for the GPU purchase by Yael Cohen. Her Teudat Zehut is 329745814, phone +972 52-345-6789, email yael.cohen@wix.com.'
+          prompt: 'Write an email to transfer@prompt.security asking to wire transfer 10K USD to IBAN number IL520108350000000012345 for the GPU purchase by Yael Cohen. Her Israeli ID (Teudat Zehut) number is 329745814, phone number +972 52-345-6789, email address yael.cohen@wix.com.'
         },
         SG: {
           name: 'Singapore', flag: '\u{1F1F8}\u{1F1EC}',
           entities: ['SG_NRIC_FIN', 'PHONE_NUMBER', 'EMAIL_ADDRESS'],
-          prompt: 'Write a confirmation email to hr@prompt.security for the new hire Tan Wei Ming. His NRIC is S1234567D, phone +65 9123 4567, and email weiming.tan@grab.com. Include all details in the onboarding summary.'
+          prompt: 'Write a confirmation email to hr@prompt.security for the new hire Tan Wei Ming. His NRIC number is S1234567D, phone number is +65 9123 4567, and email address is weiming.tan@grab.com. Include all details in the onboarding summary.'
         },
         US: {
           name: 'United States', flag: '\u{1F1FA}\u{1F1F8}',
           entities: ['US_SSN', 'US_PASSPORT', 'US_DRIVER_LICENSE', 'PHONE_NUMBER', 'EMAIL_ADDRESS', 'US_BANK_NUMBER'],
-          prompt: 'Write an email to payroll@prompt.security to set up direct deposit for John Michael Smith. SSN 123-45-6789, passport 987654321, CA driver license D1234567. Chase account 000123456789. Reach him at +1 (415) 555-0198 or john.smith@gmail.com.'
+          prompt: 'Write an email to payroll@prompt.security to set up direct deposit for John Michael Smith. Social Security Number (SSN) 123-45-6789, US passport number 987654321, California driver license number D1234567, bank account number 000123456789 at Chase. Phone number +1 (415) 555-0198, email address john.smith@gmail.com.'
         },
         GB: {
           name: 'United Kingdom', flag: '\u{1F1EC}\u{1F1E7}',
           entities: ['UK_NHS', 'UK_NATIONAL_INSURANCE_NUMBER_NINO', 'PHONE_NUMBER', 'EMAIL_ADDRESS'],
-          prompt: 'Write an email to benefits@prompt.security to enroll Emma Louise Watson. NHS number 943 476 5919, NI number AB 12 34 56 C, phone +44 7700 900123, email emma.watson@barclays.co.uk. Please include all details for the benefits portal.'
+          prompt: 'Write an email to benefits@prompt.security to enroll Emma Louise Watson. NHS number is 943 476 5919, National Insurance (NI) number is AB 12 34 56 C, phone number +44 7700 900123, email address emma.watson@barclays.co.uk. Please include all details for the benefits portal.'
         },
         DE: {
           name: 'Germany', flag: '\u{1F1E9}\u{1F1EA}',
           entities: ['GERMANY_ID_NUMBER', 'GERMANY_PASSPORT_NUMBER', 'PHONE_NUMBER', 'EMAIL_ADDRESS'],
-          prompt: 'Write an email to compliance@prompt.security to verify Hans Mueller. Personalausweis T220001293, Reisepass C01X00T41, phone +49 170 1234567, email hans.mueller@siemens.de. Include all ID details for the KYC check.'
+          prompt: 'Write an email to compliance@prompt.security to verify Hans Mueller. German ID card (Personalausweis) number T220001293, German passport (Reisepass) number C01X00T41, phone number +49 170 1234567, email address hans.mueller@siemens.de. Include all ID details for the KYC check.'
         },
         JP: {
           name: 'Japan', flag: '\u{1F1EF}\u{1F1F5}',
           entities: ['JAPAN_MY_NUMBER_PERSONAL', 'JAPAN_PASSPORT_NUMBER', 'PHONE_NUMBER', 'EMAIL_ADDRESS'],
-          prompt: 'Write an email to tax@prompt.security to file the return for Tanaka Yuki. My Number 123456789018, passport TK1234567, phone +81 90-1234-5678, email yuki.tanaka@sony.co.jp. List all taxpayer details in the body.'
+          prompt: 'Write an email to tax@prompt.security to file the return for Tanaka Yuki. Individual My Number (マイナンバー) is 123456789016, Japanese passport number TK1234567, phone number +81 90-1234-5678, email address yuki.tanaka@sony.co.jp. List all taxpayer details in the body.'
         },
         AU: {
           name: 'Australia', flag: '\u{1F1E6}\u{1F1FA}',
           entities: ['AU_TFN', 'AU_ABN', 'AU_MEDICARE', 'PHONE_NUMBER', 'EMAIL_ADDRESS'],
-          prompt: 'Write an email to accounts@prompt.security to register Sarah Jane Mitchell as a contractor. TFN 615 456 789, ABN 51 824 753 556, Medicare 2123 45670 1. Contact her at +61 412 345 678 or sarah.mitchell@commbank.com.au.'
+          prompt: 'Write an email to accounts@prompt.security to register Sarah Jane Mitchell as a contractor. Tax File Number (TFN) 615 456 789, Australian Business Number (ABN) 51 824 753 556, Medicare card number 2123 45670 1. Phone number +61 412 345 678, email address sarah.mitchell@commbank.com.au.'
         },
         BR: {
           name: 'Brazil', flag: '\u{1F1E7}\u{1F1F7}',
           entities: ['BR_CPF_NUMBER', 'PHONE_NUMBER', 'EMAIL_ADDRESS'],
-          prompt: 'Write an email to finance@prompt.security to process the invoice for Carlos Eduardo Silva. CPF 123.456.789-09, phone +55 11 91234-5678, email carlos.silva@itau.com.br. Include all personal details for the payment record.'
+          prompt: 'Write an email to finance@prompt.security to process the invoice for Carlos Eduardo Silva. CPF number 123.456.789-09, phone number +55 11 91234-5678, email address carlos.silva@itau.com.br. Include all personal details for the payment record.'
         }
       }
     },
