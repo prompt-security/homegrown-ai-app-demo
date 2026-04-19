@@ -218,6 +218,9 @@ DEMO_PII = {
     "BR": {
         "cpf": "123.456.789-09",
     },
+    "MY": {
+        "mykad": "880415-14-5023",
+    },
 }
 
 
@@ -307,3 +310,18 @@ def test_australia_medicare():
 
 def test_brazil_cpf():
     assert br_cpf_valid(DEMO_PII["BR"]["cpf"]), f"CPF {DEMO_PII['BR']['cpf']} fails checksum"
+
+
+def test_malaysia_mykad_format():
+    """MyKad: YYMMDD-PB-#### format, no checksum — validate structure."""
+    mykad = DEMO_PII["MY"]["mykad"]
+    digits = mykad.replace("-", "")
+    assert len(digits) == 12 and digits.isdigit(), f"MyKad must be 12 digits, got {len(digits)}"
+    # Validate date of birth (first 6 digits)
+    yy, mm, dd = int(digits[0:2]), int(digits[2:4]), int(digits[4:6])
+    assert 1 <= mm <= 12, f"MyKad month {mm} invalid"
+    assert 1 <= dd <= 31, f"MyKad day {dd} invalid"
+    # Validate place-of-birth code (digits 7-8), 01-16 = Malaysian states
+    pb = int(digits[6:8])
+    valid_pb = set(range(1, 17)) | set(range(21, 60)) | set(range(60, 100))
+    assert pb in valid_pb, f"MyKad PB code {pb} invalid"

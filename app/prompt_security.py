@@ -1,4 +1,5 @@
 import json
+import time
 import httpx
 import logging
 from typing import Literal, Optional
@@ -7,12 +8,13 @@ logger = logging.getLogger(__name__)
 
 
 class PromptSecurityResult:
-    def __init__(self, allowed: bool, action: str, modified_text: Optional[str], violations: list, raw: dict):
+    def __init__(self, allowed: bool, action: str, modified_text: Optional[str], violations: list, raw: dict, raw_request: Optional[dict] = None):
         self.allowed = allowed
         self.action = action            # "pass" | "modify" | "block"
         self.modified_text = modified_text
         self.violations = violations
         self.raw = raw
+        self.raw_request = raw_request or {}
 
     def __repr__(self):
         return f"PromptSecurityResult(allowed={self.allowed}, action={self.action}, violations={self.violations})"
@@ -64,10 +66,57 @@ class PromptSecurityClient:
             payload["user"] = user
         return await self._call(payload, scan_type="response")
 
+    async def sanitize_file_submit(self, file_bytes: bytes, filename: str) -> str:
+        url = f"{self.base_url}/api/sanitizeFile"
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(
+                    url,
+                    headers={"APP-ID": self.app_id},
+                    files={"file": (filename, file_bytes)},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                return data["jobId"]
+        except httpx.HTTPStatusError as e:
+            logger.error("PS sanitizeFile submit error %s: %s", e.response.status_code, e.response.text)
+            raise
+        except httpx.RequestError as e:
+            logger.error("PS sanitizeFile connection error: %s", e)
+            raise
+
+    async def sanitize_file_poll(self, job_id: str, max_seconds: int = 30) -> dict:
+        url = f"{self.base_url}/api/sanitizeFile"
+        deadline = time.time() + max_seconds
+        import asyncio
+        while True:
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.get(
+                        url,
+                        params={"jobId": job_id},
+                        headers={"APP-ID": self.app_id},
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    logger.info("PS sanitizeFile poll jobId=%s: %s", job_id, json.dumps(data, default=str)[:300])
+                    if data.get("status") != "processing":
+                        return data
+            except httpx.HTTPStatusError as e:
+                logger.error("PS sanitizeFile poll error %s: %s", e.response.status_code, e.response.text)
+                raise
+            except httpx.RequestError as e:
+                logger.error("PS sanitizeFile poll connection error: %s", e)
+                raise
+            if time.time() >= deadline:
+                raise TimeoutError(f"File sanitization job {job_id} did not complete within {max_seconds}s")
+            await asyncio.sleep(1.0)
+
     async def _call(
         self, payload: dict, scan_type: Literal["prompt", "response"] = "prompt"
     ) -> PromptSecurityResult:
         url = f"{self.base_url}/api/protect"
+        raw_request = dict(payload)
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 resp = await client.post(url, json=payload, headers=self._headers)
@@ -120,4 +169,5 @@ class PromptSecurityClient:
         return PromptSecurityResult(
             allowed=allowed, action=action,
             modified_text=modified_text, violations=normalized, raw=data,
+            raw_request=raw_request,
         )

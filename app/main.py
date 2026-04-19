@@ -1061,6 +1061,8 @@ async def chat_stream(
     db.add(user_db_msg)
     await db.commit()
 
+    skip_ps = request.skip_ps
+
     async def generate():
         reply = ""
         prompt_action = "pass"
@@ -1068,6 +1070,8 @@ async def chat_stream(
         prompt_tokens: Optional[int] = None
         completion_tokens: Optional[int] = None
         total_tokens: Optional[int] = None
+        ps_prompt_raw: Optional[dict] = None
+        ps_resp_raw: Optional[dict] = None
 
         msgs = list(request.messages)
         payload = [{"role": "system", "content": system_prompt}] + [
@@ -1139,7 +1143,7 @@ async def chat_stream(
 
         # ── API mode: explicit PS scan + LiteLLM/per-user key ─────────────────
         prompt_violations: list = []
-        if ps_client:
+        if ps_client and not skip_ps:
             try:
                 prompt_tok_est = estimate_text_tokens(last_user_msg)
                 logger.info("PS prompt scan: user=%s, prompt_chars=%d, estimated_tokens=%d, prompt_preview=%.120s",
@@ -1152,11 +1156,12 @@ async def chat_stream(
                 logger.info("PS prompt result: action=%s, allowed=%s, violations=%s, modified=%s",
                             ps_result.action, ps_result.allowed, ps_result.violations, bool(ps_result.modified_text))
                 prompt_violations = ps_result.violations
+                ps_prompt_raw = {"request": ps_result.raw_request, "response": ps_result.raw}
                 if not ps_result.allowed:
                     await _log_msg(db, session_id, current_user.id, "assistant", "", model,
                                    ps_scanned=True, ps_blocked=True, ps_action="block",
                                    ps_violations=ps_result.violations)
-                    yield f"data: {json.dumps({'type': 'blocked', 'action': 'block', 'violations': ps_result.violations})}\n\n"
+                    yield f"data: {json.dumps({'type': 'blocked', 'action': 'block', 'violations': ps_result.violations, 'ps_raw': {'prompt': ps_prompt_raw}})}\n\n"
                     return
                 if ps_result.modified_text:
                     last_user_msg_eff = ps_result.modified_text
@@ -1204,18 +1209,19 @@ async def chat_stream(
         # ── PS: scan response ─────────────────────────────────────────────────
         final_action = prompt_action
         ps_violations: list = list(prompt_violations)
-        if ps_client and reply:
+        if ps_client and not skip_ps and reply:
             try:
                 ps_resp = await ps_client.protect_response(
                     response_text=reply,
                     user=current_user.email,
                 )
                 ps_violations = prompt_violations + ps_resp.violations
+                ps_resp_raw = {"request": ps_resp.raw_request, "response": ps_resp.raw}
                 if not ps_resp.allowed:
                     await _log_msg(db, session_id, current_user.id, "assistant", reply, model,
                                    ps_scanned=True, ps_blocked=True, ps_action="block",
                                    ps_violations=ps_violations, response_ms=resp_ms)
-                    yield f"data: {json.dumps({'type': 'revoke', 'action': 'block', 'violations': ps_violations})}\n\n"
+                    yield f"data: {json.dumps({'type': 'revoke', 'action': 'block', 'violations': ps_violations, 'ps_raw': {'prompt': ps_prompt_raw, 'response': ps_resp_raw}})}\n\n"
                     return
                 if ps_resp.modified_text:
                     reply = ps_resp.modified_text
@@ -1231,18 +1237,57 @@ async def chat_stream(
         prompt_tokens = prompt_tokens or estimate_message_tokens(payload, model=effective_model)
         total_tokens = total_tokens or (prompt_tokens + completion_tokens)
 
+        ps_active = bool(ps_client) and not skip_ps
         await _log_msg(db, session_id, current_user.id, "assistant", reply, model,
-                       ps_scanned=bool(ps_client), ps_action=final_action,
+                       ps_scanned=ps_active, ps_action=final_action,
                        ps_violations=ps_violations, response_ms=resp_ms)
 
         today_used = used_today + 1
-        yield f"data: {json.dumps({'type': 'done', 'model': model, 'session_id': session_id, 'ps_scanned': bool(ps_client), 'ps_action': final_action, 'ps_violations': ps_violations, 'messages_today': today_used, 'daily_limit': current_user.daily_message_limit, 'prompt_tokens': prompt_tokens, 'completion_tokens': completion_tokens, 'total_tokens': total_tokens})}\n\n"
+        ps_raw_payload = {"prompt": ps_prompt_raw, "response": ps_resp_raw} if ps_active else None
+        yield f"data: {json.dumps({'type': 'done', 'model': model, 'session_id': session_id, 'ps_scanned': ps_active, 'ps_action': final_action, 'ps_violations': ps_violations, 'messages_today': today_used, 'daily_limit': current_user.daily_message_limit, 'prompt_tokens': prompt_tokens, 'completion_tokens': completion_tokens, 'total_tokens': total_tokens, 'ps_raw': ps_raw_payload})}\n\n"
 
     return StreamingResponse(
         generate(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ── File Sanitization ─────────────────────────────────────────────────────────
+@app.post("/upload/sanitize")
+async def upload_sanitize(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    if not (current_user.ps_enabled and current_user.ps_tenant and current_user.ps_api_key_enc):
+        raise HTTPException(status_code=400, detail="Prompt Security is not configured. Set up PS in Settings first.")
+    try:
+        ps_app_id = decrypt(current_user.ps_api_key_enc)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="PS key could not be decrypted — re-enter it in Settings.")
+    ps_client = PromptSecurityClient(base_url=current_user.ps_tenant.base_url, app_id=ps_app_id)
+    file_bytes = await file.read()
+    t0 = time.monotonic()
+    try:
+        job_id = await ps_client.sanitize_file_submit(file_bytes, file.filename or "upload")
+        result = await ps_client.sanitize_file_poll(job_id, max_seconds=30)
+    except TimeoutError as e:
+        raise HTTPException(status_code=504, detail=str(e))
+    except Exception as e:
+        logger.error("File sanitization error for %s: %s", current_user.email, e)
+        raise HTTPException(status_code=502, detail=f"PS file sanitization failed: {e}")
+    scan_ms = round((time.monotonic() - t0) * 1000)
+    action = result.get("action", result.get("status", "pass"))
+    violations = result.get("violations", [])
+    sanitized_url = result.get("sanitizedFileUrl") or result.get("sanitized_file_url") or result.get("url")
+    return {
+        "job_id": job_id,
+        "action": action,
+        "violations": violations,
+        "sanitized_url": sanitized_url,
+        "scan_ms": scan_ms,
+        "raw": result,
+    }
 
 
 # ── User: LLM key overrides ───────────────────────────────────────────────────

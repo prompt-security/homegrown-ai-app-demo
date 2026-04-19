@@ -1,4 +1,4 @@
-# Humble Guard Demo v2
+# HGA Demo
 
 A multi-user AI chat application with deep [Prompt Security](https://www.prompt.security) integration, built with FastAPI, PostgreSQL, and LiteLLM.
 
@@ -16,6 +16,15 @@ A multi-user AI chat application with deep [Prompt Security](https://www.prompt.
 - **Public test API** — optional `POST /v1/responses` endpoint for SaaS scanners and external prompt testing
 - **Admin dashboard** — overview stats, charts, PS tenant management, user management, activity log with config change events
 - **Audit log** — all config changes (PS settings, LLM keys, user/tenant CRUD) appear in the activity log alongside chat messages
+
+### Demo & Education Features
+
+- **Interactive walkthrough** — step-by-step tour (in the Intro modal) showing the exact Python code running at each stage of a request: user input → PS prompt scan → LLM call → PS response scan → display
+- **API Flow diagram** — custom 3-column diagram (User → Homegrown App + PS Engine → LLM Providers) with bidirectional arrows; no external dependencies
+- **Side-by-side compare mode** — toggle in the header splits the main chat into two live columns: left streams with PS active, right streams raw LLM output, so the impact of PS is immediately visible
+- **PS API inspector** — collapsible panel beneath each PS violation card shows the raw PS request and response JSON, syntax-highlighted
+- **File sanitization demo** — dedicated "File Scan" tab in the Demo panel; drag-and-drop a PDF, DOCX, XLSX, or TXT file to run it through the PS `/api/sanitizeFile` endpoint and inspect the result
+- **Demo scenarios** — pre-built prompts for PII detection, topic policy, token DoS, and prompt injection with per-scenario "Load" and "Compare" buttons
 
 ---
 
@@ -52,8 +61,8 @@ Browser
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/carlos-payes/humble-demo.git
-cd humble-demo
+git clone https://github.com/prompt-security/hga-demo.git
+cd hga-demo
 
 cp .env.example .env
 ```
@@ -67,19 +76,23 @@ docker compose up -d
 ```
 
 > **Note:** On first run, LiteLLM applies ~110 database migrations. This takes 3–5 minutes. Subsequent starts are instant. Check progress with:
+>
 > ```bash
-> docker logs -f demo-hgapp-v2-litellm-1
+> docker logs -f demo-hgapp-litellm-1
 > ```
 
 ### 3. Open the app
 
-| URL | Description |
-|-----|-------------|
-| http://localhost:9000 | Chat UI |
-| http://localhost:9000/admin | Admin dashboard |
-| http://localhost:4000 | LiteLLM proxy (direct) |
+
+| URL                                                        | Description            |
+| ---------------------------------------------------------- | ---------------------- |
+| [http://localhost:9000](http://localhost:9000)             | Chat UI                |
+| [http://localhost:9000/admin](http://localhost:9000/admin) | Admin dashboard        |
+| [http://localhost:4000](http://localhost:4000)             | LiteLLM proxy (direct) |
+
 
 Default admin credentials (set in `.env`):
+
 ```
 Email:    admin@example.com
 Password: admin
@@ -150,14 +163,16 @@ python3 -c "import secrets; print(secrets.token_hex(32))"
 
 Models are configured in `litellm/config.yaml`. By default the following are enabled:
 
-| Model | Provider | Notes |
-|-------|----------|-------|
-| `gpt-4o` / `gpt-4o-mini` | OpenAI | Requires `OPENAI_API_KEY` |
-| `claude-3-5-sonnet-20241022` / `claude-3-5-haiku-20241022` | Anthropic | Requires `ANTHROPIC_API_KEY` |
-| `gemini-2.0-flash` / `gemini-1.5-pro` | Google | Requires `GOOGLE_API_KEY` |
-| `meta-llama/llama-3.1-8b-instruct:free` | OpenRouter | **Free** — requires `OPENROUTER_API_KEY` |
-| `nvidia/nemotron-nano-9b-v2:free` | OpenRouter | **Free** — requires `OPENROUTER_API_KEY` |
-| `mistralai/mistral-7b-instruct:free` | OpenRouter | **Free** — requires `OPENROUTER_API_KEY` |
+
+| Model                                                      | Provider   | Notes                                    |
+| ---------------------------------------------------------- | ---------- | ---------------------------------------- |
+| `gpt-4o` / `gpt-4o-mini`                                   | OpenAI     | Requires `OPENAI_API_KEY`                |
+| `claude-3-5-sonnet-20241022` / `claude-3-5-haiku-20241022` | Anthropic  | Requires `ANTHROPIC_API_KEY`             |
+| `gemini-2.0-flash` / `gemini-1.5-pro`                      | Google     | Requires `GOOGLE_API_KEY`                |
+| `meta-llama/llama-3.1-8b-instruct:free`                    | OpenRouter | **Free** — requires `OPENROUTER_API_KEY` |
+| `nvidia/nemotron-nano-9b-v2:free`                          | OpenRouter | **Free** — requires `OPENROUTER_API_KEY` |
+| `mistralai/mistral-7b-instruct:free`                       | OpenRouter | **Free** — requires `OPENROUTER_API_KEY` |
+
 
 Get a free OpenRouter key at [openrouter.ai](https://openrouter.ai).
 
@@ -175,10 +190,12 @@ Get a free OpenRouter key at [openrouter.ai](https://openrouter.ai).
 
 ### Modes
 
-| Mode | How it works |
-|------|-------------|
-| **API mode** | The app calls the PS API explicitly before and after each LLM call. Violations are shown as clickable detail cards. |
-| **Gateway mode** | All LLM traffic is routed through the PS proxy URL. No explicit scan calls — PS intercepts at the network layer. |
+
+| Mode             | How it works                                                                                                        |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------- |
+| **API mode**     | The app calls the PS API explicitly before and after each LLM call. Violations are shown as clickable detail cards. |
+| **Gateway mode** | All LLM traffic is routed through the PS proxy URL. No explicit scan calls — PS intercepts at the network layer.    |
+
 
 > **Important:** Each PS tenant has its own App ID. If you switch tenants, you must re-enter the App ID for the new tenant. The previous App ID is automatically cleared on tenant change.
 
@@ -259,55 +276,80 @@ curl https://YOUR-NGROK-URL.ngrok-free.app/v1/responses \
 
 Located at `/admin` (admin role required).
 
-| Tab | Description |
-|-----|-------------|
-| **Overview** | Message volume chart, model distribution, PS action breakdown, top users |
-| **Prompt Security** | PS mode stats, per-mode toggle cards |
-| **Users** | User list with per-user stats, inline edit, user detail view with charts |
-| **PS Tenants** | Create / edit / delete PS tenants |
-| **Activity Log** | Combined view of all chat messages and config change events (PS config, LLM keys, user/tenant CRUD) |
+
+| Tab                 | Description                                                                                         |
+| ------------------- | --------------------------------------------------------------------------------------------------- |
+| **Overview**        | Message volume chart, model distribution, PS action breakdown, top users                            |
+| **Prompt Security** | PS mode stats, per-mode toggle cards                                                                |
+| **Users**           | User list with per-user stats, inline edit, user detail view with charts                            |
+| **PS Tenants**      | Create / edit / delete PS tenants                                                                   |
+| **Activity Log**    | Combined view of all chat messages and config change events (PS config, LLM keys, user/tenant CRUD) |
+
 
 ---
 
 ## API Reference
 
 ### Auth
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/auth/login` | Get JWT token |
-| `GET` | `/auth/me` | Current user info |
+
+
+| Method | Path          | Description       |
+| ------ | ------------- | ----------------- |
+| `POST` | `/auth/login` | Get JWT token     |
+| `GET`  | `/auth/me`    | Current user info |
+
 
 ### Chat
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/chat/stream` | SSE streaming chat endpoint |
-| `GET` | `/models` | Available models |
-| `GET` | `/sessions` | User's chat sessions |
-| `GET` | `/sessions/{id}/messages` | Messages in a session |
+
+
+| Method | Path                      | Description                 |
+| ------ | ------------------------- | --------------------------- |
+| `POST` | `/chat/stream`            | SSE streaming chat endpoint |
+| `GET`  | `/models`                 | Available models            |
+| `GET`  | `/sessions`               | User's chat sessions        |
+| `GET`  | `/sessions/{id}/messages` | Messages in a session       |
+
 
 ### User Settings
-| Method | Path | Description |
-|--------|------|-------------|
-| `PATCH` | `/users/me/ps-config` | Update PS tenant, App ID, mode |
-| `PATCH` | `/users/me/llm-keys` | Update per-user LLM API keys |
-| `GET` | `/users/me/api-keys` | List app-issued API keys |
-| `POST` | `/users/me/api-keys` | Create an app-issued API key |
-| `DELETE` | `/users/me/api-keys/{id}` | Delete an app-issued API key |
-| `GET` | `/users/me/stats` | Personal usage stats |
+
+
+| Method   | Path                      | Description                    |
+| -------- | ------------------------- | ------------------------------ |
+| `PATCH`  | `/users/me/ps-config`     | Update PS tenant, App ID, mode |
+| `PATCH`  | `/users/me/llm-keys`      | Update per-user LLM API keys   |
+| `GET`    | `/users/me/api-keys`      | List app-issued API keys       |
+| `POST`   | `/users/me/api-keys`      | Create an app-issued API key   |
+| `DELETE` | `/users/me/api-keys/{id}` | Delete an app-issued API key   |
+| `GET`    | `/users/me/stats`         | Personal usage stats           |
+
+
+### File Sanitization
+
+
+| Method | Path               | Description                                                                                         |
+| ------ | ------------------ | --------------------------------------------------------------------------------------------------- |
+| `POST` | `/upload/sanitize` | Upload a file (PDF/DOCX/XLSX/TXT) to PS for sanitization; returns action, violations, and scan time |
+
 
 ### Public Test API
-| Method | Path | Description |
-|--------|------|-------------|
+
+
+| Method | Path            | Description                                                |
+| ------ | --------------- | ---------------------------------------------------------- |
 | `POST` | `/v1/responses` | Narrow public prompt endpoint authenticated by app API key |
 
+
 ### Admin
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/admin/stats` | Aggregate stats for dashboard |
-| `GET/POST/PATCH/DELETE` | `/admin/users/*` | User management |
-| `GET/POST/PATCH/DELETE` | `/admin/ps-tenants/*` | PS tenant management |
-| `GET` | `/admin/activity` | Combined chat + audit event log |
-| `GET` | `/admin/users/{id}/stats` | Per-user detailed stats |
+
+
+| Method                  | Path                      | Description                     |
+| ----------------------- | ------------------------- | ------------------------------- |
+| `GET`                   | `/admin/stats`            | Aggregate stats for dashboard   |
+| `GET/POST/PATCH/DELETE` | `/admin/users/`*          | User management                 |
+| `GET/POST/PATCH/DELETE` | `/admin/ps-tenants/`*     | PS tenant management            |
+| `GET`                   | `/admin/activity`         | Combined chat + audit event log |
+| `GET`                   | `/admin/users/{id}/stats` | Per-user detailed stats         |
+
 
 ---
 
@@ -345,7 +387,7 @@ uvicorn main:app --reload --port 8000
 │   ├── auth.py             # JWT auth, API key auth, password hashing
 │   ├── crypto.py           # Fernet encryption for stored API keys
 │   ├── database.py         # Async SQLAlchemy engine + session
-│   ├── prompt_security.py  # PS API client (protect_prompt / protect_response)
+│   ├── prompt_security.py  # PS API client (protect_prompt / protect_response / sanitize_file)
 │   ├── token_counter.py    # Token estimation helpers via LiteLLM
 │   └── static/
 │       ├── index.html      # Chat UI

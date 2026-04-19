@@ -116,6 +116,7 @@ class ChatRequest(BaseModel):
     model: Optional[str] = None
     system_prompt: Optional[str] = None
     session_id: Optional[str] = None
+    skip_ps: bool = False
 
 
 class TokenEstimateResponse(BaseModel):
