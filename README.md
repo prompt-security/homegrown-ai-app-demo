@@ -46,7 +46,7 @@ Browser
                 │
                 ├── OpenRouter  (free: llama-3.1, mistral-7b, nemotron-9b)
                 ├── OpenAI      (gpt-4o, gpt-4o-mini)
-                ├── Anthropic   (claude-3-5-sonnet, claude-3-5-haiku)
+                ├── Anthropic   (claude-sonnet-4-5)
                 └── Google      (gemini-2.0-flash, gemini-1.5-pro)
 ```
 
@@ -167,7 +167,7 @@ Models are configured in `litellm/config.yaml`. By default the following are ena
 | Model                                                      | Provider   | Notes                                    |
 | ---------------------------------------------------------- | ---------- | ---------------------------------------- |
 | `gpt-4o` / `gpt-4o-mini`                                   | OpenAI     | Requires `OPENAI_API_KEY`                |
-| `claude-3-5-sonnet-20241022` / `claude-3-5-haiku-20241022` | Anthropic  | Requires `ANTHROPIC_API_KEY`             |
+| `claude-sonnet-4-5-20250929`                                | Anthropic  | Requires `ANTHROPIC_API_KEY`             |
 | `gemini-2.0-flash` / `gemini-1.5-pro`                      | Google     | Requires `GOOGLE_API_KEY`                |
 | `meta-llama/llama-3.1-8b-instruct:free`                    | OpenRouter | **Free** — requires `OPENROUTER_API_KEY` |
 | `nvidia/nemotron-nano-9b-v2:free`                          | OpenRouter | **Free** — requires `OPENROUTER_API_KEY` |

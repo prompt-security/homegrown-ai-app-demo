@@ -75,7 +75,7 @@ header .spacer { flex: 1; }
 /* ── Chat ── */
 #chatWrap { flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
 #chat { flex: 1; overflow-y: auto; padding: 24px 20px; display: flex; flex-direction: column; gap: 16px; }
-#compareColumns { display: none; flex: 1; flex-direction: row; overflow: hidden; min-height: 0; }
+#compareColumns { display: none; flex: 1; flex-direction: column; overflow: hidden; min-height: 0; }
 #compareColumns.active { display: flex; }
 .cmp-col { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
 .cmp-col-hdr { padding: 10px 16px; font-size: 12px; font-weight: 700; text-align: center; border-bottom: 1px solid var(--border); background: var(--surface2); flex-shrink: 0; letter-spacing: 0.3px; }
@@ -470,23 +470,24 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
 .file-scan-meta { font-size:10px; color:var(--text-muted); margin-top:8px; font-family:monospace; }
 
 /* API Flow custom diagram */
-.api-flow-diagram { display:flex; align-items:center; padding:32px 20px; background:var(--surface2); border:1px solid var(--border); border-radius:12px; gap:0; }
-.afd-col { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; }
-.afd-h-arr { flex:0 0 56px; display:flex; align-items:center; justify-content:center; }
-.afd-h-arr svg { width:56px; height:24px; }
-.afd-v-arr { display:flex; align-items:center; justify-content:center; height:36px; }
-.afd-v-arr svg { width:24px; height:36px; }
+.api-flow-diagram { display:grid; grid-template-columns:1fr 80px 1fr 80px 1fr; align-items:center; padding:32px 20px; background:var(--surface2); border:1px solid var(--border); border-radius:12px; }
+.afd-cell { display:flex; flex-direction:column; align-items:center; justify-content:center; }
+.afd-h-arr { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:0 2px; }
+.afd-arr-row { display:flex; align-items:center; gap:3px; }
+.afd-arr-lbl { font-size:10px; font-family:monospace; white-space:nowrap; }
+.afd-v-arr { display:flex; flex-direction:row; align-items:flex-start; justify-content:center; padding:4px 0; gap:8px; }
+.afd-arr-col { display:flex; flex-direction:column; align-items:center; gap:2px; }
 .afd-node { background:#20232f; border:1.5px solid var(--border); border-radius:10px; padding:14px 16px; text-align:center; width:100%; box-sizing:border-box; }
 .afd-node-user { border-radius:50px; border-color:#6c63ff !important; border-width:2px !important; padding:20px 16px; }
 .afd-node-ps { border-color:#6c63ff !important; border-width:2px !important; }
 .afd-icon { font-size:22px; margin-bottom:6px; line-height:1; }
 .afd-label { font-size:13px; font-weight:600; color:var(--text); line-height:1.3; }
 .afd-sublabel { font-size:11px; color:var(--text-muted); margin-top:5px; line-height:1.5; }
-.afd-ps-acts { display:flex; gap:5px; margin-top:8px; justify-content:center; flex-wrap:wrap; }
-.afd-act { font-size:10px; font-weight:700; padding:2px 7px; border-radius:4px; letter-spacing:0.3px; }
-.afd-act-deny { background:#3a1515; color:#f87171; }
-.afd-act-redact { background:#2a2010; color:#fbbf24; }
-.afd-act-sanitize { background:#102a1e; color:#34d399; }
+.afd-ps-acts { display:flex; gap:6px; margin-top:10px; justify-content:center; flex-wrap:wrap; }
+.afd-act { font-size:11px; font-weight:700; padding:3px 10px; border-radius:4px; letter-spacing:0.3px; }
+.afd-act-block { background:rgba(231,76,60,0.15); color:#e74c3c; }
+.afd-act-modify { background:rgba(230,184,0,0.15); color:#e6b800; }
+.afd-act-log { background:rgba(46,204,113,0.15); color:#2ecc71; }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -523,10 +524,8 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
     <div class="spacer"></div>
     <select id="modelSelect"><option disabled selected>Loading…</option></select>
     <button class="icon-btn" id="sysPromptBtn" title="System prompt">⚙️</button>
-    <button class="icon-btn" id="codeViewBtn" title="View integration code" style="font-size:12px;font-family:monospace;padding:5px 10px">&lt;/&gt;</button>
     <button id="introBtn" title="Architecture & Integration Guide">Intro</button>
     <button id="demoBtn" title="Demo Scenarios">Demo</button>
-    <button id="compareModeBtn" title="Toggle side-by-side compare (with PS vs without)">⚡ Compare</button>
     <div id="psWidget">
       <button id="psToggleBtn" class="off" title="Click to toggle PS on/off">PS off</button>
       <button id="psGearBtn" title="Configure PS settings">⚙</button>
@@ -554,6 +553,11 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
   <div id="chatWrap">
     <div id="chat"></div>
     <div id="compareColumns">
+      <div id="cmpTopBar" style="display:flex;align-items:center;justify-content:space-between;padding:6px 14px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:12px;color:var(--text-muted);flex-shrink:0">
+        <span id="cmpLabel" style="overflow:hidden;flex:1;margin-right:12px;font-style:italic;word-break:break-word"></span>
+        <button id="cmpExitBtn" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:11px;padding:3px 10px;cursor:pointer">✕ Exit compare</button>
+      </div>
+      <div style="display:flex;flex:1;overflow:hidden;min-height:0">
       <div class="cmp-col" id="cmpLeft">
         <div class="cmp-col-hdr ps-side">🛡️ With Prompt Security</div>
         <div class="cmp-messages" id="cmpLeftMsgs"></div>
@@ -562,6 +566,7 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
       <div class="cmp-col" id="cmpRight">
         <div class="cmp-col-hdr nops-side">⚡ Without PS (raw LLM)</div>
         <div class="cmp-messages" id="cmpRightMsgs"></div>
+      </div>
       </div>
     </div>
   </div>
@@ -585,8 +590,8 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
 </div>
 
 <!-- ── Code View Modal ── -->
-<div class="backdrop" id="codeViewBackdrop">
-  <div id="codeViewModal" style="background:var(--surface);border:1px solid var(--border);border-radius:16px;width:900px;max-width:96vw;max-height:88vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.6)">
+<div class="backdrop" id="codeViewBackdrop" style="display:none!important">
+  <div id="codeViewModal" style="display:none">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px 0;flex-shrink:0">
       <h2 style="font-size:15px;font-weight:700">Prompt Security Integration Code</h2>
       <button id="cvClose" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:4px 8px;border-radius:6px">&times;</button>
@@ -747,8 +752,7 @@ reply = await client.chat.completions.create(
     <div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:4px">
       <button class="stab active" id="stab-ps"  onclick="switchSettingsTab('ps')">🔒 Prompt Security</button>
       <button class="stab"        id="stab-llm" onclick="switchSettingsTab('llm')" style="display:none">🤖 LLM API Keys</button>
-      <button class="stab" id="stab-api" disabled>🔑 App API Keys <span class="soon-badge">soon</span></button>
-      <button class="stab" disabled>🌐 AI Gateway <span class="soon-badge">soon</span></button>
+      <button class="stab" id="stab-api" disabled>🎯 Redteaming <span class="soon-badge">soon</span></button>
     </div>
     <!-- PS tab -->
     <div id="settingsPs">
@@ -792,6 +796,13 @@ reply = await client.chat.completions.create(
         <div id="gwMissingNote" style="display:none;margin-top:6px;font-size:11px;color:var(--red);padding:6px 10px;background:rgba(231,76,60,0.07);border-radius:6px;border:1px solid rgba(231,76,60,0.2)">
           ⚠️ Selected tenant has no Gateway URL configured. Ask your admin to add one.
         </div>
+        <div id="gwKeyWarning" style="display:none;margin-top:8px;font-size:11px;color:var(--yellow);padding:6px 10px;background:rgba(230,184,0,0.07);border-radius:6px;border:1px solid rgba(230,184,0,0.2)">
+          ⚠️ No LLM API key configured. Gateway mode requires your LLM provider key — <a href="#" style="color:var(--accent);text-decoration:none" onclick="event.preventDefault();switchSettingsTab('llm')">add it in LLM API Keys</a>.
+        </div>
+        <div id="gwProviderGuide" style="display:none;margin-top:12px">
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:8px">Proxy Mapping — set these in your LLM client</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="gwProviderCards"></div>
+        </div>
       </div>
     </div>
     <!-- LLM Keys tab -->
@@ -801,6 +812,7 @@ reply = await client.chat.completions.create(
         <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">OpenAI <span id="llmBadge-openai" class="llm-set-badge"></span></label><input type="password" id="llmKey-openai" placeholder="sk-…" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;outline:none"></div>
         <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">Anthropic <span id="llmBadge-anthropic" class="llm-set-badge"></span></label><input type="password" id="llmKey-anthropic" placeholder="sk-ant-…" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;outline:none"></div>
         <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">Google Gemini <span id="llmBadge-google" class="llm-set-badge"></span></label><input type="password" id="llmKey-google" placeholder="AIza…" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;outline:none"></div>
+        <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">Perplexity <span id="llmBadge-perplexity" class="llm-set-badge"></span></label><input type="password" id="llmKey-perplexity" placeholder="pplx-…" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;outline:none"></div>
         <div><label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">OpenRouter <span id="llmBadge-openrouter" class="llm-set-badge"></span></label><input type="password" id="llmKey-openrouter" placeholder="sk-or-…" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;outline:none"></div>
       </div>
       <div style="margin-top:10px">
@@ -838,6 +850,7 @@ reply = await client.chat.completions.create(
       </div>
     </div>
     <div class="modal-actions" style="margin-top:12px">
+      <a id="adminPsLink" href="/admin" style="display:none;font-size:11px;color:var(--accent);text-decoration:none;margin-right:auto;align-self:center">⚙️ Admin → PS Settings</a>
       <button class="btn btn-secondary" id="psCancelBtn">Cancel</button>
       <button class="btn btn-primary" id="psSaveBtn">Save</button>
     </div>
@@ -979,7 +992,8 @@ reply = await client.chat.completions.create(
     <!-- Architecture tab -->
     <div id="introArch" class="intro-content active">
       <div class="arch-toggle">
-        <button class="arch-toggle-btn active" data-arch="saas">SaaS / Hybrid</button>
+        <button class="arch-toggle-btn active" data-arch="saas">SaaS</button>
+        <button class="arch-toggle-btn" data-arch="hybrid">Hybrid</button>
         <button class="arch-toggle-btn" data-arch="onprem">On-Prem</button>
       </div>
 
@@ -991,7 +1005,6 @@ reply = await client.chat.completions.create(
           <svg id="svgSaas" class="arch-svg-pro" viewBox="0 0 1100 600" xmlns="http://www.w3.org/2000/svg">
             <defs>
               <marker id="ap-saas" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,1 L8,5 L0,9 z" fill="#6c63ff"/></marker>
-              <marker id="ag-saas" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,1 L8,5 L0,9 z" fill="#2ecc71"/></marker>
               <radialGradient id="halo-saas" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#6c63ff" stop-opacity="0.3"/><stop offset="70%" stop-color="#6c63ff" stop-opacity="0.05"/><stop offset="100%" stop-color="#6c63ff" stop-opacity="0"/></radialGradient>
               <linearGradient id="psfill-saas" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#2a265e"/><stop offset="100%" stop-color="#1a1d27"/></linearGradient>
             </defs>
@@ -1006,253 +1019,101 @@ reply = await client.chat.completions.create(
             <line x1="830" y1="45" x2="830" y2="560" stroke="#2a2d3a" stroke-dasharray="2 4"/>
             <text x="125" y="28" text-anchor="middle" class="zone-label" fill="#3498db">CUSTOMER INTERNAL LAN</text>
             <text x="400" y="28" text-anchor="middle" class="zone-label" fill="#2ecc71">CUSTOMER DMZ</text>
-            <text x="690" y="28" text-anchor="middle" class="zone-label" fill="#6c63ff">SAAS / PRIVATE CLOUD</text>
+            <text x="690" y="28" text-anchor="middle" class="zone-label" fill="#6c63ff">SAAS</text>
             <text x="965" y="28" text-anchor="middle" class="zone-label" fill="#e6b800">INTERNET</text>
 
-            <!-- ═══ CONNECTIONS ═══ -->
-            <!-- Purple: Chatbot → API GW (no protocol label per request) -->
-            <path d="M225,100 L305,110" stroke="#6c63ff" stroke-width="1.5" fill="none" marker-end="url(#ap-saas)" opacity="0.8"/>
-            <!-- Green: Internal ChatBot → API GW (internal flow) -->
-            <path d="M225,195 L305,145" stroke="#2ecc71" stroke-width="1.5" fill="none" marker-end="url(#ag-saas)" opacity="0.85"/>
-            <!-- Purple: API GW → Org Proxy (from right edge of GW straight right to Org Proxy) -->
-            <path d="M470,145 C485,145 495,200 513,240" stroke="#6c63ff" stroke-width="2" fill="none" marker-end="url(#ap-saas)"/>
-            <!-- Purple: Org Proxy → PS (enters PS from left side) -->
-            <path d="M548,240 C580,240 600,195 620,180" stroke="#6c63ff" stroke-width="2" fill="none" marker-end="url(#ap-saas)"/>
-            <!-- Purple: PS → 3rd Party LLMs (direct from SaaS, from right edge of PS) -->
-            <path d="M775,160 L855,130" stroke="#6c63ff" stroke-width="2" fill="none" marker-end="url(#ap-saas)"/>
-            <!-- Green: Org Proxy → 3rd Party LLMs (Private Link direct path) -->
-            <path d="M548,260 C700,330 820,320 855,225" stroke="#2ecc71" stroke-width="1.5" fill="none" marker-end="url(#ag-saas)" opacity="0.85"/>
-            <!-- Green: API GW → ps-openai-gw (splitting down-left for 1st party, from GW bottom-left) -->
-            <path d="M340,170 C330,240 280,320 240,355" stroke="#2ecc71" stroke-width="1.5" fill="none" marker-end="url(#ag-saas)" opacity="0.85"/>
-            <!-- Green: ps-openai-gw → 1st Party LLMs (straight down) -->
-            <path d="M180,425 L115,450" stroke="#2ecc71" stroke-width="1.5" fill="none" marker-end="url(#ag-saas)"/>
-            <!-- Green: ps-openai-gw → Org Proxy (now solid) -->
-            <path d="M340,370 C430,360 500,310 513,265" stroke="#2ecc71" stroke-width="1.5" fill="none" marker-end="url(#ag-saas)" opacity="0.85"/>
+            <!-- Zones (4: LAN, DMZ, SaaS/Cloud, Internet) -->
+            <rect x="0" y="0" width="250" height="600" fill="#3498db" opacity="0.03" rx="12"/>
+            <rect x="250" y="0" width="300" height="600" fill="#2ecc71" opacity="0.03"/>
+            <rect x="550" y="0" width="280" height="600" fill="#6c63ff" opacity="0.035"/>
+            <rect x="830" y="0" width="270" height="600" fill="#e6b800" opacity="0.02"/>
+            <line x1="250" y1="45" x2="250" y2="560" stroke="#2a2d3a" stroke-dasharray="2 4"/>
+            <line x1="550" y1="45" x2="550" y2="560" stroke="#2a2d3a" stroke-dasharray="2 4"/>
+            <line x1="830" y1="45" x2="830" y2="560" stroke="#2a2d3a" stroke-dasharray="2 4"/>
+            <text x="125" y="28" text-anchor="middle" class="zone-label" fill="#3498db">CUSTOMER INTERNAL LAN</text>
+            <text x="400" y="28" text-anchor="middle" class="zone-label" fill="#2ecc71">CUSTOMER DMZ</text>
+            <text x="690" y="28" text-anchor="middle" class="zone-label" fill="#6c63ff">SAAS</text>
+            <text x="965" y="28" text-anchor="middle" class="zone-label" fill="#e6b800">INTERNET</text>
+
+            <!-- CONNECTIONS (purple only) -->
+            <path d="M225,265 L305,148" stroke="#6c63ff" stroke-width="1.5" fill="none" marker-end="url(#ap-saas)" opacity="0.8"/>
+            <path d="M470,148 C485,148 495,205 513,245" stroke="#6c63ff" stroke-width="2" fill="none" marker-end="url(#ap-saas)"/>
+            <path d="M548,245 C575,245 598,205 625,190" stroke="#6c63ff" stroke-width="2" fill="none" marker-end="url(#ap-saas)"/>
+            <path d="M775,175 L855,155" stroke="#6c63ff" stroke-width="2" fill="none" marker-end="url(#ap-saas)"/>
 
             <!-- Animated packets -->
-            <circle r="3" fill="#6c63ff" opacity="0.9"><animateMotion dur="2s" repeatCount="indefinite" path="M225,100 L305,110"/></circle>
-            <circle r="3" fill="#2ecc71" opacity="0.9"><animateMotion dur="2.5s" repeatCount="indefinite" begin="0.8s" path="M225,195 L305,145"/></circle>
-            <circle r="3.5" fill="#6c63ff"><animateMotion dur="2.5s" repeatCount="indefinite" path="M470,145 C485,145 495,200 513,240"/></circle>
-            <circle r="3.5" fill="#6c63ff"><animateMotion dur="3s" repeatCount="indefinite" path="M548,240 C580,240 600,195 620,180"/></circle>
-            <circle r="3.5" fill="#6c63ff"><animateMotion dur="2.5s" repeatCount="indefinite" path="M775,160 L855,130"/></circle>
-            <circle r="3" fill="#2ecc71" opacity="0.85"><animateMotion dur="4s" repeatCount="indefinite" path="M548,260 C700,330 820,320 855,225"/></circle>
-            <circle r="3" fill="#2ecc71"><animateMotion dur="3.5s" repeatCount="indefinite" path="M340,170 C330,240 280,320 240,355"/></circle>
-            <circle r="3" fill="#2ecc71"><animateMotion dur="2s" repeatCount="indefinite" path="M180,425 L115,450"/></circle>
-            <circle r="2.5" fill="#2ecc71" opacity="0.8"><animateMotion dur="3.5s" repeatCount="indefinite" path="M340,370 C430,360 500,310 513,265"/></circle>
+            <circle r="3" fill="#6c63ff" opacity="0.9"><animateMotion dur="2s" repeatCount="indefinite" path="M225,265 L305,148"/></circle>
+            <circle r="3.5" fill="#6c63ff"><animateMotion dur="2.5s" repeatCount="indefinite" path="M470,148 C485,148 495,205 513,245"/></circle>
+            <circle r="3.5" fill="#6c63ff"><animateMotion dur="3s" repeatCount="indefinite" path="M548,245 C575,245 598,205 625,190"/></circle>
+            <circle r="3.5" fill="#6c63ff"><animateMotion dur="2.5s" repeatCount="indefinite" path="M775,175 L855,155"/></circle>
 
             <!-- Connection labels -->
-            <!-- API GW → Org Proxy: HTTPS/443 (on right side of curve, clearly on purple line) -->
-            <g transform="translate(485,195)">
-              <rect x="-28" y="-8" width="56" height="16" rx="3" fill="#0f1117" stroke="#6c63ff" stroke-opacity="0.5"/>
-              <text x="0" y="4" text-anchor="middle" class="proto" fill="#6c63ff">HTTPS/443</text>
-            </g>
-            <!-- Org Proxy → PS: HTTPS/443 (positioned above curve, before entering PS card) -->
-            <g transform="translate(590,225)">
-              <rect x="-28" y="-8" width="56" height="16" rx="3" fill="#0f1117" stroke="#6c63ff" stroke-opacity="0.5"/>
-              <text x="0" y="4" text-anchor="middle" class="proto" fill="#6c63ff">HTTPS/443</text>
-            </g>
-            <!-- PS → 3rd Party: HTTPS/443 -->
-            <g transform="translate(805,138)">
-              <rect x="-28" y="-8" width="56" height="16" rx="3" fill="#0f1117" stroke="#6c63ff" stroke-opacity="0.5"/>
-              <text x="0" y="4" text-anchor="middle" class="proto" fill="#6c63ff">HTTPS/443</text>
-            </g>
-            <!-- Org Proxy → 3rd Party: PRIVATE LINK + HTTPS/443 (green, on top of line) -->
-            <g transform="translate(720,305)">
-              <rect x="-45" y="-18" width="90" height="32" rx="3" fill="#0f1117" stroke="#2ecc71" stroke-opacity="0.5"/>
-              <text x="0" y="-4" text-anchor="middle" class="proto" fill="#2ecc71">PRIVATE LINK</text>
-              <text x="0" y="9" text-anchor="middle" class="proto" fill="#2ecc71">HTTPS/443</text>
-            </g>
-            <!-- API GW → ps-openai-gw: HTTPS/443 (green, on left curve) -->
-            <g transform="translate(290,250)">
-              <rect x="-28" y="-8" width="56" height="16" rx="3" fill="#0f1117" stroke="#2ecc71" stroke-opacity="0.5"/>
-              <text x="0" y="4" text-anchor="middle" class="proto" fill="#2ecc71">HTTPS/443</text>
-            </g>
-            <!-- ps-openai-gw → 1st Party LLMs: HTTPS/443 (green) -->
-            <g transform="translate(180,440)">
-              <rect x="-28" y="-8" width="56" height="16" rx="3" fill="#0f1117" stroke="#2ecc71" stroke-opacity="0.5"/>
-              <text x="0" y="4" text-anchor="middle" class="proto" fill="#2ecc71">HTTPS/443</text>
-            </g>
-            <!-- ps-openai-gw → Org Proxy: HTTP (green dashed scan path) -->
-            <g transform="translate(450,330)">
-              <rect x="-20" y="-8" width="40" height="16" rx="3" fill="#0f1117" stroke="#2ecc71" stroke-opacity="0.5"/>
-              <text x="0" y="4" text-anchor="middle" class="proto" fill="#2ecc71">HTTP</text>
-            </g>
+            <g transform="translate(487,200)"><rect x="-28" y="-8" width="56" height="16" rx="3" fill="#0f1117" stroke="#6c63ff" stroke-opacity="0.5"/><text x="0" y="4" text-anchor="middle" class="proto" fill="#6c63ff">HTTPS/443</text></g>
+            <g transform="translate(592,232)"><rect x="-28" y="-8" width="56" height="16" rx="3" fill="#0f1117" stroke="#6c63ff" stroke-opacity="0.5"/><text x="0" y="4" text-anchor="middle" class="proto" fill="#6c63ff">HTTPS/443</text></g>
+            <g transform="translate(810,152)"><rect x="-28" y="-8" width="56" height="16" rx="3" fill="#0f1117" stroke="#6c63ff" stroke-opacity="0.5"/><text x="0" y="4" text-anchor="middle" class="proto" fill="#6c63ff">HTTPS/443</text></g>
 
-            <!-- ═══ NODES ═══ -->
-
-            <!-- Chatbot (LAN, top) -->
-            <g transform="translate(25,65)">
+            <!-- NODES -->
+            <!-- Chatbot (LAN, centered) -->
+            <g transform="translate(25,230)">
               <rect width="200" height="70" rx="8" fill="#1a1d27" stroke="#3498db" stroke-opacity="0.35"/>
               <rect width="200" height="2" rx="1" fill="#3498db" opacity="0.5"/>
               <rect x="14" y="16" width="30" height="30" rx="6" fill="#3498db" fill-opacity="0.12" stroke="#3498db" stroke-opacity="0.3"/>
-              <!-- Chat bubble icon -->
-              <g transform="translate(29,31)" stroke="#3498db" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M-9,-6 h18 a2,2 0 012,2 v8 a2,2 0 01-2,2 h-12 l-5,4 v-14 a2,2 0 012,-2 z"/>
-                <circle cx="-3" cy="1" r="0.8" fill="#3498db"/>
-                <circle cx="1" cy="1" r="0.8" fill="#3498db"/>
-                <circle cx="5" cy="1" r="0.8" fill="#3498db"/>
-              </g>
+              <g transform="translate(29,31)" stroke="#3498db" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M-9,-6 h18 a2,2 0 012,2 v8 a2,2 0 01-2,2 h-12 l-5,4 v-14 a2,2 0 012,-2 z"/><circle cx="-3" cy="1" r="0.8" fill="#3498db"/><circle cx="1" cy="1" r="0.8" fill="#3498db"/><circle cx="5" cy="1" r="0.8" fill="#3498db"/></g>
               <text x="54" y="35" class="n-title">Chatbot</text>
               <text x="54" y="52" class="n-desc">Homegrown GenAI App</text>
               <circle cx="186" cy="14" r="3" fill="#2ecc71"/>
             </g>
-
-            <!-- Internal ChatBot (LAN, below chatbot) -->
-            <g transform="translate(25,160)">
-              <rect width="200" height="70" rx="8" fill="#1a1d27" stroke="#3498db" stroke-opacity="0.35"/>
-              <rect width="200" height="2" rx="1" fill="#3498db" opacity="0.5"/>
-              <rect x="14" y="16" width="30" height="30" rx="6" fill="#3498db" fill-opacity="0.12" stroke="#3498db" stroke-opacity="0.3"/>
-              <!-- Building/corporate chat icon -->
-              <g transform="translate(29,31)" stroke="#3498db" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="-8" y="-8" width="16" height="13" rx="1"/>
-                <line x1="-5" y1="-4" x2="-3" y2="-4"/>
-                <line x1="-5" y1="-1" x2="-3" y2="-1"/>
-                <line x1="3" y1="-4" x2="5" y2="-4"/>
-                <line x1="3" y1="-1" x2="5" y2="-1"/>
-                <path d="M-4,5 v4 h8 v-4"/>
-              </g>
-              <text x="54" y="35" class="n-title">Internal ChatBot</text>
-              <text x="54" y="52" class="n-desc">Employee Assistant</text>
-              <circle cx="186" cy="14" r="3" fill="#2ecc71"/>
-            </g>
-
-            <!-- API Gateway (DMZ, top-left of DMZ) -->
-            <g transform="translate(305,75)">
+            <!-- API Gateway (DMZ) -->
+            <g transform="translate(305,100)">
               <rect width="165" height="95" rx="8" fill="#1a1d27" stroke="#2ecc71" stroke-opacity="0.45"/>
               <rect width="165" height="2" rx="1" fill="#2ecc71" opacity="0.6"/>
               <rect x="14" y="14" width="30" height="30" rx="6" fill="#2ecc71" fill-opacity="0.14" stroke="#2ecc71" stroke-opacity="0.4"/>
-              <!-- Gateway routing icon: split/fork with arrows -->
-              <g transform="translate(29,29)" stroke="#2ecc71" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M-9,0 L-3,0"/>
-                <path d="M-3,0 L3,-5"/>
-                <path d="M-3,0 L3,5"/>
-                <path d="M3,-5 L9,-5"/>
-                <path d="M3,5 L9,5"/>
-                <circle cx="-3" cy="0" r="1.2" fill="#2ecc71"/>
-                <path d="M7,-7 L9,-5 L7,-3"/>
-                <path d="M7,3 L9,5 L7,7"/>
-              </g>
+              <g transform="translate(29,29)" stroke="#2ecc71" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M-9,0 L-3,0"/><path d="M-3,0 L3,-5"/><path d="M-3,0 L3,5"/><path d="M3,-5 L9,-5"/><path d="M3,5 L9,5"/><circle cx="-3" cy="0" r="1.2" fill="#2ecc71"/><path d="M7,-7 L9,-5 L7,-3"/><path d="M7,3 L9,5 L7,7"/></g>
               <text x="54" y="32" class="n-title">API Gateway</text>
               <text x="54" y="48" class="n-desc">Proxy Mapping</text>
               <text x="14" y="68" class="n-meta">Route from: LLM</text>
               <text x="14" y="80" class="n-meta">Route to: Prompt Security</text>
               <circle cx="151" cy="14" r="3" fill="#2ecc71"/>
             </g>
-
-            <!-- Org Proxy (DMZ, lower position so API GW → Org Proxy line is visible) -->
-            <g transform="translate(478,220)">
+            <!-- Org Proxy (DMZ) -->
+            <g transform="translate(478,225)">
               <rect width="70" height="70" rx="8" fill="#1a1d27" stroke="#7a7d8e" stroke-opacity="0.5"/>
               <rect width="70" height="2" rx="1" fill="#7a7d8e" opacity="0.6"/>
               <rect x="21" y="12" width="28" height="28" rx="6" fill="#7a7d8e" fill-opacity="0.1" stroke="#7a7d8e" stroke-opacity="0.3"/>
-              <!-- Server/proxy icon: stacked rectangles like a server rack -->
-              <g transform="translate(35,26)" stroke="#7a7d8e" stroke-width="1.3" fill="none">
-                <rect x="-8" y="-8" width="16" height="6" rx="1"/>
-                <rect x="-8" y="-1" width="16" height="6" rx="1"/>
-                <rect x="-8" y="6" width="16" height="6" rx="1"/>
-                <circle cx="-5" cy="-5" r="0.8" fill="#7a7d8e"/>
-                <circle cx="-5" cy="2" r="0.8" fill="#7a7d8e"/>
-                <circle cx="-5" cy="9" r="0.8" fill="#7a7d8e"/>
-              </g>
+              <g transform="translate(35,26)" stroke="#7a7d8e" stroke-width="1.3" fill="none"><rect x="-8" y="-8" width="16" height="6" rx="1"/><rect x="-8" y="-1" width="16" height="6" rx="1"/><rect x="-8" y="6" width="16" height="6" rx="1"/><circle cx="-5" cy="-5" r="0.8" fill="#7a7d8e"/><circle cx="-5" cy="2" r="0.8" fill="#7a7d8e"/><circle cx="-5" cy="9" r="0.8" fill="#7a7d8e"/></g>
               <text x="35" y="55" text-anchor="middle" class="n-title-sm" style="font-size:10px">Org Proxy</text>
-              <text x="35" y="64" text-anchor="middle" class="n-desc" style="font-size:8px">Private Link</text>
+              <text x="35" y="64" text-anchor="middle" class="n-desc" style="font-size:8px">Internet egress</text>
               <circle cx="56" cy="12" r="3" fill="#2ecc71"/>
             </g>
-
-            <!-- ps-openai-gw (straddles LAN/DMZ border at x=250) -->
-            <g transform="translate(120,355)">
-              <rect width="240" height="70" rx="8" fill="#1a1d27" stroke="#6c63ff" stroke-opacity="0.5" stroke-dasharray="4 3"/>
-              <rect width="240" height="2" rx="1" fill="#6c63ff" opacity="0.7"/>
-              <rect x="12" y="18" width="28" height="28" rx="6" fill="#6c63ff" fill-opacity="0.12" stroke="#6c63ff" stroke-opacity="0.3"/>
-              <!-- K8s pod hexagon icon -->
-              <g transform="translate(26,32)" stroke="#6c63ff" stroke-width="1.3" fill="none" stroke-linejoin="round">
-                <path d="M0,-10 L8.5,-5 L8.5,5 L0,10 L-8.5,5 L-8.5,-5 Z" fill="#6c63ff" fill-opacity="0.08"/>
-                <circle cx="0" cy="0" r="2.5" fill="#6c63ff" fill-opacity="0.3"/>
-              </g>
-              <text x="50" y="30" class="n-title-sm" fill="#6c63ff" style="font-family:monospace">ps-openai-gw</text>
-              <text x="50" y="46" class="n-desc">Prompt Security pod</text>
-              <text x="50" y="58" class="n-desc">Routes 1st-party LLMs</text>
-              <circle cx="226" cy="14" r="3" fill="#6c63ff"/>
-            </g>
-
-            <!-- 1st Party LLMs (LAN, bottom — positioned below ps-openai-gw with gap) -->
-            <g transform="translate(15,450)">
-              <rect width="200" height="80" rx="8" fill="#1a1d27" stroke="#2ecc71" stroke-opacity="0.3"/>
-              <rect width="200" height="2" rx="1" fill="#2ecc71" opacity="0.5"/>
-              <rect x="12" y="10" width="28" height="28" rx="6" fill="#2ecc71" fill-opacity="0.1" stroke="#2ecc71" stroke-opacity="0.3"/>
-              <!-- Neural network / CPU chip icon -->
-              <g transform="translate(26,24)" stroke="#2ecc71" stroke-width="1.3" fill="none" stroke-linejoin="round">
-                <rect x="-7" y="-7" width="14" height="14" rx="1.5"/>
-                <rect x="-4" y="-4" width="8" height="8" rx="0.5"/>
-                <line x1="-9" y1="-4" x2="-7" y2="-4"/>
-                <line x1="-9" y1="0" x2="-7" y2="0"/>
-                <line x1="-9" y1="4" x2="-7" y2="4"/>
-                <line x1="7" y1="-4" x2="9" y2="-4"/>
-                <line x1="7" y1="0" x2="9" y2="0"/>
-                <line x1="7" y1="4" x2="9" y2="4"/>
-                <line x1="-4" y1="-9" x2="-4" y2="-7"/>
-                <line x1="0" y1="-9" x2="0" y2="-7"/>
-                <line x1="4" y1="-9" x2="4" y2="-7"/>
-                <line x1="-4" y1="7" x2="-4" y2="9"/>
-                <line x1="0" y1="7" x2="0" y2="9"/>
-                <line x1="4" y1="7" x2="4" y2="9"/>
-              </g>
-              <text x="50" y="24" class="n-title-sm">1st Party LLMs</text>
-              <text x="50" y="36" class="n-desc">Self-hosted · Private</text>
-              <g transform="translate(12,50)">
-                <rect x="0" y="0" width="58" height="18" rx="3" fill="#20232f" stroke="#2ecc71" stroke-opacity="0.2"/><text x="29" y="12" text-anchor="middle" class="pill">HuggingFace</text>
-                <rect x="64" y="0" width="44" height="18" rx="3" fill="#20232f" stroke="#2ecc71" stroke-opacity="0.2"/><text x="86" y="12" text-anchor="middle" class="pill">Llama 2</text>
-                <rect x="114" y="0" width="50" height="18" rx="3" fill="#20232f" stroke="#2ecc71" stroke-opacity="0.2"/><text x="139" y="12" text-anchor="middle" class="pill">Mistral AI</text>
-              </g>
-              <circle cx="186" cy="14" r="3" fill="#2ecc71"/>
-            </g>
-
-            <!-- Prompt Security HERO (SaaS/Cloud zone) - with Prompt logo -->
-            <g transform="translate(625,130)">
+            <!-- Prompt Security (SaaS/Cloud zone) -->
+            <g transform="translate(625,145)">
               <ellipse cx="75" cy="45" rx="100" ry="65" fill="url(#halo-saas)"/>
               <rect x="-4" y="-4" width="158" height="98" rx="10" fill="none" stroke="#6c63ff" stroke-opacity="0.3"/>
               <rect width="150" height="90" rx="8" fill="url(#psfill-saas)" stroke="#6c63ff" stroke-width="1.5"/>
               <rect width="150" height="3" rx="1.5" fill="#6c63ff"/>
-              <!-- Prompt Security logo image (shows "Prompt from SentinelOne") -->
-              <image href="/static/prompt-logo.png" x="25" y="12" width="100" height="40" preserveAspectRatio="xMidYMid meet"/>
-              <text x="75" y="72" text-anchor="middle" class="ps-sub" style="font-size:8px;letter-spacing:0.6px">SCAN · PROTECT · SANITIZE</text>
+              <image href="/static/prompt-security-logo.png" x="25" y="12" width="100" height="40" preserveAspectRatio="xMidYMid meet"/>
+              <text x="75" y="72" text-anchor="middle" class="ps-sub" style="font-size:8px;letter-spacing:0.6px">PROTECT · SANITIZE</text>
             </g>
-
-            <!-- 3rd Party LLMs (Internet zone) -->
+            <!-- 3rd Party LLMs (Internet) -->
             <g transform="translate(855,60)">
               <rect width="220" height="320" rx="8" fill="#1a1d27" stroke="#e6b800" stroke-opacity="0.35"/>
               <rect width="220" height="2" rx="1" fill="#e6b800" opacity="0.5"/>
-              <!-- Globe/internet icon in top-right corner -->
               <rect x="172" y="10" width="36" height="36" rx="7" fill="#e6b800" fill-opacity="0.12" stroke="#e6b800" stroke-opacity="0.3"/>
-              <g transform="translate(190,28)" stroke="#e6b800" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="0" cy="0" r="10"/>
-                <ellipse cx="0" cy="0" rx="4" ry="10"/>
-                <line x1="-10" y1="0" x2="10" y2="0"/>
-                <path d="M-9,-5 h18 M-9,5 h18" opacity="0.6"/>
-              </g>
+              <g transform="translate(190,28)" stroke="#e6b800" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="0" cy="0" r="10"/><ellipse cx="0" cy="0" rx="4" ry="10"/><line x1="-10" y1="0" x2="10" y2="0"/><path d="M-9,-5 h18 M-9,5 h18" opacity="0.6"/></g>
               <text x="14" y="28" class="n-title">3rd Party LLMs</text>
               <text x="14" y="44" class="n-desc">Public cloud providers</text>
-              <g transform="translate(14,60)">
-                <rect width="192" height="28" rx="4" fill="#20232f"/><text x="96" y="18" text-anchor="middle" class="pill" style="font-size:11px">OpenAI</text>
-                <rect y="36" width="192" height="28" rx="4" fill="#20232f"/><text x="96" y="54" text-anchor="middle" class="pill" style="font-size:11px">AWS Bedrock</text>
-                <rect y="72" width="192" height="28" rx="4" fill="#20232f"/><text x="96" y="90" text-anchor="middle" class="pill" style="font-size:11px">Azure OpenAI</text>
-                <rect y="108" width="192" height="28" rx="4" fill="#20232f"/><text x="96" y="126" text-anchor="middle" class="pill" style="font-size:11px">Anthropic</text>
-                <rect y="144" width="192" height="28" rx="4" fill="#20232f"/><text x="96" y="162" text-anchor="middle" class="pill" style="font-size:11px">Google Vertex</text>
-                <rect y="180" width="192" height="28" rx="4" fill="#20232f"/><text x="96" y="198" text-anchor="middle" class="pill" style="font-size:11px">Cohere · Mistral</text>
-              </g>
+              <g transform="translate(14,60)"><rect width="192" height="28" rx="4" fill="#20232f"/><text x="96" y="18" text-anchor="middle" class="pill" style="font-size:11px">OpenAI</text><rect y="36" width="192" height="28" rx="4" fill="#20232f"/><text x="96" y="54" text-anchor="middle" class="pill" style="font-size:11px">AWS Bedrock</text><rect y="72" width="192" height="28" rx="4" fill="#20232f"/><text x="96" y="90" text-anchor="middle" class="pill" style="font-size:11px">Azure OpenAI</text><rect y="108" width="192" height="28" rx="4" fill="#20232f"/><text x="96" y="126" text-anchor="middle" class="pill" style="font-size:11px">Anthropic</text><rect y="144" width="192" height="28" rx="4" fill="#20232f"/><text x="96" y="162" text-anchor="middle" class="pill" style="font-size:11px">Google Vertex</text><rect y="180" width="192" height="28" rx="4" fill="#20232f"/><text x="96" y="198" text-anchor="middle" class="pill" style="font-size:11px">Cohere · Mistral</text></g>
               <circle cx="160" cy="14" r="3" fill="#2ecc71"/>
             </g>
 
-            <!-- Legend (bottom) -->
+            <!-- Legend -->
             <g transform="translate(20,578)">
               <line x1="0" y1="0" x2="20" y2="0" stroke="#6c63ff" stroke-width="2"/>
-              <text x="26" y="4" class="n-desc" fill="#7a7d8e">External flow: Chatbot → API GW → PS → 3rd Party LLMs</text>
-              <line x1="380" y1="0" x2="400" y2="0" stroke="#2ecc71" stroke-width="2"/>
-              <text x="406" y="4" class="n-desc" fill="#7a7d8e">Internal flow: via ps-openai-gw + Org Proxy (Private Link)</text>
-              <rect x="780" y="-5" width="10" height="10" rx="5" fill="#2ecc71"/>
-              <text x="796" y="4" class="n-desc" fill="#7a7d8e">Operational</text>
+              <text x="26" y="4" class="n-desc" fill="#7a7d8e">Flow: Chatbot → API GW → Org Proxy → PS (SaaS) → 3rd Party LLMs</text>
+              <rect x="680" y="-5" width="10" height="10" rx="5" fill="#2ecc71"/>
+              <text x="696" y="4" class="n-desc" fill="#7a7d8e">Operational</text>
             </g>
-
-            <text x="1080" y="594" text-anchor="end" style="font-family:monospace;font-size:8px;fill:#7a7d8e;opacity:0.4;letter-spacing:1px">FIG. 01 — SAAS / HYBRID TOPOLOGY</text>
+            <text x="1080" y="594" text-anchor="end" style="font-family:monospace;font-size:8px;fill:#7a7d8e;opacity:0.4;letter-spacing:1px">FIG. 01 — SAAS TOPOLOGY</text>
           </svg>
 
         </div>
@@ -1260,20 +1121,174 @@ reply = await client.chat.completions.create(
           <span class="fb-step">Chatbot</span><span class="fb-arrow">&rarr;</span>
           <span class="fb-step">API Gateway</span><span class="fb-arrow">&rarr;</span>
           <span class="fb-step">Org Proxy</span><span class="fb-arrow">&rarr;</span>
-          <span class="fb-step fb-ps">Prompt Security</span><span class="fb-arrow">&rarr;</span>
+          <span class="fb-step fb-ps">Prompt Security (SaaS)</span><span class="fb-arrow">&rarr;</span>
           <span class="fb-step">3rd Party LLMs</span>
-          <span style="margin-left:auto;font-size:9px;color:var(--green);opacity:0.7">1st Party: API GW &rarr; ps-openai-gw &rarr; LLMs</span>
         </div>
-        <div class="arch-code-block">
-          <div class="arch-code-hdr">Proxy Mapping &amp; Code Changes</div>
-          <div class="arch-code-body">
-            <div class="acb-item"><code>LLM endpoint</code> &mdash; swap the base URL from your provider to the PS gateway</div>
-            <div class="acb-item"><code>header: forward-domain</code> &mdash; original LLM domain to forward to</div>
-            <div class="acb-item"><code>header: ps-app-id</code> &mdash; your Prompt Security App ID</div>
-          </div>
-        </div>
+        <div style="text-align:right;margin-top:8px;font-size:11px;color:var(--accent);cursor:pointer" onclick="document.querySelector('[data-intro=integ]').click()">See Integration Guide →</div>
       </div>
 
+
+      <!-- Hybrid view (PS hosted in Internet, DMZ has API GW + ps-openai-gw + Org Proxy) -->
+      <div id="archHybrid" class="arch-view">
+        <div class="arch-stage" style="position:relative">
+          <div class="arch-tooltip" id="archTooltipHybrid"><div class="tt-title"></div><div class="tt-desc"></div></div>
+          <svg id="svgHybrid" class="arch-svg-pro" viewBox="0 0 1100 600" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <marker id="ap-hy" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,1 L8,5 L0,9 z" fill="#6c63ff"/></marker>
+              <marker id="ag-hy" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,1 L8,5 L0,9 z" fill="#2ecc71"/></marker>
+              <radialGradient id="halo-hy" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#6c63ff" stop-opacity="0.3"/><stop offset="70%" stop-color="#6c63ff" stop-opacity="0.05"/><stop offset="100%" stop-color="#6c63ff" stop-opacity="0"/></radialGradient>
+              <linearGradient id="psfill-hy" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#2a265e"/><stop offset="100%" stop-color="#1a1d27"/></linearGradient>
+            </defs>
+
+            <!-- Zones: LAN(0-250) | DMZ(250-640) | INTERNET(640-1100) -->
+            <rect x="0" y="0" width="250" height="600" fill="#3498db" opacity="0.03" rx="12"/>
+            <rect x="250" y="0" width="390" height="600" fill="#2ecc71" opacity="0.03"/>
+            <rect x="640" y="0" width="460" height="600" fill="#e6b800" opacity="0.02"/>
+            <line x1="250" y1="45" x2="250" y2="560" stroke="#2a2d3a" stroke-dasharray="2 4"/>
+            <line x1="640" y1="45" x2="640" y2="560" stroke="#2a2d3a" stroke-dasharray="2 4"/>
+            <text x="125" y="28" text-anchor="middle" class="zone-label" fill="#3498db">CUSTOMER INTERNAL LAN</text>
+            <text x="445" y="28" text-anchor="middle" class="zone-label" fill="#2ecc71">CUSTOMER DMZ</text>
+            <text x="870" y="28" text-anchor="middle" class="zone-label" fill="#e6b800">INTERNET</text>
+
+            <!-- CONNECTIONS -->
+            <!-- Chatbot → API GW -->
+            <path d="M215,110 L265,110" stroke="#6c63ff" stroke-width="1.5" fill="none" marker-end="url(#ap-hy)" opacity="0.8"/>
+            <!-- Internal ChatBot → API GW -->
+            <path d="M215,200 L265,150" stroke="#6c63ff" stroke-width="1.5" fill="none" marker-end="url(#ap-hy)" opacity="0.75"/>
+            <!-- API GW → ps-openai-gw (near-vertical) -->
+            <path d="M348,155 C348,215 358,248 358,280" stroke="#6c63ff" stroke-width="2" fill="none" marker-end="url(#ap-hy)"/>
+            <!-- ps-openai-gw → Org Proxy (clear gap of 60px) -->
+            <path d="M450,315 L510,300" stroke="#6c63ff" stroke-width="2" fill="none" marker-end="url(#ap-hy)"/>
+            <!-- Org Proxy → Prompt Security (protection, purple) -->
+            <path d="M630,278 C638,252 652,210 668,155" stroke="#6c63ff" stroke-width="2" fill="none" marker-end="url(#ap-hy)"/>
+            <!-- Org Proxy → 3rd Party LLMs (LLM call, green) -->
+            <path d="M630,312 C655,342 740,328 860,240" stroke="#2ecc71" stroke-width="1.5" fill="none" marker-end="url(#ag-hy)" opacity="0.85"/>
+            <!-- ps-openai-gw → 1st Party LLMs (direct, green) -->
+            <path d="M265,340 C252,368 238,398 215,445" stroke="#2ecc71" stroke-width="1.5" fill="none" marker-end="url(#ag-hy)" opacity="0.85"/>
+
+            <!-- Animated packets -->
+            <circle r="3" fill="#6c63ff" opacity="0.9"><animateMotion dur="2s" repeatCount="indefinite" path="M215,110 L265,110"/></circle>
+            <circle r="3" fill="#6c63ff" opacity="0.75"><animateMotion dur="2.8s" repeatCount="indefinite" begin="0.5s" path="M215,200 L265,150"/></circle>
+            <circle r="3.5" fill="#6c63ff"><animateMotion dur="2.2s" repeatCount="indefinite" path="M348,155 C348,215 358,248 358,280"/></circle>
+            <circle r="3.5" fill="#6c63ff"><animateMotion dur="1.8s" repeatCount="indefinite" path="M450,315 L510,300"/></circle>
+            <circle r="3.5" fill="#6c63ff"><animateMotion dur="2.5s" repeatCount="indefinite" path="M630,278 C638,252 652,210 668,155"/></circle>
+            <circle r="3" fill="#2ecc71" opacity="0.85"><animateMotion dur="3s" repeatCount="indefinite" begin="0.4s" path="M630,312 C655,342 740,328 860,240"/></circle>
+            <circle r="3" fill="#2ecc71" opacity="0.85"><animateMotion dur="3.5s" repeatCount="indefinite" begin="1s" path="M265,340 C252,368 238,398 215,445"/></circle>
+
+            <!-- Connection labels -->
+            <g transform="translate(351,222)"><rect x="-28" y="-8" width="56" height="16" rx="3" fill="#0f1117" stroke="#6c63ff" stroke-opacity="0.5"/><text x="0" y="4" text-anchor="middle" class="proto" fill="#6c63ff">HTTPS/443</text></g>
+            <g transform="translate(480,289)"><rect x="-18" y="-7" width="36" height="14" rx="3" fill="#0f1117" stroke="#6c63ff" stroke-opacity="0.6"/><text x="0" y="3" text-anchor="middle" class="proto" fill="#6c63ff">HTTP</text></g>
+            <g transform="translate(480,306)"><rect x="-18" y="-7" width="36" height="14" rx="3" fill="#0f1117" stroke="#2ecc71" stroke-opacity="0.6"/><text x="0" y="3" text-anchor="middle" class="proto" fill="#2ecc71">HTTP</text></g>
+            <g transform="translate(655,218)"><rect x="-32" y="-8" width="64" height="16" rx="3" fill="#0f1117" stroke="#6c63ff" stroke-opacity="0.6"/><text x="0" y="4" text-anchor="middle" class="proto" fill="#6c63ff">HTTPS/443</text></g>
+            <g transform="translate(750,352)"><rect x="-32" y="-8" width="64" height="16" rx="3" fill="#0f1117" stroke="#2ecc71" stroke-opacity="0.6"/><text x="0" y="4" text-anchor="middle" class="proto" fill="#2ecc71">HTTPS/443</text></g>
+            <g transform="translate(237,395)"><rect x="-24" y="-8" width="48" height="16" rx="3" fill="#0f1117" stroke="#2ecc71" stroke-opacity="0.5"/><text x="0" y="4" text-anchor="middle" class="proto" fill="#2ecc71">Direct</text></g>
+
+            <!-- NODES -->
+            <!-- Chatbot (LAN) -->
+            <g transform="translate(15,75)">
+              <rect width="200" height="70" rx="8" fill="#1a1d27" stroke="#3498db" stroke-opacity="0.35"/>
+              <rect width="200" height="2" rx="1" fill="#3498db" opacity="0.5"/>
+              <rect x="14" y="16" width="30" height="30" rx="6" fill="#3498db" fill-opacity="0.12" stroke="#3498db" stroke-opacity="0.3"/>
+              <g transform="translate(29,31)" stroke="#3498db" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M-9,-6 h18 a2,2 0 012,2 v8 a2,2 0 01-2,2 h-12 l-5,4 v-14 a2,2 0 012,-2 z"/><circle cx="-3" cy="1" r="0.8" fill="#3498db"/><circle cx="1" cy="1" r="0.8" fill="#3498db"/><circle cx="5" cy="1" r="0.8" fill="#3498db"/></g>
+              <text x="54" y="35" class="n-title">Chatbot</text>
+              <text x="54" y="52" class="n-desc">Homegrown GenAI App</text>
+              <circle cx="186" cy="14" r="3" fill="#2ecc71"/>
+            </g>
+            <!-- Internal ChatBot (LAN) -->
+            <g transform="translate(15,165)">
+              <rect width="200" height="70" rx="8" fill="#1a1d27" stroke="#3498db" stroke-opacity="0.35"/>
+              <rect width="200" height="2" rx="1" fill="#3498db" opacity="0.5"/>
+              <rect x="14" y="16" width="30" height="30" rx="6" fill="#3498db" fill-opacity="0.12" stroke="#3498db" stroke-opacity="0.3"/>
+              <g transform="translate(29,31)" stroke="#3498db" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="-8" y="-8" width="16" height="13" rx="1"/><line x1="-5" y1="-4" x2="-3" y2="-4"/><line x1="-5" y1="-1" x2="-3" y2="-1"/><line x1="3" y1="-4" x2="5" y2="-4"/><line x1="3" y1="-1" x2="5" y2="-1"/><path d="M-4,5 v4 h8 v-4"/></g>
+              <text x="54" y="35" class="n-title">Internal ChatBot</text>
+              <text x="54" y="52" class="n-desc">Employee Assistant</text>
+              <circle cx="186" cy="14" r="3" fill="#2ecc71"/>
+            </g>
+            <!-- 1st Party LLMs (LAN, bottom) -->
+            <g transform="translate(15,390)">
+              <rect width="200" height="125" rx="8" fill="#1a1d27" stroke="#2ecc71" stroke-opacity="0.35"/>
+              <rect width="200" height="2" rx="1" fill="#2ecc71" opacity="0.4"/>
+              <rect x="14" y="14" width="30" height="30" rx="6" fill="#2ecc71" fill-opacity="0.1" stroke="#2ecc71" stroke-opacity="0.3"/>
+              <g transform="translate(29,29)" stroke="#2ecc71" stroke-width="1.4" fill="none" stroke-linecap="round"><circle cx="0" cy="0" r="9"/><ellipse cx="0" cy="0" rx="3.5" ry="9"/><line x1="-9" y1="0" x2="9" y2="0"/><path d="M-8,-4.5 h16 M-8,4.5 h16" opacity="0.6"/></g>
+              <text x="54" y="28" class="n-title">1st Party LLMs</text>
+              <text x="54" y="44" class="n-desc">Internal / Self-hosted</text>
+              <g transform="translate(14,58)"><rect width="172" height="24" rx="4" fill="#20232f"/><text x="86" y="16" text-anchor="middle" class="pill" style="font-size:10px">Ollama</text><rect y="30" width="172" height="24" rx="4" fill="#20232f"/><text x="86" y="46" text-anchor="middle" class="pill" style="font-size:10px">Local Models</text></g>
+              <circle cx="186" cy="14" r="3" fill="#2ecc71"/>
+            </g>
+            <!-- API Gateway (DMZ, top) -->
+            <g transform="translate(265,60)">
+              <rect width="165" height="95" rx="8" fill="#1a1d27" stroke="#2ecc71" stroke-opacity="0.5"/>
+              <rect width="165" height="2" rx="1" fill="#2ecc71" opacity="0.6"/>
+              <rect x="14" y="14" width="30" height="30" rx="6" fill="#2ecc71" fill-opacity="0.14" stroke="#2ecc71" stroke-opacity="0.4"/>
+              <g transform="translate(29,29)" stroke="#2ecc71" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M-9,0 L-3,0"/><path d="M-3,0 L3,-5"/><path d="M-3,0 L3,5"/><path d="M3,-5 L9,-5"/><path d="M3,5 L9,5"/><circle cx="-3" cy="0" r="1.2" fill="#2ecc71"/><path d="M7,-7 L9,-5 L7,-3"/><path d="M7,3 L9,5 L7,7"/></g>
+              <text x="54" y="32" class="n-title">API Gateway</text>
+              <text x="54" y="48" class="n-desc">Proxy Mapping</text>
+              <text x="14" y="68" class="n-meta">Route from: LLM</text>
+              <text x="14" y="80" class="n-meta">Route to: PS Proxy</text>
+              <circle cx="151" cy="14" r="3" fill="#2ecc71"/>
+            </g>
+            <!-- ps-openai-gw (DMZ, below API GW) — right edge 265+185=450 -->
+            <g transform="translate(265,280)">
+              <rect width="185" height="70" rx="8" fill="#1a1d27" stroke="#2ecc71" stroke-opacity="0.5" stroke-dasharray="4 3"/>
+              <rect width="185" height="2" rx="1" fill="#2ecc71" opacity="0.7"/>
+              <rect x="12" y="18" width="28" height="28" rx="6" fill="#2ecc71" fill-opacity="0.12" stroke="#2ecc71" stroke-opacity="0.3"/>
+              <g transform="translate(26,32)" stroke="#2ecc71" stroke-width="1.3" fill="none" stroke-linejoin="round"><path d="M0,-10 L8.5,-5 L8.5,5 L0,10 L-8.5,5 L-8.5,-5 Z" fill="#2ecc71" fill-opacity="0.08"/><circle cx="0" cy="0" r="2.5" fill="#2ecc71" fill-opacity="0.3"/></g>
+              <text x="50" y="30" class="n-title-sm" fill="#2ecc71" style="font-family:monospace">ps-openai-gw</text>
+              <text x="50" y="46" class="n-desc">Prompt Security proxy</text>
+              <text x="50" y="58" class="n-desc">Routes via Org Proxy</text>
+              <circle cx="171" cy="14" r="3" fill="#2ecc71"/>
+            </g>
+            <!-- Org Proxy (DMZ, right — internet egress hub) — left edge 510, right edge 630 -->
+            <g transform="translate(510,255)">
+              <rect width="120" height="90" rx="8" fill="#1a1d27" stroke="#7a7d8e" stroke-opacity="0.6"/>
+              <rect width="120" height="2" rx="1" fill="#7a7d8e" opacity="0.7"/>
+              <rect x="14" y="14" width="28" height="28" rx="6" fill="#7a7d8e" fill-opacity="0.1" stroke="#7a7d8e" stroke-opacity="0.35"/>
+              <g transform="translate(28,28)" stroke="#7a7d8e" stroke-width="1.3" fill="none"><rect x="-8" y="-8" width="16" height="6" rx="1"/><rect x="-8" y="-1" width="16" height="6" rx="1"/><rect x="-8" y="6" width="16" height="6" rx="1"/><circle cx="-5" cy="-5" r="0.8" fill="#7a7d8e"/><circle cx="-5" cy="2" r="0.8" fill="#7a7d8e"/><circle cx="-5" cy="9" r="0.8" fill="#7a7d8e"/></g>
+              <text x="60" y="60" text-anchor="middle" class="n-title-sm" style="font-size:10px">Org Proxy</text>
+              <text x="60" y="73" text-anchor="middle" class="n-desc" style="font-size:8px">Internet egress · Hub</text>
+              <circle cx="106" cy="14" r="3" fill="#2ecc71"/>
+            </g>
+            <!-- Prompt Security (INTERNET — hosted server) — translate(668,90) -->
+            <g transform="translate(668,90)">
+              <ellipse cx="75" cy="45" rx="95" ry="62" fill="url(#halo-hy)"/>
+              <rect x="-4" y="-4" width="158" height="98" rx="10" fill="none" stroke="#6c63ff" stroke-opacity="0.3"/>
+              <rect width="150" height="90" rx="8" fill="url(#psfill-hy)" stroke="#6c63ff" stroke-width="1.5"/>
+              <rect width="150" height="3" rx="1.5" fill="#6c63ff"/>
+              <image href="/static/prompt-security-logo.png" x="25" y="12" width="100" height="40" preserveAspectRatio="xMidYMid meet"/>
+              <text x="75" y="72" text-anchor="middle" class="ps-sub" style="font-size:8px;letter-spacing:0.6px">HOSTED · PROTECT · SANITIZE</text>
+            </g>
+            <!-- 3rd Party LLMs (INTERNET) — translate(860,55) -->
+            <g transform="translate(860,55)">
+              <rect width="220" height="320" rx="8" fill="#1a1d27" stroke="#e6b800" stroke-opacity="0.35"/>
+              <rect width="220" height="2" rx="1" fill="#e6b800" opacity="0.5"/>
+              <rect x="172" y="10" width="36" height="36" rx="7" fill="#e6b800" fill-opacity="0.12" stroke="#e6b800" stroke-opacity="0.3"/>
+              <g transform="translate(190,28)" stroke="#e6b800" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="0" cy="0" r="10"/><ellipse cx="0" cy="0" rx="4" ry="10"/><line x1="-10" y1="0" x2="10" y2="0"/><path d="M-9,-5 h18 M-9,5 h18" opacity="0.6"/></g>
+              <text x="14" y="28" class="n-title">3rd Party LLMs</text>
+              <text x="14" y="44" class="n-desc">Public cloud providers</text>
+              <g transform="translate(14,60)"><rect width="192" height="28" rx="4" fill="#20232f"/><text x="96" y="18" text-anchor="middle" class="pill" style="font-size:11px">OpenAI</text><rect y="36" width="192" height="28" rx="4" fill="#20232f"/><text x="96" y="54" text-anchor="middle" class="pill" style="font-size:11px">AWS Bedrock</text><rect y="72" width="192" height="28" rx="4" fill="#20232f"/><text x="96" y="90" text-anchor="middle" class="pill" style="font-size:11px">Azure OpenAI</text><rect y="108" width="192" height="28" rx="4" fill="#20232f"/><text x="96" y="126" text-anchor="middle" class="pill" style="font-size:11px">Anthropic</text><rect y="144" width="192" height="28" rx="4" fill="#20232f"/><text x="96" y="162" text-anchor="middle" class="pill" style="font-size:11px">Google Vertex</text><rect y="180" width="192" height="28" rx="4" fill="#20232f"/><text x="96" y="198" text-anchor="middle" class="pill" style="font-size:11px">Cohere · Mistral</text></g>
+              <circle cx="160" cy="14" r="3" fill="#2ecc71"/>
+            </g>
+
+            <!-- Legend -->
+            <g transform="translate(20,578)">
+              <line x1="0" y1="0" x2="20" y2="0" stroke="#6c63ff" stroke-width="2"/>
+              <text x="26" y="4" class="n-desc" fill="#7a7d8e">Protection: App → API GW → ps-openai-gw → Org Proxy → PS (hosted)</text>
+              <line x1="510" y1="0" x2="530" y2="0" stroke="#2ecc71" stroke-width="2"/>
+              <text x="536" y="4" class="n-desc" fill="#7a7d8e">Direct: ps-openai-gw → 1st Party LLMs &nbsp;|&nbsp; LLM Call: Org Proxy → 3rd Party LLMs</text>
+            </g>
+            <text x="1080" y="594" text-anchor="end" style="font-family:monospace;font-size:8px;fill:#7a7d8e;opacity:0.4;letter-spacing:1px">FIG. 02 — HYBRID TOPOLOGY</text>
+          </svg>
+        </div>
+        <div class="arch-flow-bar">
+          <span class="fb-step">Chatbot</span><span class="fb-arrow">&rarr;</span>
+          <span class="fb-step">API Gateway</span><span class="fb-arrow">&rarr;</span>
+          <span class="fb-step">ps-openai-gw</span><span class="fb-arrow">&rarr;</span>
+          <span class="fb-step">Org Proxy</span><span class="fb-arrow">&rarr;</span>
+          <span class="fb-step fb-ps">Prompt Security (Hosted)</span>
+          <span style="margin-left:auto;font-size:9px;color:var(--green);opacity:0.7">ps-openai-gw &rarr; 1st Party LLMs (direct) &nbsp;|&nbsp; Org Proxy &rarr; LLMs (call)</span>
+        </div>
+        <div style="text-align:right;margin-top:8px;font-size:11px;color:var(--accent);cursor:pointer" onclick="document.querySelector('[data-intro=integ]').click()">See Integration Guide →</div>
+      </div>
 
       <!-- On-Prem view -->
       <div id="archOnprem" class="arch-view">
@@ -1421,8 +1436,8 @@ reply = await client.chat.completions.create(
               <rect x="-4" y="-4" width="158" height="98" rx="10" fill="none" stroke="#6c63ff" stroke-opacity="0.3"/>
               <rect width="150" height="90" rx="8" fill="url(#psfill-op)" stroke="#6c63ff" stroke-width="1.5"/>
               <rect width="150" height="3" rx="1.5" fill="#6c63ff"/>
-              <image href="/static/prompt-logo.png" x="25" y="12" width="100" height="40" preserveAspectRatio="xMidYMid meet"/>
-              <text x="75" y="72" text-anchor="middle" class="ps-sub" style="font-size:8px;letter-spacing:0.6px">ON-PREM · SCAN · PROTECT</text>
+              <image href="/static/prompt-security-logo.png" x="25" y="12" width="100" height="40" preserveAspectRatio="xMidYMid meet"/>
+              <text x="75" y="72" text-anchor="middle" class="ps-sub" style="font-size:8px;letter-spacing:0.6px">ON-PREM · PROTECT · SANITIZE</text>
             </g>
 
             <!-- Org Proxy (DMZ, right) -->
@@ -1534,14 +1549,7 @@ reply = await client.chat.completions.create(
           <span class="fb-step">3rd Party LLMs</span>
           <span style="margin-left:auto;font-size:9px;color:var(--green);opacity:0.7">+ PS &rarr; 1st Party LLMs (scan)</span>
         </div>
-        <div class="arch-code-block">
-          <div class="arch-code-hdr">Proxy Mapping &amp; Code Changes</div>
-          <div class="arch-code-body">
-            <div class="acb-item"><code>LLM endpoint</code> &mdash; swap the base URL from your provider to the PS gateway</div>
-            <div class="acb-item"><code>header: forward-domain</code> &mdash; original LLM domain to forward to</div>
-            <div class="acb-item"><code>header: ps-app-id</code> &mdash; your Prompt Security App ID</div>
-          </div>
-        </div>
+        <div style="text-align:right;margin-top:8px;font-size:11px;color:var(--accent);cursor:pointer" onclick="document.querySelector('[data-intro=integ]').click()">See Integration Guide →</div>
       </div>
     </div>
 
@@ -1727,71 +1735,98 @@ reply = await client.chat.completions.create(
     <div id="introApiFlow" class="intro-content">
       <div class="integ-desc">How Prompt Security fits into a Homegrown GenAI Application: the app calls PS before and after the LLM, enabling real-time detection and remediation of PII, injections, and policy violations.</div>
       <div class="api-flow-diagram">
-        <!-- Left 1/3: User -->
-        <div class="afd-col">
+        <!-- Row 1: User | → | App | → | LLMs -->
+        <div class="afd-cell">
           <div class="afd-node afd-node-user">
             <div class="afd-icon">👤</div>
             <div class="afd-label">GenAI App User</div>
           </div>
         </div>
-        <!-- Arrow: User ↔ App -->
+        <!-- Bidirectional: User ↔ HGA -->
         <div class="afd-h-arr">
-          <svg viewBox="0 0 56 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <line x1="9" y1="12" x2="47" y2="12" stroke="#6c63ff" stroke-width="2"/>
-            <polygon points="0,12 10,6 10,18" fill="#6c63ff"/>
-            <polygon points="56,12 46,6 46,18" fill="#6c63ff"/>
-          </svg>
+          <div class="afd-arr-row">
+            <svg width="48" height="12" viewBox="0 0 48 12" fill="none"><line x1="2" y1="6" x2="39" y2="6" stroke="#6c63ff" stroke-width="1.5"/><polygon points="48,6 38,2 38,10" fill="#6c63ff"/></svg>
+            <span class="afd-arr-lbl" style="color:#6c63ff">prompt</span>
+          </div>
+          <div class="afd-arr-row">
+            <span class="afd-arr-lbl" style="color:#7a7d8e">response</span>
+            <svg width="48" height="12" viewBox="0 0 48 12" fill="none"><line x1="46" y1="6" x2="9" y2="6" stroke="#7a7d8e" stroke-width="1.5"/><polygon points="0,6 10,2 10,10" fill="#7a7d8e"/></svg>
+          </div>
         </div>
-        <!-- Middle 1/3: App + PS -->
-        <div class="afd-col">
+        <div class="afd-cell">
           <div class="afd-node">
             <div class="afd-icon">🖥️</div>
             <div class="afd-label">Homegrown GenAI App</div>
             <div class="afd-sublabel">Your chatbot / assistant</div>
           </div>
-          <div class="afd-v-arr">
-            <svg viewBox="0 0 24 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <line x1="12" y1="7" x2="12" y2="29" stroke="#6c63ff" stroke-width="2"/>
-              <polygon points="12,0 6,9 18,9" fill="#6c63ff"/>
-              <polygon points="12,36 6,27 18,27" fill="#6c63ff"/>
-            </svg>
-          </div>
-          <div class="afd-node afd-node-ps">
-            <div class="afd-icon">🔺</div>
-            <div class="afd-label">Prompt Security Engine</div>
-            <div class="afd-ps-acts">
-              <span class="afd-act afd-act-deny">⊗ DENY</span>
-              <span class="afd-act afd-act-redact">✏️ REDACT</span>
-              <span class="afd-act afd-act-sanitize">🧹 SANITIZE</span>
-            </div>
-          </div>
         </div>
-        <!-- Arrow: App ↔ LLMs -->
+        <!-- Bidirectional: HGA ↔ LLMs -->
         <div class="afd-h-arr">
-          <svg viewBox="0 0 56 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <line x1="9" y1="12" x2="47" y2="12" stroke="#6c63ff" stroke-width="2"/>
-            <polygon points="0,12 10,6 10,18" fill="#6c63ff"/>
-            <polygon points="56,12 46,6 46,18" fill="#6c63ff"/>
-          </svg>
+          <div class="afd-arr-row">
+            <svg width="48" height="12" viewBox="0 0 48 12" fill="none"><line x1="2" y1="6" x2="39" y2="6" stroke="#6c63ff" stroke-width="1.5"/><polygon points="48,6 38,2 38,10" fill="#6c63ff"/></svg>
+            <span class="afd-arr-lbl" style="color:#6c63ff">prompt</span>
+          </div>
+          <div class="afd-arr-row">
+            <span class="afd-arr-lbl" style="color:#7a7d8e">response</span>
+            <svg width="48" height="12" viewBox="0 0 48 12" fill="none"><line x1="46" y1="6" x2="9" y2="6" stroke="#7a7d8e" stroke-width="1.5"/><polygon points="0,6 10,2 10,10" fill="#7a7d8e"/></svg>
+          </div>
         </div>
-        <!-- Right 1/3: LLMs -->
-        <div class="afd-col">
+        <div class="afd-cell">
           <div class="afd-node">
             <div class="afd-icon">☁️</div>
             <div class="afd-label">LLM Providers</div>
             <div class="afd-sublabel">OpenAI · Anthropic<br>AWS Bedrock · Google<br>Llama · Mistral</div>
           </div>
         </div>
-      </div>
-      <div class="arch-code-block" style="margin-top:16px">
-        <div class="arch-code-hdr">⚡ Integration (API Mode)</div>
-        <div class="arch-code-body">
-          <div class="acb-item">1. Scan prompt → <code>POST /api/protect</code> with <code>APP-ID</code> header</div>
-          <div class="acb-item">2. If <code>action == "block"</code> → reject. If <code>"modify"</code> → use <code>modified_text</code></div>
-          <div class="acb-item">3. Call LLM with (possibly modified) prompt</div>
-          <div class="acb-item">4. Scan response → <code>POST /api/protect</code> with <code>response</code> field</div>
+
+        <!-- Row 2: empty | empty | on-prompt + on-response scan/verdict | empty | empty -->
+        <div></div><div></div>
+        <div class="afd-v-arr">
+          <!-- On prompt: scan↓ verdict↑ -->
+          <div class="afd-arr-col">
+            <span class="afd-arr-lbl" style="color:#6c63ff">on prompt</span>
+            <div style="display:flex;gap:5px;margin-top:2px">
+              <div class="afd-arr-col">
+                <svg width="10" height="30" viewBox="0 0 10 30" fill="none"><line x1="5" y1="1" x2="5" y2="22" stroke="#6c63ff" stroke-width="1.5"/><polygon points="5,30 1,21 9,21" fill="#6c63ff"/></svg>
+              </div>
+              <div class="afd-arr-col">
+                <svg width="10" height="30" viewBox="0 0 10 30" fill="none"><line x1="5" y1="29" x2="5" y2="8" stroke="#6c63ff" stroke-width="1.5" stroke-dasharray="3 2"/><polygon points="5,0 1,9 9,9" fill="#6c63ff"/></svg>
+              </div>
+            </div>
+          </div>
+          <!-- Divider -->
+          <div style="width:1px;height:34px;background:var(--border);opacity:0.4;align-self:flex-end;margin-bottom:1px"></div>
+          <!-- On response: scan↓ verdict↑ -->
+          <div class="afd-arr-col">
+            <span class="afd-arr-lbl" style="color:#7a7d8e">on response</span>
+            <div style="display:flex;gap:5px;margin-top:2px">
+              <div class="afd-arr-col">
+                <svg width="10" height="30" viewBox="0 0 10 30" fill="none"><line x1="5" y1="1" x2="5" y2="22" stroke="#7a7d8e" stroke-width="1.5"/><polygon points="5,30 1,21 9,21" fill="#7a7d8e"/></svg>
+              </div>
+              <div class="afd-arr-col">
+                <svg width="10" height="30" viewBox="0 0 10 30" fill="none"><line x1="5" y1="29" x2="5" y2="8" stroke="#7a7d8e" stroke-width="1.5" stroke-dasharray="3 2"/><polygon points="5,0 1,9 9,9" fill="#7a7d8e"/></svg>
+              </div>
+            </div>
+          </div>
         </div>
+        <div></div><div></div>
+
+        <!-- Row 3: empty | empty | PS Engine | empty | empty -->
+        <div></div><div></div>
+        <div class="afd-cell">
+          <div class="afd-node afd-node-ps">
+            <img src="/static/prompt-security-logo.png" style="height:28px;margin-bottom:8px;opacity:0.9;display:block;margin-left:auto;margin-right:auto">
+            <div class="afd-label">Prompt Security Engine</div>
+            <div class="afd-ps-acts">
+              <span class="afd-act afd-act-block">Block</span>
+              <span class="afd-act afd-act-modify">Modify</span>
+              <span class="afd-act afd-act-log">Log</span>
+            </div>
+          </div>
+        </div>
+        <div></div><div></div>
       </div>
+      <div style="text-align:right;margin-top:8px;font-size:11px;color:var(--accent);cursor:pointer" onclick="document.querySelector('[data-intro=integ]').click()">See Integration Guide →</div>
     </div>
 
     <!-- Walkthrough tab -->
@@ -1875,6 +1910,7 @@ reply = await client.chat.completions.create(
     if (AUTH_USER.role === 'admin') {
       document.getElementById('adminLink').style.display = 'block';
       document.getElementById('adminSep').style.display = 'block';
+      document.getElementById('adminPsLink').style.display = 'inline';
     }
     updatePsStatus();
     await Promise.all([loadModels(), loadSessions(), loadStats()]);
@@ -2143,8 +2179,12 @@ reply = await client.chat.completions.create(
     const tenant = _psTenants.find(t => t.id === tenantId);
     const gwNote     = document.getElementById('gwUrlNote');
     const gwMissing  = document.getElementById('gwMissingNote');
+    const gwKeyWarn  = document.getElementById('gwKeyWarning');
+    const gwGuide    = document.getElementById('gwProviderGuide');
     gwNote.style.display = 'none'; gwMissing.style.display = 'none';
-    if (mode === 'gateway' && tenant) {
+    gwKeyWarn.style.display = 'none'; gwGuide.style.display = 'none';
+    if (mode !== 'gateway') return;
+    if (tenant) {
       if (tenant.gateway_url) {
         document.getElementById('gwUrlDisplay').textContent = tenant.gateway_url;
         gwNote.style.display = 'block';
@@ -2152,6 +2192,37 @@ reply = await client.chat.completions.create(
         gwMissing.style.display = 'block';
       }
     }
+    // Key warning — show when LLM keys are visible but none configured
+    const keysVisible = AUTH_USER?.llm_key_settings_visible;
+    const keysConfigured = AUTH_USER?.llm_keys_configured?.length > 0;
+    if (keysVisible && !keysConfigured) gwKeyWarn.style.display = 'block';
+    // Provider guide
+    const baseUrl = tenant?.gateway_url || tenant?.base_url || '';
+    let region = '[REGION]';
+    try { region = new URL(baseUrl).hostname.split('.')[0]; } catch {}
+    const ps = `https://${region}.prompt.security`;
+    const providers = [
+      { name: 'OpenAI',       llm: 'api.openai.com',                        psUrl: `${ps}/v1` },
+      { name: 'Perplexity',   llm: 'api.perplexity.ai',                     psUrl: `${ps}/v1` },
+      { name: 'Anthropic',    llm: 'api.anthropic.com',                     psUrl: ps },
+      { name: 'Azure OpenAI', llm: '{resource}.openai.azure.com',           psUrl: ps },
+      { name: 'Gemini',       llm: 'generativelanguage.googleapis.com',     psUrl: `${ps}/v1beta/models/{model}:generateContent`, note: 'Add header: forward-domain: generativelanguage.googleapis.com' },
+      { name: 'Ollama',       llm: 'localhost:11434 (or your Ollama host)', psUrl: `${ps}/v1/ollama` },
+    ];
+    const cards = document.getElementById('gwProviderCards');
+    cards.innerHTML = providers.map(p => `
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:11px">
+        <div style="font-weight:700;color:var(--text);margin-bottom:6px">${p.name}</div>
+        <div style="color:var(--text-muted);margin-bottom:2px;font-size:10px">LLM endpoint</div>
+        <div style="color:var(--text);font-family:monospace;font-size:10px;margin-bottom:6px;word-break:break-all">${p.llm}</div>
+        <div style="color:var(--text-muted);margin-bottom:2px;font-size:10px">PS proxy URL</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:${p.note ? '6px' : '0'}">
+          <code style="flex:1;color:var(--accent);font-size:10px;word-break:break-all">${p.psUrl}</code>
+          <button onclick="navigator.clipboard.writeText('${p.psUrl.replace(/'/g, "\\'")}')" style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:9px;padding:2px 6px;cursor:pointer;flex-shrink:0">Copy</button>
+        </div>
+        ${p.note ? `<div style="font-size:9px;color:var(--yellow);opacity:0.8">${p.note}</div>` : ''}
+      </div>`).join('');
+    gwGuide.style.display = 'block';
   }
 
   async function openPsSettings(tab = 'ps') {
@@ -2178,7 +2249,7 @@ reply = await client.chat.completions.create(
     _updateGwHint();
     document.getElementById('stab-llm').style.display = AUTH_USER?.llm_key_settings_visible ? '' : 'none';
     if (AUTH_USER?.llm_key_settings_visible) {
-      ['openai','anthropic','google','openrouter'].forEach(p => {
+      ['openai','anthropic','google','perplexity','openrouter'].forEach(p => {
         const badge = document.getElementById(`llmBadge-${p}`);
         const set = AUTH_USER?.llm_keys_configured?.includes(p);
         badge.textContent = set ? '✓ set' : '';
@@ -2225,7 +2296,7 @@ reply = await client.chat.completions.create(
       } else { alert('Failed to save PS settings'); }
     } else if (_settingsTab === 'llm') {
       const body = {};
-      ['openai','anthropic','google','openrouter'].forEach(p => {
+      ['openai','anthropic','google','perplexity','openrouter'].forEach(p => {
         const v = document.getElementById(`llmKey-${p}`).value;
         if (v !== '') body[p] = v;  // empty string = clear, non-empty = update
       });
@@ -2246,7 +2317,7 @@ reply = await client.chat.completions.create(
     resultEl.textContent = 'Validating...';
     resultEl.style.color = 'var(--text-muted)';
 
-    const providers = ['openai', 'anthropic', 'google', 'openrouter'];
+    const providers = ['openai', 'anthropic', 'google', 'perplexity', 'openrouter'];
     const results = [];
 
     for (const p of providers) {
@@ -2444,6 +2515,7 @@ reply = await client.chat.completions.create(
 
   function renderPsInsight(inner, scanned, action, violations, psRaw=null) {
     if (!scanned) return;
+    if (action === 'gateway') return;
     const wrap = document.createElement('div'); wrap.className = 'ps-insight';
     const badgeRow = document.createElement('div'); badgeRow.style.cssText = 'display:flex;align-items:center;gap:4px;flex-wrap:wrap';
     const badge = document.createElement('span'); badge.className = `ps-badge ${action}`;
@@ -2506,18 +2578,16 @@ reply = await client.chat.completions.create(
 
   // ── Compare Mode ─────────────────────────────────────────────────────────
   let compareModeActive = false;
-  const compareModeBtn = document.getElementById('compareModeBtn');
   const compareColumns = document.getElementById('compareColumns');
   const cmpLeftMsgs  = document.getElementById('cmpLeftMsgs');
   const cmpRightMsgs = document.getElementById('cmpRightMsgs');
 
-  compareModeBtn.addEventListener('click', () => {
-    compareModeActive = !compareModeActive;
-    compareModeBtn.classList.toggle('active', compareModeActive);
-    chatEl.style.display = compareModeActive ? 'none' : '';
-    compareColumns.classList.toggle('active', compareModeActive);
-    if (compareModeActive) { cmpLeftMsgs.innerHTML = ''; cmpRightMsgs.innerHTML = ''; }
-  });
+  function exitCompare() {
+    compareModeActive = false;
+    chatEl.style.display = '';
+    compareColumns.classList.remove('active');
+  }
+  document.getElementById('cmpExitBtn').addEventListener('click', exitCompare);
 
   function cmpAppendUser(text) {
     [cmpLeftMsgs, cmpRightMsgs].forEach(col => {
@@ -2691,9 +2761,6 @@ reply = await client.chat.completions.create(
       btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy', 1500);
     });
   }
-  document.getElementById('codeViewBtn').addEventListener('click', () => document.getElementById('codeViewBackdrop').classList.add('open'));
-  document.getElementById('cvClose').addEventListener('click',    () => document.getElementById('codeViewBackdrop').classList.remove('open'));
-  document.getElementById('codeViewBackdrop').addEventListener('click', e => { if (e.target.id === 'codeViewBackdrop') document.getElementById('codeViewBackdrop').classList.remove('open'); });
 
   // ── Event listeners ───────────────────────────────────────────────────────
   input.addEventListener('input', () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 140) + 'px'; });
@@ -2876,13 +2943,14 @@ reply = await client.chat.completions.create(
     });
   });
 
-  // Architecture toggle (SaaS / On-Prem)
+  // Architecture toggle (SaaS / Hybrid / On-Prem)
+  const archViewMap = { saas: 'archSaas', hybrid: 'archHybrid', onprem: 'archOnprem' };
   document.querySelectorAll('.arch-toggle-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.arch-toggle-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.arch-view').forEach(v => v.classList.remove('active'));
       btn.classList.add('active');
-      document.getElementById(btn.dataset.arch === 'saas' ? 'archSaas' : 'archOnprem').classList.add('active');
+      document.getElementById(archViewMap[btn.dataset.arch]).classList.add('active');
     });
   });
 
@@ -3027,7 +3095,7 @@ print(response["message"]["content"])`;
 
   // ── Architecture interactivity: tooltips + path highlighting ──────────
   (function initArchInteractivity() {
-    ['svgSaas', 'svgOnprem'].forEach(svgId => {
+    ['svgSaas', 'svgHybrid', 'svgOnprem'].forEach(svgId => {
       const svg = document.getElementById(svgId);
       if (!svg) return;
       const stage = svg.closest('.arch-stage');
@@ -3249,9 +3317,6 @@ if (evt.type === 'done') {
   document.getElementById('wtRestartBtn').addEventListener('click', () => { wtCurrent = 0; wtShow(0); });
 
   // ── Compare Mode ──────────────────────────────────────────────────────────
-  const compareOverlay = document.getElementById('compareOverlay');
-  document.getElementById('compareClose').addEventListener('click', () => compareOverlay.classList.remove('open'));
-  compareOverlay.addEventListener('click', e => { if (e.target === compareOverlay) compareOverlay.classList.remove('open'); });
 
   async function streamIntoBubble(bubble, footer, promptText, skipPs) {
     const model = document.getElementById('modelSelect').value || undefined;
@@ -3304,22 +3369,30 @@ if (evt.type === 'done') {
   }
 
   function runCompare(promptText) {
-    const label = promptText.length > 80 ? promptText.slice(0, 80) + '…' : promptText;
-    document.getElementById('comparePromptLabel').textContent = `Running: "${label}"`;
+    document.getElementById('cmpLabel').textContent = promptText;
 
-    const psBubble = document.getElementById('comparePsBubble');
-    const noPsBubble = document.getElementById('compareNoPsBubble');
-    const psFooter = document.getElementById('comparePsFooter');
+    compareModeActive = true;
+    chatEl.style.display = 'none';
+    compareColumns.classList.add('active');
+    cmpLeftMsgs.innerHTML = '';
+    cmpRightMsgs.innerHTML = '';
 
-    psBubble.innerHTML = '<div class="compare-typing"><span></span><span></span><span></span></div>';
-    noPsBubble.innerHTML = '<div class="compare-typing"><span></span><span></span><span></span></div>';
-    psFooter.innerHTML = '';
-    psBubble.classList.remove('blocked-bubble');
-    noPsBubble.classList.remove('blocked-bubble');
+    const leftBubble = document.createElement('div');
+    leftBubble.className = 'compare-bubble';
+    leftBubble.innerHTML = '<div class="compare-typing"><span></span><span></span><span></span></div>';
+    cmpLeftMsgs.appendChild(leftBubble);
 
-    compareOverlay.classList.add('open');
-    streamIntoBubble(psBubble, psFooter, promptText, false);
-    streamIntoBubble(noPsBubble, null, promptText, true);
+    const leftFooter = document.createElement('div');
+    leftFooter.className = 'compare-footer';
+    cmpLeftMsgs.appendChild(leftFooter);
+
+    const rightBubble = document.createElement('div');
+    rightBubble.className = 'compare-bubble';
+    rightBubble.innerHTML = '<div class="compare-typing"><span></span><span></span><span></span></div>';
+    cmpRightMsgs.appendChild(rightBubble);
+
+    streamIntoBubble(leftBubble, leftFooter, promptText, false);
+    streamIntoBubble(rightBubble, null, promptText, true);
   }
 
   // Wire Compare buttons to demo scenarios

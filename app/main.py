@@ -57,15 +57,16 @@ SHOW_LLM_KEY_SETTINGS = os.getenv("SHOW_LLM_KEY_SETTINGS", "false").lower() in {
 
 # Shared LLM keys (fallback when user has no per-provider key)
 _SHARED_LLM_KEYS = {
-    "openai":     os.getenv("OPENAI_API_KEY", ""),
-    "anthropic":  os.getenv("ANTHROPIC_API_KEY", ""),
-    "google":     os.getenv("GOOGLE_API_KEY", ""),
-    "openrouter": os.getenv("OPENROUTER_API_KEY", ""),
+    "openai":      os.getenv("OPENAI_API_KEY", ""),
+    "anthropic":   os.getenv("ANTHROPIC_API_KEY", ""),
+    "google":      os.getenv("GOOGLE_API_KEY", ""),
+    "perplexity":  os.getenv("PERPLEXITY_API_KEY", ""),
+    "openrouter":  os.getenv("OPENROUTER_API_KEY", ""),
 }
 
 # ── File upload limits ────────────────────────────────────────────────────────
 # Set MAX_FILE_SIZE_MB in .env to restrict upload size.
-MAX_FILE_SIZE_MB    = int(os.getenv("MAX_FILE_SIZE_MB", "10"))
+MAX_FILE_SIZE_MB    = int(os.getenv("MAX_FILE_SIZE_MB") or "10")
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 ALLOWED_TEXT_TYPES  = {"text/plain", "text/markdown", "text/csv", "application/json"}
@@ -94,6 +95,8 @@ def _detect_provider(model_id: str) -> str:
         return "anthropic"
     if m.startswith("gemini-"):
         return "google"
+    if m.startswith(("sonar", "r1-1776")):
+        return "perplexity"
     return "openrouter"
 
 
@@ -103,7 +106,7 @@ def _model_meta(model_id: str) -> dict:
     is_free = model_id.lower().endswith(":free")
     return {
         "category": "free" if is_free else "paid",
-        "provider": {"openai": "OpenAI", "anthropic": "Anthropic", "google": "Google", "openrouter": "OpenRouter"}[provider],
+        "provider": {"openai": "OpenAI", "anthropic": "Anthropic", "google": "Google", "perplexity": "Perplexity", "openrouter": "OpenRouter"}[provider],
         "requires_key": None if is_free else provider,
     }
 
@@ -142,8 +145,7 @@ def _user_llm_client(user: User, model_id: str):
 _FALLBACK_MODELS = [
     {"id": "gpt-4o"},
     {"id": "gpt-4o-mini"},
-    {"id": "claude-3-5-sonnet-20241022"},
-    {"id": "claude-3-5-haiku-20241022"},
+    {"id": "claude-sonnet-4-5-20250929"},
     {"id": "gemini-2.0-flash"},
     {"id": "gemini-1.5-pro"},
     {"id": "meta-llama/llama-3.1-8b-instruct:free"},
@@ -1018,8 +1020,9 @@ async def chat_stream(
     # ── Per-user PS client / mode ─────────────────────────────────────────────
     ps_mode        = current_user.ps_mode or "api"
     ps_client: Optional[PromptSecurityClient] = None
-    ps_gw_client: Optional[AsyncOpenAI]       = None  # gateway-mode LLM client
-    ps_gw_no_key  = False  # set True when gateway mode lacks an LLM key
+    ps_gw_client: Optional[AsyncOpenAI] = None    # gateway-mode LLM client (OpenAI-compat providers)
+    ps_gw_gemini: Optional[dict]        = None    # gateway-mode config for Gemini (native path)
+    ps_gw_anthropic: Optional[dict]     = None    # gateway-mode config for Anthropic (native path)
 
     if current_user.ps_enabled and current_user.ps_tenant and current_user.ps_api_key_enc:
         try:
@@ -1036,17 +1039,31 @@ async def chat_stream(
                     )
                 elif ps_mode == "gateway" and current_user.ps_tenant.gateway_url:
                     llm_key = _get_llm_key(current_user, model)
-                    logger.info("PS gateway init for %s → %s (llm_key set: %s)",
-                                current_user.email, current_user.ps_tenant.gateway_url, bool(llm_key))
+                    gw_host = current_user.ps_tenant.gateway_url.rstrip('/')
+                    gw_base = gw_host if gw_host.endswith('/v1') else gw_host + '/v1'
+                    logger.info("PS gateway init for %s → %s model=%s (llm_key set: %s)",
+                                current_user.email, gw_base, model, bool(llm_key))
+                    ps_root = gw_host[:-3] if gw_host.endswith('/v1') else gw_host
                     if llm_key:
-                        ps_gw_client = AsyncOpenAI(
-                            api_key=llm_key,
-                            base_url=current_user.ps_tenant.gateway_url,
-                            default_headers={"ps-app-id": ps_app_id},
-                        )
+                        if model.startswith('gemini-'):
+                            gemini_url = f"{ps_root}/v1beta/models/{model}:generateContent"
+                            logger.info("PS Gemini gateway URL → %s", gemini_url)
+                            ps_gw_gemini = {'url': gemini_url, 'llm_key': llm_key}
+                        elif model.startswith('claude-'):
+                            anthropic_url = f"{ps_root}/v1/messages"
+                            logger.info("PS Anthropic gateway URL → %s model=%s", anthropic_url, model)
+                            ps_gw_anthropic = {'url': anthropic_url, 'llm_key': llm_key, 'model': model}
+                        else:
+                            # PS routes OpenAI/Perplexity via LLM API key alone (OpenAI-compat)
+                            logger.info("PS gateway base_url → %s model=%s", gw_base, model)
+                            ps_gw_client = AsyncOpenAI(
+                                api_key=llm_key,
+                                base_url=gw_base,
+                                timeout=30.0,
+                                default_headers={"ps-user": current_user.email},
+                            )
                     else:
-                        ps_gw_no_key = True
-                        logger.warning("Gateway mode: no LLM key for %s, will error in stream", current_user.email)
+                        logger.warning("Gateway mode: no LLM key for %s — PS gateway requires the provider API key", current_user.email)
             except Exception as e:
                 logger.warning("Could not init PS client for %s: %s", current_user.email, e)
 
@@ -1079,9 +1096,121 @@ async def chat_stream(
         ]
 
         # ── Gateway mode: route through PS proxy, skip explicit scanning ───────
-        if ps_gw_no_key:
-            yield f"data: {json.dumps({'type': 'error', 'detail': 'Gateway mode requires an LLM API key. Add your OpenRouter key in ⚙ Settings → LLM API Keys, or set OPENROUTER_API_KEY in .env.'})}\n\n"
+        if ps_gw_gemini:
+            system_parts, contents = [], []
+            for msg in payload:
+                role = msg.get('role', 'user')
+                content = msg.get('content', '')
+                if isinstance(content, list):
+                    content = ' '.join(p.get('text', '') for p in content if isinstance(p, dict))
+                if role == 'system':
+                    system_parts.append({"text": content})
+                else:
+                    contents.append({"role": "user" if role == "user" else "model",
+                                     "parts": [{"text": content}]})
+            gemini_body: dict = {"contents": contents}
+            if system_parts:
+                gemini_body["system_instruction"] = {"parts": system_parts}
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as hclient:
+                    resp = await hclient.post(ps_gw_gemini['url'],
+                        headers={
+                            "Content-Type": "application/json",
+                            "x-goog-api-key": ps_gw_gemini['llm_key'],
+                            "ps-user": current_user.email,
+                        },
+                        json=gemini_body,
+                    )
+                    if resp.status_code != 200:
+                        raise Exception(f"Gemini gateway {resp.status_code}: {resp.text[:300]}")
+                    data = resp.json()
+                    text = data['candidates'][0]['content']['parts'][0].get('text', '')
+                    if text:
+                        reply = text
+                        yield f"data: {json.dumps({'type': 'token', 'content': text})}\n\n"
+            except Exception as e:
+                detail = f"Gateway error: {e}"
+                logger.error(detail)
+                yield f"data: {json.dumps({'type': 'error', 'detail': detail})}\n\n"
+                return
+            resp_ms = round((time.monotonic() - t0) * 1000)
+            await _log_msg(db, session_id, current_user.id, "assistant", reply, model,
+                           ps_scanned=True, ps_action="pass", response_ms=resp_ms)
+            today_used = used_today + 1
+            yield f"data: {json.dumps({'type': 'done', 'model': model, 'session_id': session_id, 'ps_scanned': True, 'ps_action': 'gateway', 'ps_violations': [], 'messages_today': today_used, 'daily_limit': current_user.daily_message_limit, 'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0})}\n\n"
             return
+
+        if ps_gw_anthropic:
+            anthropic_messages = []
+            system_text = ""
+            for msg in payload:
+                role = msg.get('role', 'user')
+                content = msg.get('content', '')
+                if isinstance(content, list):
+                    content = ' '.join(p.get('text', '') for p in content if isinstance(p, dict))
+                if role == 'system':
+                    system_text = content
+                else:
+                    anthropic_messages.append({"role": role, "content": content})
+            anthropic_body: dict = {
+                "model": ps_gw_anthropic['model'],
+                "messages": anthropic_messages,
+                "max_tokens": 1024,
+                "stream": True,
+            }
+            if system_text:
+                anthropic_body["system"] = system_text
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as hclient:
+                    async with hclient.stream('POST', ps_gw_anthropic['url'],
+                        headers={
+                            "Content-Type": "application/json",
+                            "x-api-key": ps_gw_anthropic['llm_key'],
+                            "anthropic-version": "2023-06-01",
+                            "ps-user": current_user.email,
+                        },
+                        json=anthropic_body,
+                    ) as resp:
+                        if resp.status_code != 200:
+                            body_bytes = await resp.aread()
+                            raise Exception(f"Anthropic gateway {resp.status_code}: {body_bytes[:300]}")
+                        async for line in resp.aiter_lines():
+                            if not line.startswith('data: '):
+                                continue
+                            data_str = line[6:]
+                            try:
+                                event = json.loads(data_str)
+                            except json.JSONDecodeError:
+                                continue
+                            etype = event.get('type')
+                            if etype == 'content_block_delta':
+                                delta = event.get('delta', {})
+                                if delta.get('type') == 'text_delta':
+                                    text = delta.get('text', '')
+                                    if text:
+                                        reply += text
+                                        yield f"data: {json.dumps({'type': 'token', 'content': text})}\n\n"
+                            elif etype == 'message_start':
+                                u = event.get('message', {}).get('usage', {})
+                                prompt_tokens = u.get('input_tokens', 0)
+                            elif etype == 'message_delta':
+                                u = event.get('usage', {})
+                                completion_tokens = u.get('output_tokens', 0)
+            except Exception as e:
+                detail = f"Anthropic gateway error: {e}"
+                logger.error(detail)
+                yield f"data: {json.dumps({'type': 'error', 'detail': detail})}\n\n"
+                return
+            resp_ms = round((time.monotonic() - t0) * 1000)
+            prompt_tokens = prompt_tokens or estimate_message_tokens(payload, model=model)
+            completion_tokens = completion_tokens or estimate_text_tokens(reply, model=model)
+            total_tokens = (prompt_tokens or 0) + (completion_tokens or 0)
+            await _log_msg(db, session_id, current_user.id, "assistant", reply, model,
+                           ps_scanned=True, ps_action="pass", response_ms=resp_ms)
+            today_used = used_today + 1
+            yield f"data: {json.dumps({'type': 'done', 'model': model, 'session_id': session_id, 'ps_scanned': True, 'ps_action': 'gateway', 'ps_violations': [], 'messages_today': today_used, 'daily_limit': current_user.daily_message_limit, 'prompt_tokens': prompt_tokens, 'completion_tokens': completion_tokens, 'total_tokens': total_tokens})}\n\n"
+            return
+
         if ps_gw_client:
             try:
                 prompt_tokens = estimate_message_tokens(payload, model=model)
@@ -1336,6 +1465,7 @@ async def validate_llm_key(
     urls = {
         "openai": "https://api.openai.com/v1/models",
         "google": "https://generativelanguage.googleapis.com/v1beta/models",
+        "perplexity": "https://api.perplexity.ai/models",
         "openrouter": "https://openrouter.ai/api/v1/models",
     }
 
@@ -1346,7 +1476,7 @@ async def validate_llm_key(
                 resp = await client.post(
                     "https://api.anthropic.com/v1/messages",
                     headers={"x-api-key": api_key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"},
-                    json={"model": "claude-3-5-haiku-20241022", "max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]},
+                    json={"model": "claude-sonnet-4-5-20250929", "max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]},
                 )
                 if resp.status_code in (200, 201):
                     return {"valid": True, "provider": provider}

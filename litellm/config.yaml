@@ -11,15 +11,17 @@ model_list:
       api_key: os.environ/OPENAI_API_KEY
 
   # ── Anthropic ─────────────────────────────────────────────────────────────
-  - model_name: claude-3-5-sonnet-20241022
+  - model_name: claude-sonnet-4-5-20250929
     litellm_params:
-      model: anthropic/claude-3-5-sonnet-20241022
+      model: anthropic/claude-sonnet-4-5-20250929
       api_key: os.environ/ANTHROPIC_API_KEY
 
-  - model_name: claude-3-5-haiku-20241022
+
+  # ── Perplexity ────────────────────────────────────────────────────────────
+  - model_name: sonar
     litellm_params:
-      model: anthropic/claude-3-5-haiku-20241022
-      api_key: os.environ/ANTHROPIC_API_KEY
+      model: perplexity/sonar
+      api_key: os.environ/PERPLEXITY_API_KEY
 
   # ── Google (via OpenRouter) ───────────────────────────────────────────────
   - model_name: gemini-2.0-flash
