@@ -61,7 +61,7 @@ Browser
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/prompt-security/hga-demo.git
+git clone https://github.com/prompt-security/homegrown-ai-app-demo.git
 cd hga-demo
 
 cp .env.example .env
