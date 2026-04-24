@@ -1,4 +1,4 @@
-# HGA Demo
+# HomeGrown App Demo
 
 A multi-user AI chat application with deep [Prompt Security](https://www.prompt.security) integration, built with FastAPI, PostgreSQL, and LiteLLM.
 
