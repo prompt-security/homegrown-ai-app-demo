@@ -224,19 +224,6 @@ async def _acquire_sanitize_slot(user_id: int) -> None:
         _sanitize_user_active[user_id] += 1
 
 
-async def _consume_sanitize_quota(user_id: int) -> None:
-    now = time.time()
-    async with _sanitize_guard_lock:
-        timestamps = _sanitize_user_timestamps[user_id]
-        while timestamps and now - timestamps[0] > 60:
-            timestamps.popleft()
-
-        if len(timestamps) >= SANITIZE_MAX_PER_MINUTE:
-            raise HTTPException(status_code=429, detail="Sanitize rate limit exceeded")
-
-        timestamps.append(now)
-
-
 async def _release_sanitize_slot(user_id: int) -> None:
     async with _sanitize_guard_lock:
         _sanitize_user_active[user_id] = max(0, _sanitize_user_active[user_id] - 1)
@@ -1482,7 +1469,17 @@ async def upload_sanitize(
     await _acquire_sanitize_slot(current_user.id)
     try:
         file_bytes = await _read_upload_with_limit(file)
-        await _consume_sanitize_quota(current_user.id)
+
+        # Record per-minute quota only after local validation/read succeeds.
+        now = time.time()
+        async with _sanitize_guard_lock:
+            timestamps = _sanitize_user_timestamps[current_user.id]
+            while timestamps and now - timestamps[0] > 60:
+                timestamps.popleft()
+            if len(timestamps) >= SANITIZE_MAX_PER_MINUTE:
+                raise HTTPException(status_code=429, detail="Sanitize rate limit exceeded")
+            timestamps.append(now)
+
         t0 = time.monotonic()
         try:
             job_id = await ps_client.sanitize_file_submit(file_bytes, file.filename or "upload")
