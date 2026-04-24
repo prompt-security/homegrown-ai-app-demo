@@ -15,9 +15,18 @@ from sqlalchemy.orm import selectinload
 from database import get_db
 from models import APIKey, User
 
-SECRET_KEY  = os.getenv("SECRET_KEY", "dev_secret_change_me")
+APP_ENV = os.getenv("APP_ENV", os.getenv("ENV", "development")).lower()
+_SECRET_FROM_ENV = os.getenv("SECRET_KEY", "")
+
+if APP_ENV in {"dev", "development", "test", "local"}:
+    SECRET_KEY = _SECRET_FROM_ENV or "dev_secret_change_me"
+else:
+    if not _SECRET_FROM_ENV or _SECRET_FROM_ENV in {"dev_secret_change_me", "change_me", "changeme", "test-secret-key-for-unit-tests"}:
+        raise RuntimeError("SECRET_KEY must be explicitly set to a strong value")
+    SECRET_KEY = _SECRET_FROM_ENV
+
 ALGORITHM   = "HS256"
-TOKEN_TTL_H = 24
+TOKEN_TTL_H = int(os.getenv("TOKEN_TTL_H", "24"))
 
 pwd_ctx  = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer   = HTTPBearer(auto_error=False)

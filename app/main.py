@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import io
 import json
@@ -6,6 +7,7 @@ import os
 import secrets
 import time
 import uuid
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
@@ -54,6 +56,7 @@ PUBLIC_API_MAX_PROMPT_TOKENS = int(os.getenv("PUBLIC_API_MAX_PROMPT_TOKENS", "40
 PUBLIC_API_MAX_OUTPUT_TOKENS = int(os.getenv("PUBLIC_API_MAX_OUTPUT_TOKENS", "600"))
 PUBLIC_API_ALLOW_SYSTEM_PROMPT = os.getenv("PUBLIC_API_ALLOW_SYSTEM_PROMPT", "false").lower() in {"1", "true", "yes", "on"}
 SHOW_LLM_KEY_SETTINGS = os.getenv("SHOW_LLM_KEY_SETTINGS", "false").lower() in {"1", "true", "yes", "on"}
+APP_ENV = os.getenv("APP_ENV", os.getenv("ENV", "development")).lower()
 
 # Shared LLM keys (fallback when user has no per-provider key)
 _SHARED_LLM_KEYS = {
@@ -71,6 +74,18 @@ MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 ALLOWED_TEXT_TYPES  = {"text/plain", "text/markdown", "text/csv", "application/json"}
 ALLOWED_PDF_TYPE    = "application/pdf"
+ALLOWED_SANITIZE_TYPES = {
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "text/plain",
+}
+ALLOWED_SANITIZE_EXTENSIONS = (".pdf", ".docx", ".xlsx", ".txt")
+SANITIZE_MAX_PER_MINUTE = int(os.getenv("SANITIZE_MAX_PER_MINUTE") or "5")
+SANITIZE_MAX_CONCURRENT_PER_USER = int(os.getenv("SANITIZE_MAX_CONCURRENT_PER_USER") or "1")
+_sanitize_user_timestamps: dict[int, deque[float]] = defaultdict(deque)
+_sanitize_user_active: dict[int, int] = defaultdict(int)
+_sanitize_guard_lock = asyncio.Lock()
 
 # ── LiteLLM client (single OpenAI-compatible client for all providers) ────────
 litellm_client = AsyncOpenAI(
@@ -175,9 +190,49 @@ async def refresh_model_cache() -> list[dict]:
     return _model_cache
 
 
+def _validate_security_bootstrap_config() -> None:
+    """Fail fast in non-dev environments when insecure defaults are used."""
+    if APP_ENV in {"dev", "development", "test", "local"}:
+        return
+
+    problems = []
+    secret_key = os.getenv("SECRET_KEY", "")
+    if not secret_key or secret_key in {"dev_secret_change_me", "change_me", "changeme", "test-secret-key-for-unit-tests"}:
+        problems.append("SECRET_KEY must be explicitly set to a strong value")
+
+    admin_password = os.getenv("ADMIN_PASSWORD", "")
+    if not admin_password or admin_password in {"admin", "change_me", "changeme", "password"}:
+        problems.append("ADMIN_PASSWORD must not use insecure defaults")
+
+    if problems:
+        raise RuntimeError("Insecure bootstrap configuration: " + "; ".join(problems))
+
+
+async def _acquire_sanitize_slot(user_id: int) -> None:
+    now = time.time()
+    async with _sanitize_guard_lock:
+        timestamps = _sanitize_user_timestamps[user_id]
+        while timestamps and now - timestamps[0] > 60:
+            timestamps.popleft()
+
+        if _sanitize_user_active[user_id] >= SANITIZE_MAX_CONCURRENT_PER_USER:
+            raise HTTPException(status_code=429, detail="Too many concurrent sanitize requests")
+
+        if len(timestamps) >= SANITIZE_MAX_PER_MINUTE:
+            raise HTTPException(status_code=429, detail="Sanitize rate limit exceeded")
+
+        _sanitize_user_active[user_id] += 1
+
+
+async def _release_sanitize_slot(user_id: int) -> None:
+    async with _sanitize_guard_lock:
+        _sanitize_user_active[user_id] = max(0, _sanitize_user_active[user_id] - 1)
+
+
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _validate_security_bootstrap_config()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -935,15 +990,20 @@ async def delete_all_sessions(
     await db.commit()
 
 
+async def _read_upload_with_limit(file: UploadFile) -> bytes:
+    data = await file.read(MAX_FILE_SIZE_BYTES + 1)
+    if len(data) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail=f"File too large. Max {MAX_FILE_SIZE_MB} MB.")
+    return data
+
+
 # ── File upload ───────────────────────────────────────────────────────────────
 @app.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ):
-    data = await file.read()
-    if len(data) > MAX_FILE_SIZE_BYTES:
-        raise HTTPException(status_code=413, detail=f"File too large. Max {MAX_FILE_SIZE_MB} MB.")
+    data = await _read_upload_with_limit(file)
 
     mime = (file.content_type or "application/octet-stream").split(";")[0].strip()
     filename = file.filename or "upload"
@@ -1009,8 +1069,10 @@ async def chat_stream(
         )
 
     # ── Ensure session exists ─────────────────────────────────────────────────
-    session_id = request.session_id or str(uuid.uuid4())
+    session_id = str(request.session_id) if request.session_id else str(uuid.uuid4())
     session = await db.scalar(select(ChatSession).where(ChatSession.id == session_id))
+    if session and session.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
     if not session:
         title = last_user_msg[:60] + ("…" if len(last_user_msg) > 60 else "")
         session = ChatSession(id=session_id, user_id=current_user.id, title=title)
@@ -1066,6 +1128,10 @@ async def chat_stream(
                         logger.warning("Gateway mode: no LLM key for %s — PS gateway requires the provider API key", current_user.email)
             except Exception as e:
                 logger.warning("Could not init PS client for %s: %s", current_user.email, e)
+
+    # skip_ps is privileged: non-admin requests are explicitly rejected.
+    if request.skip_ps and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="skip_ps is restricted to admin users")
 
     # ── Store user message in DB ──────────────────────────────────────────────
     user_db_msg = Message(
@@ -1395,28 +1461,48 @@ async def upload_sanitize(
     except ValueError:
         raise HTTPException(status_code=400, detail="PS key could not be decrypted — re-enter it in Settings.")
     ps_client = PromptSecurityClient(base_url=current_user.ps_tenant.base_url, app_id=ps_app_id)
-    file_bytes = await file.read()
-    t0 = time.monotonic()
+    mime = (file.content_type or "application/octet-stream").split(";")[0].strip()
+    filename = file.filename or "upload"
+    if mime not in ALLOWED_SANITIZE_TYPES and not filename.lower().endswith(ALLOWED_SANITIZE_EXTENSIONS):
+        raise HTTPException(status_code=415, detail=f"Unsupported file type '{mime}'.")
+
+    await _acquire_sanitize_slot(current_user.id)
     try:
-        job_id = await ps_client.sanitize_file_submit(file_bytes, file.filename or "upload")
-        result = await ps_client.sanitize_file_poll(job_id, max_seconds=30)
-    except TimeoutError as e:
-        raise HTTPException(status_code=504, detail=str(e))
-    except Exception as e:
-        logger.error("File sanitization error for %s: %s", current_user.email, e)
-        raise HTTPException(status_code=502, detail=f"PS file sanitization failed: {e}")
-    scan_ms = round((time.monotonic() - t0) * 1000)
-    action = result.get("action", result.get("status", "pass"))
-    violations = result.get("violations", [])
-    sanitized_url = result.get("sanitizedFileUrl") or result.get("sanitized_file_url") or result.get("url")
-    return {
-        "job_id": job_id,
-        "action": action,
-        "violations": violations,
-        "sanitized_url": sanitized_url,
-        "scan_ms": scan_ms,
-        "raw": result,
-    }
+        file_bytes = await _read_upload_with_limit(file)
+
+        # Record per-minute quota only after local validation/read succeeds.
+        now = time.time()
+        async with _sanitize_guard_lock:
+            timestamps = _sanitize_user_timestamps[current_user.id]
+            while timestamps and now - timestamps[0] > 60:
+                timestamps.popleft()
+            if len(timestamps) >= SANITIZE_MAX_PER_MINUTE:
+                raise HTTPException(status_code=429, detail="Sanitize rate limit exceeded")
+            timestamps.append(now)
+
+        t0 = time.monotonic()
+        try:
+            job_id = await ps_client.sanitize_file_submit(file_bytes, file.filename or "upload")
+            result = await ps_client.sanitize_file_poll(job_id, max_seconds=30)
+        except TimeoutError as e:
+            raise HTTPException(status_code=504, detail=str(e))
+        except Exception as e:
+            logger.error("File sanitization error for %s: %s", current_user.email, e)
+            raise HTTPException(status_code=502, detail=f"PS file sanitization failed: {e}")
+        scan_ms = round((time.monotonic() - t0) * 1000)
+        action = result.get("action", result.get("status", "pass"))
+        violations = result.get("violations", [])
+        sanitized_url = result.get("sanitizedFileUrl") or result.get("sanitized_file_url") or result.get("url")
+        return {
+            "job_id": job_id,
+            "action": action,
+            "violations": violations,
+            "sanitized_url": sanitized_url,
+            "scan_ms": scan_ms,
+            "raw": result,
+        }
+    finally:
+        await _release_sanitize_slot(current_user.id)
 
 
 # ── User: LLM key overrides ───────────────────────────────────────────────────
