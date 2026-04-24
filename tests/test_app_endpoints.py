@@ -154,6 +154,74 @@ async def test_upload_sanitize_rejects_oversized_file_before_forward(
 
 
 @pytest.mark.asyncio
+async def test_upload_sanitize_rejects_when_concurrency_limit_reached(
+    client,
+    auth_token,
+    db,
+    test_user,
+    test_tenant,
+    monkeypatch,
+):
+    import main
+
+    test_user.ps_tenant_id = test_tenant.id
+    test_user.ps_api_key_enc = encrypt("app-id")
+    await db.commit()
+
+    class _FakePSClient:
+        def __init__(self, *args, **kwargs):
+            self.sanitize_file_submit = AsyncMock()
+            self.sanitize_file_poll = AsyncMock()
+
+    monkeypatch.setattr(main, "PromptSecurityClient", _FakePSClient)
+    monkeypatch.setitem(main._sanitize_user_active, test_user.id, main.SANITIZE_MAX_CONCURRENT_PER_USER)
+
+    response = await client.post(
+        "/upload/sanitize",
+        files={"file": ("ok.txt", b"hello", "text/plain")},
+        headers={"Authorization": f"Bearer {auth_token}"},
+    )
+
+    assert response.status_code == 429
+    assert "concurrent" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_upload_sanitize_rejects_when_rate_limit_reached(
+    client,
+    auth_token,
+    db,
+    test_user,
+    test_tenant,
+    monkeypatch,
+):
+    import main
+
+    test_user.ps_tenant_id = test_tenant.id
+    test_user.ps_api_key_enc = encrypt("app-id")
+    await db.commit()
+
+    class _FakePSClient:
+        def __init__(self, *args, **kwargs):
+            self.sanitize_file_submit = AsyncMock()
+            self.sanitize_file_poll = AsyncMock()
+
+    monkeypatch.setattr(main, "PromptSecurityClient", _FakePSClient)
+    monkeypatch.setattr(main, "SANITIZE_MAX_PER_MINUTE", 1)
+    main._sanitize_user_timestamps[test_user.id].clear()
+    main._sanitize_user_timestamps[test_user.id].append(main.time.time())
+
+    response = await client.post(
+        "/upload/sanitize",
+        files={"file": ("ok.txt", b"hello", "text/plain")},
+        headers={"Authorization": f"Bearer {auth_token}"},
+    )
+
+    assert response.status_code == 429
+    assert "rate limit" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
 async def test_chat_stream_rejects_overlong_session_id(client, auth_token):
     response = await client.post(
         "/chat/stream",
