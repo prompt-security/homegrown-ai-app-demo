@@ -1081,6 +1081,10 @@ async def chat_stream(
             except Exception as e:
                 logger.warning("Could not init PS client for %s: %s", current_user.email, e)
 
+    # skip_ps is privileged: non-admin requests are explicitly rejected.
+    if request.skip_ps and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="skip_ps is restricted to admin users")
+
     # ── Store user message in DB ──────────────────────────────────────────────
     user_db_msg = Message(
         session_id=session_id,
@@ -1092,8 +1096,7 @@ async def chat_stream(
     db.add(user_db_msg)
     await db.commit()
 
-    # skip_ps is privileged: only admins may bypass explicit PS scans.
-    skip_ps = request.skip_ps and current_user.role == "admin"
+    skip_ps = request.skip_ps
 
     async def generate():
         reply = ""

@@ -257,30 +257,18 @@ async def test_chat_stream_non_admin_cannot_bypass_ps_with_skip_flag(client, db,
     test_user.ps_enabled = True
     await db.commit()
 
-    llm = AsyncMock()
-    llm.chat.completions.create = AsyncMock(return_value=_fake_stream())
+    response = await client.post(
+        "/chat/stream",
+        headers={"Authorization": f"Bearer {create_access_token({'sub': str(test_user.id)})}"},
+        json={
+            "messages": [{"role": "user", "content": "hi"}],
+            "model": "gpt-4o-mini",
+            "skip_ps": True,
+        },
+    )
 
-    with (
-        patch("main._user_llm_client", return_value=(llm, "gpt-4o-mini")),
-        patch("main.PromptSecurityClient.protect_prompt", new=AsyncMock(return_value=_ps_pass_result())) as mock_prompt,
-        patch("main.PromptSecurityClient.protect_response", new=AsyncMock(return_value=_ps_pass_result())) as mock_response,
-    ):
-        response = await client.post(
-            "/chat/stream",
-            headers={"Authorization": f"Bearer {create_access_token({'sub': str(test_user.id)})}"},
-            json={
-                "messages": [{"role": "user", "content": "hi"}],
-                "model": "gpt-4o-mini",
-                "skip_ps": True,
-            },
-        )
-
-    assert response.status_code == 200
-    events = _parse_sse_events(response.text)
-    done = next(e for e in events if e.get("type") == "done")
-    assert done["ps_scanned"] is True
-    assert mock_prompt.await_count == 1
-    assert mock_response.await_count == 1
+    assert response.status_code == 403
+    assert response.json()["detail"] == "skip_ps is restricted to admin users"
 
 
 @pytest.mark.asyncio
