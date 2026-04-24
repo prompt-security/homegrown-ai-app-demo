@@ -222,6 +222,140 @@ async def test_upload_sanitize_rejects_when_rate_limit_reached(
 
 
 @pytest.mark.asyncio
+async def test_upload_sanitize_unsupported_does_not_consume_rate_limit(
+    client,
+    auth_token,
+    db,
+    test_user,
+    test_tenant,
+    monkeypatch,
+):
+    import main
+
+    test_user.ps_tenant_id = test_tenant.id
+    test_user.ps_api_key_enc = encrypt("app-id")
+    await db.commit()
+
+    submit_mock = AsyncMock(return_value="job-1")
+    poll_mock = AsyncMock(return_value={"action": "pass", "violations": []})
+
+    class _FakePSClient:
+        def __init__(self, *args, **kwargs):
+            self.sanitize_file_submit = submit_mock
+            self.sanitize_file_poll = poll_mock
+
+    monkeypatch.setattr(main, "PromptSecurityClient", _FakePSClient)
+    monkeypatch.setattr(main, "SANITIZE_MAX_PER_MINUTE", 1)
+    main._sanitize_user_timestamps[test_user.id].clear()
+    main._sanitize_user_active[test_user.id] = 0
+
+    bad_response = await client.post(
+        "/upload/sanitize",
+        files={"file": ("evil.exe", b"MZ", "application/octet-stream")},
+        headers={"Authorization": f"Bearer {auth_token}"},
+    )
+    assert bad_response.status_code == 415
+
+    ok_response = await client.post(
+        "/upload/sanitize",
+        files={"file": ("ok.txt", b"hello", "text/plain")},
+        headers={"Authorization": f"Bearer {auth_token}"},
+    )
+    assert ok_response.status_code == 200
+    submit_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_upload_sanitize_oversized_does_not_consume_rate_limit(
+    client,
+    auth_token,
+    db,
+    test_user,
+    test_tenant,
+    monkeypatch,
+):
+    import main
+
+    test_user.ps_tenant_id = test_tenant.id
+    test_user.ps_api_key_enc = encrypt("app-id")
+    await db.commit()
+
+    submit_mock = AsyncMock(return_value="job-1")
+    poll_mock = AsyncMock(return_value={"action": "pass", "violations": []})
+
+    class _FakePSClient:
+        def __init__(self, *args, **kwargs):
+            self.sanitize_file_submit = submit_mock
+            self.sanitize_file_poll = poll_mock
+
+    monkeypatch.setattr(main, "PromptSecurityClient", _FakePSClient)
+    monkeypatch.setattr(main, "SANITIZE_MAX_PER_MINUTE", 1)
+    main._sanitize_user_timestamps[test_user.id].clear()
+    main._sanitize_user_active[test_user.id] = 0
+
+    oversized = b"a" * (main.MAX_FILE_SIZE_BYTES + 1)
+    bad_response = await client.post(
+        "/upload/sanitize",
+        files={"file": ("big.txt", oversized, "text/plain")},
+        headers={"Authorization": f"Bearer {auth_token}"},
+    )
+    assert bad_response.status_code == 413
+
+    ok_response = await client.post(
+        "/upload/sanitize",
+        files={"file": ("ok.txt", b"hello", "text/plain")},
+        headers={"Authorization": f"Bearer {auth_token}"},
+    )
+    assert ok_response.status_code == 200
+    submit_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_upload_sanitize_successful_request_consumes_rate_limit(
+    client,
+    auth_token,
+    db,
+    test_user,
+    test_tenant,
+    monkeypatch,
+):
+    import main
+
+    test_user.ps_tenant_id = test_tenant.id
+    test_user.ps_api_key_enc = encrypt("app-id")
+    await db.commit()
+
+    submit_mock = AsyncMock(return_value="job-1")
+    poll_mock = AsyncMock(return_value={"action": "pass", "violations": []})
+
+    class _FakePSClient:
+        def __init__(self, *args, **kwargs):
+            self.sanitize_file_submit = submit_mock
+            self.sanitize_file_poll = poll_mock
+
+    monkeypatch.setattr(main, "PromptSecurityClient", _FakePSClient)
+    monkeypatch.setattr(main, "SANITIZE_MAX_PER_MINUTE", 1)
+    main._sanitize_user_timestamps[test_user.id].clear()
+    main._sanitize_user_active[test_user.id] = 0
+
+    first_response = await client.post(
+        "/upload/sanitize",
+        files={"file": ("ok.txt", b"hello", "text/plain")},
+        headers={"Authorization": f"Bearer {auth_token}"},
+    )
+    assert first_response.status_code == 200
+
+    second_response = await client.post(
+        "/upload/sanitize",
+        files={"file": ("ok-2.txt", b"hello2", "text/plain")},
+        headers={"Authorization": f"Bearer {auth_token}"},
+    )
+    assert second_response.status_code == 429
+    assert "rate limit" in second_response.json()["detail"].lower()
+    assert submit_mock.await_count == 1
+
+
+@pytest.mark.asyncio
 async def test_chat_stream_rejects_overlong_session_id(client, auth_token):
     response = await client.post(
         "/chat/stream",
