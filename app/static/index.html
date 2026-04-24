@@ -488,6 +488,18 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
 .afd-act-block { background:rgba(231,76,60,0.15); color:#e74c3c; }
 .afd-act-modify { background:rgba(230,184,0,0.15); color:#e6b800; }
 .afd-act-log { background:rgba(46,204,113,0.15); color:#2ecc71; }
+#sendBtn.hidden { display: none; }
+#compareActionRow { display: none; gap: 6px; padding: 8px 0 2px; }
+#compareActionRow.active { display: flex; }
+.cmp-action-btn { flex: 1; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text-muted); font-family: var(--font); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+.cmp-action-btn:hover:not(:disabled) { filter: brightness(1.2); }
+.cmp-action-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.cmp-action-btn.cmp-ps-btn   { border-color: rgba(126,207,176,0.4); color: #7ecfb0; background: rgba(126,207,176,0.07); }
+.cmp-action-btn.cmp-ps-btn:hover:not(:disabled)   { background: rgba(126,207,176,0.14); }
+.cmp-action-btn.cmp-both-btn { border-color: rgba(108,99,255,0.5); color: var(--accent); background: rgba(108,99,255,0.1); }
+.cmp-action-btn.cmp-both-btn:hover:not(:disabled) { background: rgba(108,99,255,0.2); }
+.cmp-action-btn.cmp-raw-btn  { border-color: rgba(240,192,96,0.4); color: #f0c060; background: rgba(240,192,96,0.07); }
+.cmp-action-btn.cmp-raw-btn:hover:not(:disabled)  { background: rgba(240,192,96,0.14); }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -526,6 +538,7 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
     <button class="icon-btn" id="sysPromptBtn" title="System prompt">⚙️</button>
     <button id="introBtn" title="Architecture & Integration Guide">Intro</button>
     <button id="demoBtn" title="Demo Scenarios">Demo</button>
+    <button id="compareModeBtn" title="Toggle compare mode">⚡ Compare</button>
     <div id="psWidget">
       <button id="psToggleBtn" class="off" title="Click to toggle PS on/off">PS off</button>
       <button id="psGearBtn" title="Configure PS settings">⚙</button>
@@ -553,8 +566,9 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
   <div id="chatWrap">
     <div id="chat"></div>
     <div id="compareColumns">
-      <div id="cmpTopBar" style="display:flex;align-items:center;justify-content:space-between;padding:6px 14px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:12px;color:var(--text-muted);flex-shrink:0">
-        <span id="cmpLabel" style="overflow:hidden;flex:1;margin-right:12px;font-style:italic;word-break:break-word"></span>
+      <div id="cmpTopBar" style="display:flex;align-items:center;justify-content:space-between;padding:6px 14px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:12px;flex-shrink:0">
+        <span style="font-weight:600;color:var(--text)">🆚 Compare Mode</span>
+        <span style="font-size:11px;color:var(--text-muted);margin-left:8px;flex:1">🛡️ With PS &nbsp;vs&nbsp; ⚡ Raw LLM</span>
         <button id="cmpExitBtn" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:11px;padding:3px 10px;cursor:pointer">✕ Exit compare</button>
       </div>
       <div style="display:flex;flex:1;overflow:hidden;min-height:0">
@@ -582,6 +596,11 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
       <button id="attachBtn" title="Attach file">📎</button>
       <textarea id="userInput" rows="1" placeholder="Type a message… (Enter to send, Shift+Enter for newline)"></textarea>
       <button id="sendBtn" title="Send">&#10148;</button>
+    </div>
+    <div id="compareActionRow">
+      <button class="cmp-action-btn cmp-ps-btn"  id="cmpSendLeftBtn">🛡 With PS</button>
+      <button class="cmp-action-btn cmp-both-btn" id="cmpSendBothBtn">⚡ Compare Both</button>
+      <button class="cmp-action-btn cmp-raw-btn"  id="cmpSendRightBtn">Raw LLM ⚡</button>
     </div>
     <div class="composer-meta">
       <span id="tokenEstimate">Estimated prompt tokens: 0</span>
@@ -1913,6 +1932,7 @@ reply = await client.chat.completions.create(
       document.getElementById('adminPsLink').style.display = 'inline';
     }
     updatePsStatus();
+    if (AUTH_USER?.ps_configured) enterCompareMode();
     await Promise.all([loadModels(), loadSessions(), loadStats()]);
     scheduleTokenEstimate();
   }
@@ -1936,6 +1956,7 @@ reply = await client.chat.completions.create(
       psStatusEl.title = 'Not configured — click ⚙ to set up';
       gear.className = '';
     }
+    if (AUTH_USER?.ps_configured && AUTH_USER?.ps_enabled && !compareModeActive) enterCompareMode();
   }
 
   async function quickTogglePs() {
@@ -2582,12 +2603,29 @@ reply = await client.chat.completions.create(
   const cmpLeftMsgs  = document.getElementById('cmpLeftMsgs');
   const cmpRightMsgs = document.getElementById('cmpRightMsgs');
 
+  const compareModeBtn = document.getElementById('compareModeBtn');
+
+  function enterCompareMode() {
+    compareModeActive = true;
+    chatEl.style.display = 'none';
+    compareColumns.classList.add('active');
+    document.getElementById('compareActionRow').classList.add('active');
+    sendBtn.classList.add('hidden');
+    compareModeBtn.classList.add('active');
+  }
+
   function exitCompare() {
     compareModeActive = false;
     chatEl.style.display = '';
     compareColumns.classList.remove('active');
+    document.getElementById('compareActionRow').classList.remove('active');
+    sendBtn.classList.remove('hidden');
+    compareModeBtn.classList.remove('active');
   }
   document.getElementById('cmpExitBtn').addEventListener('click', exitCompare);
+  compareModeBtn.addEventListener('click', () => {
+    if (compareModeActive) exitCompare(); else enterCompareMode();
+  });
 
   function cmpAppendUser(text) {
     [cmpLeftMsgs, cmpRightMsgs].forEach(col => {
@@ -2613,17 +2651,43 @@ reply = await client.chat.completions.create(
     return { bub, footer };
   }
 
+  function disableCmpActions(disabled) {
+    input.disabled = disabled;
+    ['cmpSendLeftBtn', 'cmpSendBothBtn', 'cmpSendRightBtn'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = disabled;
+    });
+  }
+
   async function sendCompareMessage(text) {
     input.value = ''; input.style.height = 'auto';
-    sendBtn.disabled = input.disabled = true;
+    disableCmpActions(true);
     cmpAppendUser(text);
     const { bub: lBub, footer: lFoot } = cmpMakeBotSlot(cmpLeftMsgs);
-    const { bub: rBub, footer: rFoot } = cmpMakeBotSlot(cmpRightMsgs);
+    const { bub: rBub } = cmpMakeBotSlot(cmpRightMsgs);
     await Promise.all([
       streamIntoBubble(lBub, lFoot, text, false),
       streamIntoBubble(rBub, null,  text, true),
     ]);
-    sendBtn.disabled = input.disabled = false; input.focus();
+    disableCmpActions(false); input.focus();
+  }
+
+  async function sendCompareLeft(text) {
+    disableCmpActions(true);
+    const d = document.createElement('div'); d.className = 'cmp-user-msg'; d.innerHTML = renderMd(text);
+    cmpLeftMsgs.appendChild(d); cmpLeftMsgs.scrollTop = cmpLeftMsgs.scrollHeight;
+    const { bub, footer } = cmpMakeBotSlot(cmpLeftMsgs);
+    await streamIntoBubble(bub, footer, text, false);
+    disableCmpActions(false); input.focus();
+  }
+
+  async function sendCompareRight(text) {
+    disableCmpActions(true);
+    const d = document.createElement('div'); d.className = 'cmp-user-msg'; d.innerHTML = renderMd(text);
+    cmpRightMsgs.appendChild(d); cmpRightMsgs.scrollTop = cmpRightMsgs.scrollHeight;
+    const { bub, footer } = cmpMakeBotSlot(cmpRightMsgs);
+    await streamIntoBubble(bub, footer, text, true);
+    disableCmpActions(false); input.focus();
   }
 
   // ── Send ──────────────────────────────────────────────────────────────────
@@ -2888,12 +2952,19 @@ reply = await client.chat.completions.create(
 
   function loadDemoPrompt(promptText) {
     closeDemoPanel();
-    startNewChat();
-    input.value = promptText;
-    input.style.height = 'auto';
-    input.style.height = Math.min(input.scrollHeight, 140) + 'px';
-    scheduleTokenEstimate();
-    input.focus();
+    if (AUTH_USER?.ps_configured) {
+      enterCompareMode();
+      cmpLeftMsgs.innerHTML = '';
+      cmpRightMsgs.innerHTML = '';
+      sendCompareMessage(promptText);
+    } else {
+      startNewChat();
+      input.value = promptText;
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 140) + 'px';
+      scheduleTokenEstimate();
+      input.focus();
+    }
   }
 
   // Render country grid
@@ -3369,31 +3440,28 @@ if (evt.type === 'done') {
   }
 
   function runCompare(promptText) {
-    document.getElementById('cmpLabel').textContent = promptText;
-
-    compareModeActive = true;
-    chatEl.style.display = 'none';
-    compareColumns.classList.add('active');
+    enterCompareMode();
     cmpLeftMsgs.innerHTML = '';
     cmpRightMsgs.innerHTML = '';
-
-    const leftBubble = document.createElement('div');
-    leftBubble.className = 'compare-bubble';
-    leftBubble.innerHTML = '<div class="compare-typing"><span></span><span></span><span></span></div>';
-    cmpLeftMsgs.appendChild(leftBubble);
-
-    const leftFooter = document.createElement('div');
-    leftFooter.className = 'compare-footer';
-    cmpLeftMsgs.appendChild(leftFooter);
-
-    const rightBubble = document.createElement('div');
-    rightBubble.className = 'compare-bubble';
-    rightBubble.innerHTML = '<div class="compare-typing"><span></span><span></span><span></span></div>';
-    cmpRightMsgs.appendChild(rightBubble);
-
-    streamIntoBubble(leftBubble, leftFooter, promptText, false);
-    streamIntoBubble(rightBubble, null, promptText, true);
+    cmpAppendUser(promptText);
+    const { bub: lBub, footer: lFoot } = cmpMakeBotSlot(cmpLeftMsgs);
+    const { bub: rBub } = cmpMakeBotSlot(cmpRightMsgs);
+    streamIntoBubble(lBub, lFoot, promptText, false);
+    streamIntoBubble(rBub, null, promptText, true);
   }
+
+  // Wire compare action buttons
+  document.getElementById('cmpSendLeftBtn').addEventListener('click', () => {
+    const text = input.value.trim();
+    if (text) { input.value = ''; input.style.height = 'auto'; sendCompareLeft(text); }
+  });
+  document.getElementById('cmpSendBothBtn').addEventListener('click', () => {
+    const text = input.value.trim(); if (text) sendCompareMessage(text);
+  });
+  document.getElementById('cmpSendRightBtn').addEventListener('click', () => {
+    const text = input.value.trim();
+    if (text) { input.value = ''; input.style.height = 'auto'; sendCompareRight(text); }
+  });
 
   // Wire Compare buttons to demo scenarios
   document.getElementById('demoPiiCompareBtn')?.addEventListener('click', () => {
