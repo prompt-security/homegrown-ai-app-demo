@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Optional
+from uuid import UUID
 from pydantic import BaseModel, EmailStr
 
 
@@ -115,7 +116,7 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessage]
     model: Optional[str] = None
     system_prompt: Optional[str] = None
-    session_id: Optional[str] = None
+    session_id: Optional[UUID] = None
     skip_ps: bool = False
 
 

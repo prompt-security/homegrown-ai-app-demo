@@ -71,6 +71,13 @@ MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 ALLOWED_TEXT_TYPES  = {"text/plain", "text/markdown", "text/csv", "application/json"}
 ALLOWED_PDF_TYPE    = "application/pdf"
+ALLOWED_SANITIZE_TYPES = {
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "text/plain",
+}
+ALLOWED_SANITIZE_EXTENSIONS = (".pdf", ".docx", ".xlsx", ".txt")
 
 # ── LiteLLM client (single OpenAI-compatible client for all providers) ────────
 litellm_client = AsyncOpenAI(
@@ -935,15 +942,20 @@ async def delete_all_sessions(
     await db.commit()
 
 
+async def _read_upload_with_limit(file: UploadFile) -> bytes:
+    data = await file.read(MAX_FILE_SIZE_BYTES + 1)
+    if len(data) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail=f"File too large. Max {MAX_FILE_SIZE_MB} MB.")
+    return data
+
+
 # ── File upload ───────────────────────────────────────────────────────────────
 @app.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ):
-    data = await file.read()
-    if len(data) > MAX_FILE_SIZE_BYTES:
-        raise HTTPException(status_code=413, detail=f"File too large. Max {MAX_FILE_SIZE_MB} MB.")
+    data = await _read_upload_with_limit(file)
 
     mime = (file.content_type or "application/octet-stream").split(";")[0].strip()
     filename = file.filename or "upload"
@@ -1009,8 +1021,10 @@ async def chat_stream(
         )
 
     # ── Ensure session exists ─────────────────────────────────────────────────
-    session_id = request.session_id or str(uuid.uuid4())
+    session_id = str(request.session_id) if request.session_id else str(uuid.uuid4())
     session = await db.scalar(select(ChatSession).where(ChatSession.id == session_id))
+    if session and session.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
     if not session:
         title = last_user_msg[:60] + ("…" if len(last_user_msg) > 60 else "")
         session = ChatSession(id=session_id, user_id=current_user.id, title=title)
@@ -1078,7 +1092,8 @@ async def chat_stream(
     db.add(user_db_msg)
     await db.commit()
 
-    skip_ps = request.skip_ps
+    # skip_ps is privileged: only admins may bypass explicit PS scans.
+    skip_ps = request.skip_ps and current_user.role == "admin"
 
     async def generate():
         reply = ""
@@ -1395,7 +1410,12 @@ async def upload_sanitize(
     except ValueError:
         raise HTTPException(status_code=400, detail="PS key could not be decrypted — re-enter it in Settings.")
     ps_client = PromptSecurityClient(base_url=current_user.ps_tenant.base_url, app_id=ps_app_id)
-    file_bytes = await file.read()
+    mime = (file.content_type or "application/octet-stream").split(";")[0].strip()
+    filename = file.filename or "upload"
+    if mime not in ALLOWED_SANITIZE_TYPES and not filename.lower().endswith(ALLOWED_SANITIZE_EXTENSIONS):
+        raise HTTPException(status_code=415, detail=f"Unsupported file type '{mime}'.")
+
+    file_bytes = await _read_upload_with_limit(file)
     t0 = time.monotonic()
     try:
         job_id = await ps_client.sanitize_file_submit(file_bytes, file.filename or "upload")
