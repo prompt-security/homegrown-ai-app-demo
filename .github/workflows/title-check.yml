@@ -1,0 +1,10 @@
+name: title-check
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  title-check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "PR title check not enforced on this demo repo"
