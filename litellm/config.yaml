@@ -120,6 +120,12 @@ model_list:
       model: openrouter/sourceful/riverflow-v2-fast-preview
       api_key: os.environ/OPENROUTER_API_KEY
 
+  # ── Local models via Ollama (host machine) ───────────────────────────────
+  - model_name: gemma3:270m
+    litellm_params:
+      model: ollama/gemma3:270m
+      api_base: http://host.docker.internal:11434
+
 litellm_settings:
   drop_params: true
   request_timeout: 60

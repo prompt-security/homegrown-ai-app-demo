@@ -102,7 +102,12 @@ _PROVIDER_URLS = {
 }
 
 
+_OLLAMA_MODEL_IDS = {s.strip() for s in os.getenv("OLLAMA_MODEL_IDS", "").split(",") if s.strip()}
+
+
 def _detect_provider(model_id: str) -> str:
+    if model_id in _OLLAMA_MODEL_IDS:
+        return "ollama"
     m = model_id.lower()
     if m.startswith(("gpt-", "o1", "o3", "o4")):
         return "openai"
@@ -118,6 +123,8 @@ def _detect_provider(model_id: str) -> str:
 def _model_meta(model_id: str) -> dict:
     """Return category, provider, and required key info for a model."""
     provider = _detect_provider(model_id)
+    if provider == "ollama":
+        return {"category": "local", "provider": "Ollama", "requires_key": None}
     is_free = model_id.lower().endswith(":free")
     return {
         "category": "free" if is_free else "paid",
@@ -377,7 +384,7 @@ async def models(current_user: User = Depends(get_current_user)):
     for m in available:
         meta = _model_meta(m["id"])
         provider = _detect_provider(m["id"])
-        key_set = provider in user_providers or provider in shared_providers
+        key_set = provider == "ollama" or provider in user_providers or provider in shared_providers
         enriched.append({**m, **meta, "key_set": key_set})
 
     return {"models": enriched, "fallback": not bool(live)}

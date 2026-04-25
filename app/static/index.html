@@ -1994,8 +1994,9 @@ reply = await client.chat.completions.create(
     }
 
     // Group models by category
-    const free = models.filter(m => m.category === 'free');
-    const paid = models.filter(m => m.category !== 'free');
+    const local = models.filter(m => m.category === 'local');
+    const free  = models.filter(m => m.category === 'free');
+    const paid  = models.filter(m => m.category !== 'free' && m.category !== 'local');
 
     let firstSelectable = null;
 
@@ -2020,6 +2021,7 @@ reply = await client.chat.completions.create(
       modelSelect.appendChild(grp);
     }
 
+    addGroup('Local Models (Ollama)', local);
     addGroup('Free Models', free);
     addGroup('Paid Models', paid);
 
