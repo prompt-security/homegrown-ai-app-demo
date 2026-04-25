@@ -120,11 +120,14 @@ model_list:
       model: openrouter/sourceful/riverflow-v2-fast-preview
       api_key: os.environ/OPENROUTER_API_KEY
 
-  # ── Local models via Ollama (host machine) ───────────────────────────────
+  # ── Local models via Ollama ──────────────────────────────────────────────
+  # Set OLLAMA_BASE_URL in .env to point to your Ollama instance.
+  # Default: http://host.docker.internal:11434 (Ollama on the host Mac/Linux machine)
+  # Remote:  http://<ollama-host>:11434
   - model_name: gemma3:270m
     litellm_params:
       model: ollama/gemma3:270m
-      api_base: http://host.docker.internal:11434
+      api_base: os.environ/OLLAMA_BASE_URL
 
 litellm_settings:
   drop_params: true

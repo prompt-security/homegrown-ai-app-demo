@@ -180,6 +180,54 @@ Get a free OpenRouter key at [openrouter.ai](https://openrouter.ai).
 
 ---
 
+## Ollama (local & remote models)
+
+Ollama lets you run open-weight models locally or on any server you control — no cloud API key needed.
+
+### Prerequisites
+
+- [Ollama](https://ollama.com) installed and running (separate from Docker)
+- The model pulled: `ollama pull gemma3:270m`
+
+> **Note:** Ollama is **not** a Docker Compose service in this project. It runs as a standalone process on the host or a remote machine. Docker containers reach the host via `host.docker.internal:11434` (the default).
+
+### Configuration
+
+Add the following to your `.env`:
+
+```bash
+# URL of the Ollama instance, as seen from inside Docker
+OLLAMA_BASE_URL=http://host.docker.internal:11434   # host machine (default)
+# OLLAMA_BASE_URL=http://192.168.1.50:11434         # remote server
+# OLLAMA_BASE_URL=http://ollama:11434               # if running as a Docker service
+
+# Comma-separated model IDs — must match model_name values in litellm/config.yaml
+OLLAMA_MODEL_IDS=gemma3:270m
+```
+
+### Remote Ollama
+
+To point the app at an Ollama instance on another machine:
+
+1. Start Ollama on the remote host with `OLLAMA_HOST=0.0.0.0 ollama serve`
+2. Set `OLLAMA_BASE_URL=http://<remote-ip>:11434` in `.env`
+3. Rebuild: `docker compose up -d --build app litellm`
+
+### Adding more Ollama models
+
+1. Pull the model: `ollama pull <model>`
+2. Add an entry to `litellm/config.yaml`:
+   ```yaml
+   - model_name: <model>
+     litellm_params:
+       model: ollama/<model>
+       api_base: os.environ/OLLAMA_BASE_URL
+   ```
+3. Add the model name to `OLLAMA_MODEL_IDS` in `.env` (comma-separated)
+4. Rebuild: `docker compose up -d --build app litellm`
+
+---
+
 ## Prompt Security
 
 ### Setup
