@@ -198,8 +198,7 @@ Add the following to your `.env`:
 ```bash
 # URL of the Ollama instance, as seen from inside Docker
 OLLAMA_BASE_URL=http://host.docker.internal:11434   # host machine (default)
-# OLLAMA_BASE_URL=http://192.168.1.50:11434         # remote server
-# OLLAMA_BASE_URL=http://ollama:11434               # if running as a Docker service
+# OLLAMA_BASE_URL=https://ollama.example.com        # remote server (HTTPS, no port)
 
 # Comma-separated model IDs — must match model_name values in litellm/config.yaml
 OLLAMA_MODEL_IDS=gemma3:270m
@@ -207,10 +206,10 @@ OLLAMA_MODEL_IDS=gemma3:270m
 
 ### Remote Ollama
 
-To point the app at an Ollama instance on another machine:
+Remote Ollama should be placed behind a reverse proxy (nginx, Caddy, etc.) that terminates TLS. The app then connects over standard HTTPS with no custom port:
 
-1. Start Ollama on the remote host with `OLLAMA_HOST=0.0.0.0 ollama serve`
-2. Set `OLLAMA_BASE_URL=http://<remote-ip>:11434` in `.env`
+1. Deploy Ollama behind a reverse proxy at `https://ollama.example.com`
+2. Set `OLLAMA_BASE_URL=https://ollama.example.com` in `.env`
 3. Rebuild: `docker compose up -d --build app litellm`
 
 ### Adding more Ollama models
