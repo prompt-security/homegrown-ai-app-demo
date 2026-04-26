@@ -1162,7 +1162,7 @@ async def chat_stream(
         ]
 
         # ── Gateway mode: route through PS proxy, skip explicit scanning ───────
-        if ps_gw_gemini:
+        if ps_gw_gemini and not skip_ps:
             system_parts, contents = [], []
             for msg in payload:
                 role = msg.get('role', 'user')
@@ -1206,7 +1206,7 @@ async def chat_stream(
             yield f"data: {json.dumps({'type': 'done', 'model': model, 'session_id': session_id, 'ps_scanned': True, 'ps_action': 'gateway', 'ps_violations': [], 'messages_today': today_used, 'daily_limit': current_user.daily_message_limit, 'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0})}\n\n"
             return
 
-        if ps_gw_anthropic:
+        if ps_gw_anthropic and not skip_ps:
             anthropic_messages = []
             system_text = ""
             for msg in payload:
@@ -1277,7 +1277,7 @@ async def chat_stream(
             yield f"data: {json.dumps({'type': 'done', 'model': model, 'session_id': session_id, 'ps_scanned': True, 'ps_action': 'gateway', 'ps_violations': [], 'messages_today': today_used, 'daily_limit': current_user.daily_message_limit, 'prompt_tokens': prompt_tokens, 'completion_tokens': completion_tokens, 'total_tokens': total_tokens})}\n\n"
             return
 
-        if ps_gw_client:
+        if ps_gw_client and not skip_ps:
             try:
                 prompt_tokens = estimate_message_tokens(payload, model=model)
                 stream = await ps_gw_client.chat.completions.create(
