@@ -62,7 +62,7 @@ Browser
 
 ```bash
 git clone https://github.com/prompt-security/homegrown-ai-app-demo.git
-cd hga-demo
+cd homegrown-ai-app-demo
 
 cp .env.example .env
 ```
