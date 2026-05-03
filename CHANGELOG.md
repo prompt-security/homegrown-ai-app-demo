@@ -2,6 +2,19 @@
 
 ## [2026-05-03]
 ### Added
+- Demo storytelling: severity badges (HIGH/MEDIUM), attacker-goal, and SE talking-point on every scenario card
+- Practice Mode toggle (🎭 Practice / 🎤 Demo) hides SE coaching notes for live demos; state persisted in localStorage
+- 3 new attack scenarios: Soft Injection, Prompt Leak (replaces Topic Detector)
+- Status chips (BLOCKED / MODIFIED / ALLOWED) on bot messages in chat and compare mode
+- "Why PS caught this" panel in PS insight with scenario-specific explanation and SE coaching note
+- Pulse animations on blocked (red) and modified (amber) message bubbles
+- `activeScenario` tracking: set when loading a demo prompt, cleared on manual input edit
+
+### Changed
+- Removed Topic Detector demo scenario; replaced with Soft Injection + Prompt Leak
+- All scenario cards now show severity pill + category row and attacker-goal text
+
+### Fixed
 - `CHANGELOG.md` and `CLAUDE.md` for change tracking going forward
 
 ### Fixed
