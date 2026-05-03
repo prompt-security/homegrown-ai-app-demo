@@ -1174,9 +1174,10 @@ reply = await client.chat.completions.create(
             <!-- Chatbot → API GW -->
             <path d="M215,110 L265,110" stroke="#6c63ff" stroke-width="1.5" fill="none" marker-end="url(#ap-hy)" opacity="0.8"/>
             <!-- Internal ChatBot → API GW -->
-            <path d="M215,200 L265,150" stroke="#6c63ff" stroke-width="1.5" fill="none" marker-end="url(#ap-hy)" opacity="0.75"/>
-            <!-- API GW → ps-openai-gw (near-vertical) -->
+            <path d="M215,200 L265,150" stroke="#2ecc71" stroke-width="1.5" fill="none" marker-end="url(#ag-hy)" opacity="0.75"/>
+            <!-- API GW → ps-openai-gw (near-vertical, purple + green) -->
             <path d="M348,155 C348,215 358,248 358,280" stroke="#6c63ff" stroke-width="2" fill="none" marker-end="url(#ap-hy)"/>
+            <path d="M352,155 C352,215 362,248 362,280" stroke="#2ecc71" stroke-width="2" fill="none" marker-end="url(#ag-hy)" opacity="0.85"/>
             <!-- ps-openai-gw → Org Proxy (clear gap of 60px) -->
             <path d="M450,315 L510,300" stroke="#6c63ff" stroke-width="2" fill="none" marker-end="url(#ap-hy)"/>
             <!-- Org Proxy → Prompt Security (protection, purple) -->
@@ -1188,8 +1189,9 @@ reply = await client.chat.completions.create(
 
             <!-- Animated packets -->
             <circle r="3" fill="#6c63ff" opacity="0.9"><animateMotion dur="2s" repeatCount="indefinite" path="M215,110 L265,110"/></circle>
-            <circle r="3" fill="#6c63ff" opacity="0.75"><animateMotion dur="2.8s" repeatCount="indefinite" begin="0.5s" path="M215,200 L265,150"/></circle>
+            <circle r="3" fill="#2ecc71" opacity="0.75"><animateMotion dur="2.8s" repeatCount="indefinite" begin="0.5s" path="M215,200 L265,150"/></circle>
             <circle r="3.5" fill="#6c63ff"><animateMotion dur="2.2s" repeatCount="indefinite" path="M348,155 C348,215 358,248 358,280"/></circle>
+            <circle r="3.5" fill="#2ecc71" opacity="0.85"><animateMotion dur="2.2s" repeatCount="indefinite" begin="1.1s" path="M352,155 C352,215 362,248 362,280"/></circle>
             <circle r="3.5" fill="#6c63ff"><animateMotion dur="1.8s" repeatCount="indefinite" path="M450,315 L510,300"/></circle>
             <circle r="3.5" fill="#6c63ff"><animateMotion dur="2.5s" repeatCount="indefinite" path="M630,278 C638,252 652,210 668,155"/></circle>
             <circle r="3" fill="#2ecc71" opacity="0.85"><animateMotion dur="3s" repeatCount="indefinite" begin="0.4s" path="M630,312 C655,342 740,328 860,240"/></circle>
@@ -1197,10 +1199,12 @@ reply = await client.chat.completions.create(
 
             <!-- Connection labels -->
             <g transform="translate(351,222)"><rect x="-28" y="-8" width="56" height="16" rx="3" fill="#0f1117" stroke="#6c63ff" stroke-opacity="0.5"/><text x="0" y="4" text-anchor="middle" class="proto" fill="#6c63ff">HTTPS/443</text></g>
+            <g transform="translate(351,240)"><rect x="-28" y="-8" width="56" height="16" rx="3" fill="#0f1117" stroke="#2ecc71" stroke-opacity="0.5"/><text x="0" y="4" text-anchor="middle" class="proto" fill="#2ecc71">HTTPS/443</text></g>
             <g transform="translate(480,289)"><rect x="-18" y="-7" width="36" height="14" rx="3" fill="#0f1117" stroke="#6c63ff" stroke-opacity="0.6"/><text x="0" y="3" text-anchor="middle" class="proto" fill="#6c63ff">HTTP</text></g>
             <g transform="translate(480,306)"><rect x="-18" y="-7" width="36" height="14" rx="3" fill="#0f1117" stroke="#2ecc71" stroke-opacity="0.6"/><text x="0" y="3" text-anchor="middle" class="proto" fill="#2ecc71">HTTP</text></g>
             <g transform="translate(655,218)"><rect x="-32" y="-8" width="64" height="16" rx="3" fill="#0f1117" stroke="#6c63ff" stroke-opacity="0.6"/><text x="0" y="4" text-anchor="middle" class="proto" fill="#6c63ff">HTTPS/443</text></g>
-            <g transform="translate(750,352)"><rect x="-32" y="-8" width="64" height="16" rx="3" fill="#0f1117" stroke="#2ecc71" stroke-opacity="0.6"/><text x="0" y="4" text-anchor="middle" class="proto" fill="#2ecc71">HTTPS/443</text></g>
+            <g transform="translate(750,318)"><rect x="-32" y="-8" width="64" height="16" rx="3" fill="#0f1117" stroke="#2ecc71" stroke-opacity="0.6"/><text x="0" y="4" text-anchor="middle" class="proto" fill="#2ecc71">HTTPS/443</text></g>
+            <g transform="translate(750,336)"><rect x="-38" y="-8" width="76" height="16" rx="3" fill="#0f1117" stroke="#2ecc71" stroke-opacity="0.6"/><text x="0" y="4" text-anchor="middle" class="proto" fill="#2ecc71">Private Link</text></g>
             <g transform="translate(237,395)"><rect x="-24" y="-8" width="48" height="16" rx="3" fill="#0f1117" stroke="#2ecc71" stroke-opacity="0.5"/><text x="0" y="4" text-anchor="middle" class="proto" fill="#2ecc71">Direct</text></g>
 
             <!-- NODES -->
