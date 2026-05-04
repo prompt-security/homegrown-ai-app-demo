@@ -20,7 +20,7 @@ def estimate_message_tokens(payload: list[dict[str, Any]], model: str | None = N
         count = token_counter(model=model or "", messages=_normalize_messages(payload))
         return max(int(count), 1)
     except Exception as exc:
-        logger.warning("LiteLLM token count failed for model %s: %s", model, exc)
+        logger.warning("LiteLLM message count failed for model %s (%s)", model, type(exc).__name__)
         return max(_fallback_estimate(payload), 1)
 
 
@@ -28,7 +28,7 @@ def estimate_text_tokens(text: str, model: str | None = None) -> int:
     try:
         return max(len(encode(model=model or "", text=text or "")), 1)
     except Exception as exc:
-        logger.warning("LiteLLM text token count failed for model %s: %s", model, exc)
+        logger.warning("LiteLLM text count failed for model %s (%s)", model, type(exc).__name__)
         return max((len(text or "") // 4) + 1, 1)
 
 

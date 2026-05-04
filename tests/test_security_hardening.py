@@ -1,8 +1,21 @@
 """Security hardening regression tests."""
 
+import os
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture(autouse=True)
+def _chdir_to_app():
+    original = os.getcwd()
+    os.chdir(REPO_ROOT / "app")
+    yield
+    os.chdir(original)
 
 
 def test_validate_security_bootstrap_config_rejects_insecure_defaults(monkeypatch):
@@ -27,9 +40,57 @@ def test_validate_security_bootstrap_config_allows_secure_values(monkeypatch):
 
 
 def test_frontend_uses_dompurify_for_markdown_rendering():
-    html = Path("app/static/index.html").read_text(encoding="utf-8")
+    html = (REPO_ROOT / "app/static/index.html").read_text(encoding="utf-8")
 
     assert "dompurify" in html.lower()
     assert "function sanitizeHtml(" in html
     assert "DOMPurify.sanitize" in html
     assert "bub.innerHTML = sanitizeHtml(rawHtml);" in html
+
+
+def test_admin_chart_script_is_pinned_with_sri():
+    html = (REPO_ROOT / "app/static/admin.html").read_text(encoding="utf-8")
+
+    assert "chart.js@4.4.9" in html
+    assert 'integrity="sha384-' in html
+    assert 'crossorigin="anonymous"' in html
+
+
+def test_dockerfile_uses_non_root_runtime_user():
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "\nUSER appuser\n" in dockerfile
+
+
+def test_api_key_hash_is_keyed():
+    from auth import hash_api_key
+
+    raw_key = "hg_live_example"
+    assert hash_api_key(raw_key) == hash_api_key(raw_key)
+    assert hash_api_key(raw_key) != sha256(raw_key.encode()).hexdigest()
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://prompt.security",
+        "https://localhost",
+        "https://127.0.0.1",
+        "https://10.0.0.1",
+        "https://169.254.169.254",
+    ],
+)
+def test_external_url_validation_rejects_unsafe_targets(url):
+    import main
+
+    with pytest.raises(HTTPException):
+        main._validate_external_https_url(url, "gateway_url")
+
+
+def test_external_url_validation_allows_https_hostnames():
+    import main
+
+    assert (
+        main._validate_external_https_url("https://test.prompt.security/v1", "gateway_url")
+        == "https://test.prompt.security/v1"
+    )

@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import ipaddress
 import io
 import json
 import logging
@@ -11,6 +12,7 @@ from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
+from urllib.parse import urlparse
 
 import httpx
 import openai
@@ -177,6 +179,32 @@ _FALLBACK_MODELS = [
 
 # ── Cached model list ─────────────────────────────────────────────────────────
 _model_cache: list[dict] = []
+
+
+def _validate_external_https_url(value: str, field_name: str) -> str:
+    url = (value or "").strip().rstrip("/")
+    parsed = urlparse(url)
+    host = parsed.hostname
+    if parsed.scheme != "https" or not host or parsed.username or parsed.password:
+        raise HTTPException(status_code=400, detail=f"{field_name} must be an https URL with a hostname")
+
+    normalized_host = host.rstrip(".").lower()
+    if normalized_host == "localhost" or normalized_host.endswith(".local"):
+        raise HTTPException(status_code=400, detail=f"{field_name} must not target local hosts")
+
+    try:
+        ip = ipaddress.ip_address(normalized_host.strip("[]"))
+    except ValueError:
+        return url
+    if not ip.is_global:
+        raise HTTPException(status_code=400, detail=f"{field_name} must not target private or reserved networks")
+    return url
+
+
+def _validate_optional_external_https_url(value: Optional[str], field_name: str) -> Optional[str]:
+    if value is None:
+        return None
+    return _validate_external_https_url(value, field_name)
 
 
 async def refresh_model_cache() -> list[dict]:
@@ -477,7 +505,8 @@ async def public_responses(
                 user=current_user.email,
             )
         except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"Prompt Security scan failed: {exc}")
+            logger.error("Public API PS prompt scan error for %s: %s", current_user.email, exc)
+            raise HTTPException(status_code=502, detail="Prompt Security scan failed")
         if not ps_result.allowed:
             raise HTTPException(status_code=403, detail={"ps_action": "block", "violations": ps_result.violations})
         if ps_result.modified_text:
@@ -494,7 +523,7 @@ async def public_responses(
         )
     except Exception as exc:
         logger.error("Public API completion error: %s", exc)
-        raise HTTPException(status_code=502, detail=str(exc))
+        raise HTTPException(status_code=502, detail="Model request failed")
 
     text = _extract_response_text(resp)
     if not text:
@@ -509,7 +538,8 @@ async def public_responses(
                 user=current_user.email,
             )
         except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"Prompt Security response scan failed: {exc}")
+            logger.error("Public API PS response scan error for %s: %s", current_user.email, exc)
+            raise HTTPException(status_code=502, detail="Prompt Security response scan failed")
         ps_violations = ps_resp.violations
         if not ps_resp.allowed:
             raise HTTPException(status_code=403, detail={"ps_action": "block", "violations": ps_violations})
@@ -732,7 +762,11 @@ async def admin_create_ps_tenant(
     existing = await db.scalar(select(PSTenant).where(PSTenant.name == body.name))
     if existing:
         raise HTTPException(status_code=409, detail="Tenant name already exists")
-    tenant = PSTenant(name=body.name, base_url=body.base_url, gateway_url=body.gateway_url)
+    tenant = PSTenant(
+        name=body.name,
+        base_url=_validate_external_https_url(body.base_url, "base_url"),
+        gateway_url=_validate_optional_external_https_url(body.gateway_url, "gateway_url"),
+    )
     db.add(tenant)
     await db.commit()
     await db.refresh(tenant)
@@ -753,9 +787,9 @@ async def admin_update_ps_tenant(
     if body.name is not None:
         tenant.name = body.name
     if body.base_url is not None:
-        tenant.base_url = body.base_url
+        tenant.base_url = _validate_external_https_url(body.base_url, "base_url")
     if body.gateway_url is not None:
-        tenant.gateway_url = body.gateway_url
+        tenant.gateway_url = _validate_optional_external_https_url(body.gateway_url, "gateway_url")
     await db.commit()
     await db.refresh(tenant)
     await _log_audit(db, admin.id, admin.email, "tenant_updated", f"{tenant.name}")
@@ -1103,12 +1137,12 @@ async def chat_stream(
             try:
                 if ps_mode == "api":
                     ps_client = PromptSecurityClient(
-                        base_url=current_user.ps_tenant.base_url,
+                        base_url=_validate_external_https_url(current_user.ps_tenant.base_url, "base_url"),
                         app_id=ps_app_id,
                     )
                 elif ps_mode == "gateway" and current_user.ps_tenant.gateway_url:
                     llm_key = _get_llm_key(current_user, model)
-                    gw_host = current_user.ps_tenant.gateway_url.rstrip('/')
+                    gw_host = _validate_external_https_url(current_user.ps_tenant.gateway_url, "gateway_url").rstrip('/')
                     gw_base = gw_host if gw_host.endswith('/v1') else gw_host + '/v1'
                     logger.info("PS gateway init for %s → %s model=%s (llm_key set: %s)",
                                 current_user.email, gw_base, model, bool(llm_key))
@@ -1133,6 +1167,8 @@ async def chat_stream(
                             )
                     else:
                         logger.warning("Gateway mode: no LLM key for %s — PS gateway requires the provider API key", current_user.email)
+            except HTTPException:
+                raise
             except Exception as e:
                 logger.warning("Could not init PS client for %s: %s", current_user.email, e)
 
@@ -1202,8 +1238,8 @@ async def chat_stream(
                         reply = text
                         yield f"data: {json.dumps({'type': 'token', 'content': text})}\n\n"
             except Exception as e:
-                detail = f"Gateway error: {e}"
-                logger.error(detail)
+                detail = "Gateway error"
+                logger.error("Gemini gateway error for %s: %s", current_user.email, e)
                 yield f"data: {json.dumps({'type': 'error', 'detail': detail})}\n\n"
                 return
             resp_ms = round((time.monotonic() - t0) * 1000)
@@ -1270,8 +1306,8 @@ async def chat_stream(
                                 u = event.get('usage', {})
                                 completion_tokens = u.get('output_tokens', 0)
             except Exception as e:
-                detail = f"Anthropic gateway error: {e}"
-                logger.error(detail)
+                detail = "Anthropic gateway error"
+                logger.error("Anthropic gateway error for %s: %s", current_user.email, e)
                 yield f"data: {json.dumps({'type': 'error', 'detail': detail})}\n\n"
                 return
             resp_ms = round((time.monotonic() - t0) * 1000)
@@ -1308,13 +1344,13 @@ async def chat_stream(
                                    ps_scanned=True, ps_blocked=True, ps_action="block")
                     yield f"data: {json.dumps({'type': 'blocked', 'action': 'block', 'violations': []})}\n\n"
                 else:
-                    detail = f"Gateway config error (400): {e}"
-                    logger.error(detail)
+                    detail = "Gateway config error"
+                    logger.error("PS gateway config error for %s: %s", current_user.email, e)
                     yield f"data: {json.dumps({'type': 'error', 'detail': detail})}\n\n"
                 return
             except openai.AuthenticationError as e:
-                detail = f"Gateway auth failed — check PS App ID: {e}"
-                logger.error(detail)
+                detail = "Gateway auth failed — check PS App ID."
+                logger.error("PS gateway auth failed for %s: %s", current_user.email, e)
                 yield f"data: {json.dumps({'type': 'error', 'detail': detail})}\n\n"
                 return
             except openai.PermissionDeniedError as e:
@@ -1325,11 +1361,11 @@ async def chat_stream(
                                    ps_scanned=True, ps_blocked=True, ps_action="block")
                     yield f"data: {json.dumps({'type': 'blocked', 'action': 'block', 'violations': []})}\n\n"
                 else:
-                    yield f"data: {json.dumps({'type': 'error', 'detail': f'Gateway permission denied: {e}'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'error', 'detail': 'Gateway permission denied'})}\n\n"
                 return
             except Exception as e:
-                detail = f"Gateway error: {e}"
-                logger.error(detail)
+                detail = "Gateway error"
+                logger.error("PS gateway error for %s: %s", current_user.email, e)
                 yield f"data: {json.dumps({'type': 'error', 'detail': detail})}\n\n"
                 return
 
@@ -1377,7 +1413,7 @@ async def chat_stream(
             except Exception as e:
                 logger.error("PS prompt scan error for %s: %s", current_user.email, e)
                 err_hint = "PS App ID may be wrong for this tenant — re-enter it in ⚙ Settings → Prompt Security."
-                yield ("data: " + json.dumps({'type': 'error', 'detail': f'PS scan failed: {e}. {err_hint}'}) + "\n\n")
+                yield ("data: " + json.dumps({'type': 'error', 'detail': f'PS scan failed. {err_hint}'}) + "\n\n")
                 return
         else:
             last_user_msg_eff = last_user_msg
@@ -1403,7 +1439,7 @@ async def chat_stream(
                     yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
         except Exception as e:
             logger.error("LLM stream error: %s", e)
-            yield f"data: {json.dumps({'type': 'error', 'detail': str(e)})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'detail': 'LLM stream failed'})}\n\n"
             return
 
         resp_ms = round((time.monotonic() - t0) * 1000)
@@ -1432,7 +1468,7 @@ async def chat_stream(
             except Exception as e:
                 logger.error("PS response scan error for %s: %s", current_user.email, e)
                 err_hint = "PS App ID may be wrong for this tenant — re-enter it in ⚙ Settings → Prompt Security."
-                yield ("data: " + json.dumps({'type': 'error', 'detail': f'PS response scan failed: {e}. {err_hint}'}) + "\n\n")
+                yield ("data: " + json.dumps({'type': 'error', 'detail': f'PS response scan failed. {err_hint}'}) + "\n\n")
                 return
 
         completion_tokens = completion_tokens or estimate_text_tokens(reply, model=effective_model)
@@ -1467,7 +1503,10 @@ async def upload_sanitize(
         ps_app_id = decrypt(current_user.ps_api_key_enc)
     except ValueError:
         raise HTTPException(status_code=400, detail="PS key could not be decrypted — re-enter it in Settings.")
-    ps_client = PromptSecurityClient(base_url=current_user.ps_tenant.base_url, app_id=ps_app_id)
+    ps_client = PromptSecurityClient(
+        base_url=_validate_external_https_url(current_user.ps_tenant.base_url, "base_url"),
+        app_id=ps_app_id,
+    )
     mime = (file.content_type or "application/octet-stream").split(";")[0].strip()
     filename = file.filename or "upload"
     if mime not in ALLOWED_SANITIZE_TYPES and not filename.lower().endswith(ALLOWED_SANITIZE_EXTENSIONS):
@@ -1492,10 +1531,11 @@ async def upload_sanitize(
             job_id = await ps_client.sanitize_file_submit(file_bytes, file.filename or "upload")
             result = await ps_client.sanitize_file_poll(job_id, max_seconds=30)
         except TimeoutError as e:
-            raise HTTPException(status_code=504, detail=str(e))
+            logger.error("File sanitization timeout for %s: %s", current_user.email, e)
+            raise HTTPException(status_code=504, detail="PS file sanitization timed out")
         except Exception as e:
             logger.error("File sanitization error for %s: %s", current_user.email, e)
-            raise HTTPException(status_code=502, detail=f"PS file sanitization failed: {e}")
+            raise HTTPException(status_code=502, detail="PS file sanitization failed")
         scan_ms = round((time.monotonic() - t0) * 1000)
         action = result.get("action", result.get("status", "pass"))
         violations = result.get("violations", [])
@@ -1578,7 +1618,8 @@ async def validate_llm_key(
                 else:
                     return {"valid": True, "provider": provider}  # non-401 likely means key is valid but other issue
         except Exception as e:
-            return {"valid": False, "provider": provider, "error": str(e)}
+            logger.warning("LLM key validation failed for %s/%s: %s", current_user.email, provider, e)
+            return {"valid": False, "provider": provider, "error": "Provider validation request failed"}
 
     url = urls.get(provider)
     if not url:
@@ -1597,7 +1638,8 @@ async def validate_llm_key(
             else:
                 return {"valid": False, "provider": provider, "error": f"HTTP {resp.status_code}"}
     except Exception as e:
-        return {"valid": False, "provider": provider, "error": str(e)}
+        logger.warning("LLM key validation failed for %s/%s: %s", current_user.email, provider, e)
+        return {"valid": False, "provider": provider, "error": "Provider validation request failed"}
 
 
 # ── Admin: Activity log ───────────────────────────────────────────────────────
@@ -1720,7 +1762,10 @@ def _build_ps_api_client(user: User) -> Optional[PromptSecurityClient]:
         return None
     if not ps_app_id:
         return None
-    return PromptSecurityClient(base_url=user.ps_tenant.base_url, app_id=ps_app_id)
+    return PromptSecurityClient(
+        base_url=_validate_external_https_url(user.ps_tenant.base_url, "base_url"),
+        app_id=ps_app_id,
+    )
 
 
 def _extract_response_text(resp) -> str:

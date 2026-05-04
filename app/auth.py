@@ -1,5 +1,6 @@
 import os
 import secrets
+import hmac
 from hashlib import sha256
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -51,7 +52,7 @@ def create_api_key() -> str:
 
 
 def hash_api_key(raw_key: str) -> str:
-    return sha256(raw_key.encode()).hexdigest()
+    return hmac.new(SECRET_KEY.encode(), raw_key.encode(), sha256).hexdigest()
 
 
 async def get_current_user(
