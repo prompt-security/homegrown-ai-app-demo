@@ -17,6 +17,7 @@ Use this skill for project-specific app operations in the HomeGrown AI App Demo 
   - Chat UI: `http://localhost:9000`
   - Admin UI: `http://localhost:9000/admin`
   - LiteLLM proxy: `http://localhost:4000`
+- If host port `4000` is occupied, set `LITELLM_HOST_PORT=4001` in `.env`; keep `LITELLM_BASE_URL=http://litellm:4000` for app-to-proxy traffic inside Docker.
 - Default admin bootstrap is read from `.env`; current defaults are `admin@example.com` / `admin`.
 - Local secrets and provider keys belong in `.env`, which is gitignored.
 - Repo-level LiteLLM model routing lives in `litellm/config.yaml`.
@@ -60,6 +61,13 @@ Ask for the missing details before wiring a custom endpoint:
 - Whether the endpoint is OpenAI-compatible
 
 For OpenAI-compatible endpoints, prefer adding environment variables to `.env` and a model entry to `litellm/config.yaml`; never hardcode API keys in repo files. After changing LiteLLM config, restart `litellm` and `app`, refresh models, then test a minimal chat request if a key is available.
+
+For the project’s local OpenAI-compatible test server, use:
+
+- Host URL: `http://localhost:8081/v1`
+- Docker URL: `http://host.docker.internal:8081/v1`
+- Current model ID: `huggingface/Qwen3VL-8B-Instruct-F16`
+- Env vars: `LOCAL_OPENAI_BASE_URL`, `LOCAL_OPENAI_API_KEY`, `LOCAL_OPENAI_MODEL_IDS`
 
 ### Debug
 

@@ -122,6 +122,7 @@ ADMIN_PASSWORD=your_admin_password
 
 # ── LiteLLM proxy ─────────────────────────────────────────────────────────────
 LITELLM_BASE_URL=http://litellm:4000
+LITELLM_HOST_PORT=4000
 # Generate with: python -c "import secrets; print(secrets.token_hex(32))"
 LITELLM_MASTER_KEY=your_litellm_master_key
 
@@ -172,11 +173,16 @@ Models are configured in `litellm/config.yaml`. By default the following are ena
 | `meta-llama/llama-3.1-8b-instruct:free`                    | OpenRouter | **Free** — requires `OPENROUTER_API_KEY` |
 | `nvidia/nemotron-nano-9b-v2:free`                          | OpenRouter | **Free** — requires `OPENROUTER_API_KEY` |
 | `mistralai/mistral-7b-instruct:free`                       | OpenRouter | **Free** — requires `OPENROUTER_API_KEY` |
+| `huggingface/Qwen3VL-8B-Instruct-F16`                      | Local OpenAI-compatible | Uses `LOCAL_OPENAI_BASE_URL` |
 
 
 Get a free OpenRouter key at [openrouter.ai](https://openrouter.ai).
 
 > **Note:** Per-user LLM override settings are hidden from the UI by default. If you need them later, set `SHOW_LLM_KEY_SETTINGS=true` and rebuild the app.
+
+If another service already uses host port `4000`, set `LITELLM_HOST_PORT=4001`
+in `.env`. The app still talks to LiteLLM through Docker at
+`LITELLM_BASE_URL=http://litellm:4000`.
 
 ---
 
@@ -224,6 +230,23 @@ Remote Ollama should be placed behind a reverse proxy (nginx, Caddy, etc.) that 
    ```
 3. Add the model name to `OLLAMA_MODEL_IDS` in `.env` (comma-separated)
 4. Rebuild: `docker compose up -d --build app litellm`
+
+---
+
+## Local OpenAI-compatible endpoint
+
+For local servers that expose OpenAI-style `/v1/models` and `/v1/chat/completions`
+endpoints, add these values to `.env`:
+
+```bash
+LOCAL_OPENAI_BASE_URL=http://host.docker.internal:8081/v1
+LOCAL_OPENAI_API_KEY=local-dev-key
+LOCAL_OPENAI_MODEL_IDS=huggingface/Qwen3VL-8B-Instruct-F16
+```
+
+The default `litellm/config.yaml` includes that model ID. For a different local
+model, update both `model_name` / `litellm_params.model` in `litellm/config.yaml`
+and `LOCAL_OPENAI_MODEL_IDS` in `.env`, then rebuild `app` and `litellm`.
 
 ---
 

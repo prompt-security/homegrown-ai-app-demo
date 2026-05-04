@@ -57,6 +57,12 @@ def test_admin_chart_script_is_pinned_with_sri():
     assert 'crossorigin="anonymous"' in html
 
 
+def test_frontend_only_disables_models_that_require_missing_keys():
+    html = (REPO_ROOT / "app/static/index.html").read_text(encoding="utf-8")
+
+    assert "if (m.requires_key && !m.key_set)" in html
+
+
 def test_dockerfile_uses_non_root_runtime_user():
     dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
 

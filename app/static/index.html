@@ -2110,7 +2110,7 @@ reply = await client.chat.completions.create(
         const opt = document.createElement('option');
         opt.value = m.id;
         const provTag = m.provider ? ` [${m.provider}]` : '';
-        if (!m.key_set) {
+        if (m.requires_key && !m.key_set) {
           opt.textContent = m.id + provTag + ' (key required)';
           opt.disabled = true;
           opt.style.color = 'var(--text-muted)';

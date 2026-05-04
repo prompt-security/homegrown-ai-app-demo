@@ -3,6 +3,10 @@
 ## [2026-05-04]
 ### Added
 - Shared Codex skill for managing the local demo app stack and inference setup — @david.abutbul
+- Local OpenAI-compatible inference endpoint configuration for Docker-hosted LiteLLM testing — @david.abutbul
+
+### Changed
+- Make the LiteLLM host port configurable for local environments with an existing proxy on port 4000 — @david.abutbul
 
 ### Security
 - Remediate code-scanning findings for Prompt Security URL validation, client error handling, API key hashing, CDN integrity, token-count logging, and the container runtime user — @david.abutbul
