@@ -1,5 +1,9 @@
 # Changelog
 
+## [2026-05-04]
+### Added
+- Shared Codex skill for managing the local demo app stack and inference setup — @david.abutbul
+
 ## [2026-05-03]
 ### Added
 - Demo storytelling: severity badges (HIGH/MEDIUM), attacker-goal, and SE talking-point on every scenario card

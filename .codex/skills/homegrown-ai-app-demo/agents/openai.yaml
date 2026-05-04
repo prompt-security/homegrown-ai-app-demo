@@ -1,0 +1,4 @@
+interface:
+  display_name: "Homegrown AI App Demo"
+  short_description: "Manage this repo app stack"
+  default_prompt: "Use $homegrown-ai-app-demo to start, stop, verify, or configure the HomeGrown AI app demo."
