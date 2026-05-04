@@ -1,6 +1,7 @@
 """Security hardening regression tests."""
 
 import os
+from types import SimpleNamespace
 from hashlib import sha256
 from pathlib import Path
 
@@ -68,6 +69,32 @@ def test_api_key_hash_is_keyed():
     raw_key = "hg_live_example"
     assert hash_api_key(raw_key) == hash_api_key(raw_key)
     assert hash_api_key(raw_key) != sha256(raw_key.encode()).hexdigest()
+
+
+@pytest.mark.asyncio
+async def test_legacy_api_key_hash_is_accepted_and_migrated(db, test_user):
+    from auth import get_current_api_key, hash_api_key
+    from models import APIKey
+
+    raw_key = "hg_live_legacy_example"
+    key = APIKey(
+        user_id=test_user.id,
+        name="legacy",
+        key_hash=sha256(raw_key.encode()).hexdigest(),
+        key_prefix="hg_live_",
+        is_active=True,
+    )
+    db.add(key)
+    await db.commit()
+    await db.refresh(key)
+
+    request = SimpleNamespace(headers={"authorization": f"Bearer {raw_key}"})
+    api_key, user = await get_current_api_key(request, db)
+
+    assert api_key.id == key.id
+    assert user.id == test_user.id
+    assert api_key.key_hash == hash_api_key(raw_key)
+    assert api_key.key_hash != sha256(raw_key.encode()).hexdigest()
 
 
 @pytest.mark.parametrize(

@@ -135,6 +135,10 @@ def _model_meta(model_id: str) -> dict:
     }
 
 
+def _log_user_ref(user: User) -> str:
+    return f"user_id={getattr(user, 'id', 'unknown')}"
+
+
 def _get_llm_key(user: User, model_id: str) -> str:
     """Returns the best available API key for model_id: per-user → shared .env → empty."""
     provider = _detect_provider(model_id)
@@ -161,7 +165,7 @@ def _user_llm_client(user: User, model_id: str):
     if not key:
         return litellm_client, model_id
     base_url = _PROVIDER_URLS[provider]
-    logger.info("Using per-user %s key for %s", provider, user.email)
+    logger.info("Using per-user %s key for %s", provider, _log_user_ref(user))
     return AsyncOpenAI(api_key=key, base_url=base_url), model_id
 
 
@@ -205,6 +209,13 @@ def _validate_optional_external_https_url(value: Optional[str], field_name: str)
     if value is None:
         return None
     return _validate_external_https_url(value, field_name)
+
+
+def _build_prompt_security_client(base_url: str, app_id: str) -> PromptSecurityClient:
+    return PromptSecurityClient(
+        base_url=_validate_external_https_url(base_url, "base_url"),
+        app_id=app_id,
+    )
 
 
 async def refresh_model_cache() -> list[dict]:
@@ -505,7 +516,7 @@ async def public_responses(
                 user=current_user.email,
             )
         except Exception as exc:
-            logger.error("Public API PS prompt scan error for %s: %s", current_user.email, exc)
+            logger.error("Public API PS prompt scan error for %s: %s", _log_user_ref(current_user), exc)
             raise HTTPException(status_code=502, detail="Prompt Security scan failed")
         if not ps_result.allowed:
             raise HTTPException(status_code=403, detail={"ps_action": "block", "violations": ps_result.violations})
@@ -538,7 +549,7 @@ async def public_responses(
                 user=current_user.email,
             )
         except Exception as exc:
-            logger.error("Public API PS response scan error for %s: %s", current_user.email, exc)
+            logger.error("Public API PS response scan error for %s: %s", _log_user_ref(current_user), exc)
             raise HTTPException(status_code=502, detail="Prompt Security response scan failed")
         ps_violations = ps_resp.violations
         if not ps_resp.allowed:
@@ -1093,6 +1104,12 @@ async def chat_stream(
         raise HTTPException(status_code=400, detail="No user message found")
 
     system_prompt = request.system_prompt or "You are a helpful AI assistant."
+    user_ref = _log_user_ref(current_user)
+
+    # skip_ps is privileged: non-admin requests are explicitly rejected before any PS setup.
+    if request.skip_ps and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="skip_ps is restricted to admin users")
+    skip_ps = bool(request.skip_ps and current_user.role == "admin")
 
     # ── Daily limit check ─────────────────────────────────────────────────────
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -1127,54 +1144,48 @@ async def chat_stream(
     ps_gw_gemini: Optional[dict]        = None    # gateway-mode config for Gemini (native path)
     ps_gw_anthropic: Optional[dict]     = None    # gateway-mode config for Anthropic (native path)
 
-    if current_user.ps_enabled and current_user.ps_tenant and current_user.ps_api_key_enc:
-        try:
-            ps_app_id = decrypt(current_user.ps_api_key_enc)
-        except ValueError:
-            logger.warning("PS key decrypt failed for %s — key rotated? Ask user to re-enter PS key.", current_user.email)
-            ps_app_id = None
-        if ps_app_id:
+    if not skip_ps and current_user.ps_enabled and current_user.ps_tenant and current_user.ps_api_key_enc:
+        if ps_mode == "api":
+            ps_client = _build_ps_api_client(current_user)
+        else:
             try:
-                if ps_mode == "api":
-                    ps_client = PromptSecurityClient(
-                        base_url=_validate_external_https_url(current_user.ps_tenant.base_url, "base_url"),
-                        app_id=ps_app_id,
-                    )
-                elif ps_mode == "gateway" and current_user.ps_tenant.gateway_url:
-                    llm_key = _get_llm_key(current_user, model)
-                    gw_host = _validate_external_https_url(current_user.ps_tenant.gateway_url, "gateway_url").rstrip('/')
-                    gw_base = gw_host if gw_host.endswith('/v1') else gw_host + '/v1'
-                    logger.info("PS gateway init for %s → %s model=%s (llm_key set: %s)",
-                                current_user.email, gw_base, model, bool(llm_key))
-                    ps_root = gw_host[:-3] if gw_host.endswith('/v1') else gw_host
-                    if llm_key:
-                        if model.startswith('gemini-'):
-                            gemini_url = f"{ps_root}/v1beta/models/{model}:generateContent"
-                            logger.info("PS Gemini gateway URL → %s", gemini_url)
-                            ps_gw_gemini = {'url': gemini_url, 'llm_key': llm_key}
-                        elif model.startswith('claude-'):
-                            anthropic_url = f"{ps_root}/v1/messages"
-                            logger.info("PS Anthropic gateway URL → %s model=%s", anthropic_url, model)
-                            ps_gw_anthropic = {'url': anthropic_url, 'llm_key': llm_key, 'model': model}
+                ps_app_id = decrypt(current_user.ps_api_key_enc)
+            except ValueError:
+                logger.warning("PS key decrypt failed for %s — key rotated? Ask user to re-enter PS key.", user_ref)
+                ps_app_id = None
+            if ps_app_id:
+                try:
+                    if ps_mode == "gateway" and current_user.ps_tenant.gateway_url:
+                        llm_key = _get_llm_key(current_user, model)
+                        gw_host = _validate_external_https_url(current_user.ps_tenant.gateway_url, "gateway_url").rstrip('/')
+                        gw_base = gw_host if gw_host.endswith('/v1') else gw_host + '/v1'
+                        logger.info("PS gateway init for %s → %s model=%s (llm_key set: %s)",
+                                    user_ref, gw_base, model, bool(llm_key))
+                        ps_root = gw_host[:-3] if gw_host.endswith('/v1') else gw_host
+                        if llm_key:
+                            if model.startswith('gemini-'):
+                                gemini_url = f"{ps_root}/v1beta/models/{model}:generateContent"
+                                logger.info("PS Gemini gateway URL → %s", gemini_url)
+                                ps_gw_gemini = {'url': gemini_url, 'llm_key': llm_key}
+                            elif model.startswith('claude-'):
+                                anthropic_url = f"{ps_root}/v1/messages"
+                                logger.info("PS Anthropic gateway URL → %s model=%s", anthropic_url, model)
+                                ps_gw_anthropic = {'url': anthropic_url, 'llm_key': llm_key, 'model': model}
+                            else:
+                                # PS routes OpenAI/Perplexity via LLM API key alone (OpenAI-compat)
+                                logger.info("PS gateway base_url → %s model=%s", gw_base, model)
+                                ps_gw_client = AsyncOpenAI(
+                                    api_key=llm_key,
+                                    base_url=gw_base,
+                                    timeout=30.0,
+                                    default_headers={"ps-user": current_user.email},
+                                )
                         else:
-                            # PS routes OpenAI/Perplexity via LLM API key alone (OpenAI-compat)
-                            logger.info("PS gateway base_url → %s model=%s", gw_base, model)
-                            ps_gw_client = AsyncOpenAI(
-                                api_key=llm_key,
-                                base_url=gw_base,
-                                timeout=30.0,
-                                default_headers={"ps-user": current_user.email},
-                            )
-                    else:
-                        logger.warning("Gateway mode: no LLM key for %s — PS gateway requires the provider API key", current_user.email)
-            except HTTPException:
-                raise
-            except Exception as e:
-                logger.warning("Could not init PS client for %s: %s", current_user.email, e)
-
-    # skip_ps is privileged: non-admin requests are explicitly rejected.
-    if request.skip_ps and current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="skip_ps is restricted to admin users")
+                            logger.warning("Gateway mode: no LLM key for %s — PS gateway requires the provider API key", user_ref)
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    logger.warning("Could not init PS client for %s: %s", user_ref, e)
 
     # ── Store user message in DB ──────────────────────────────────────────────
     user_db_msg = Message(
@@ -1186,8 +1197,6 @@ async def chat_stream(
     )
     db.add(user_db_msg)
     await db.commit()
-
-    skip_ps = request.skip_ps
 
     async def generate():
         reply = ""
@@ -1239,7 +1248,7 @@ async def chat_stream(
                         yield f"data: {json.dumps({'type': 'token', 'content': text})}\n\n"
             except Exception as e:
                 detail = "Gateway error"
-                logger.error("Gemini gateway error for %s: %s", current_user.email, e)
+                logger.error("Gemini gateway error for %s: %s", user_ref, e)
                 yield f"data: {json.dumps({'type': 'error', 'detail': detail})}\n\n"
                 return
             resp_ms = round((time.monotonic() - t0) * 1000)
@@ -1307,7 +1316,7 @@ async def chat_stream(
                                 completion_tokens = u.get('output_tokens', 0)
             except Exception as e:
                 detail = "Anthropic gateway error"
-                logger.error("Anthropic gateway error for %s: %s", current_user.email, e)
+                logger.error("Anthropic gateway error for %s: %s", user_ref, e)
                 yield f"data: {json.dumps({'type': 'error', 'detail': detail})}\n\n"
                 return
             resp_ms = round((time.monotonic() - t0) * 1000)
@@ -1345,12 +1354,12 @@ async def chat_stream(
                     yield f"data: {json.dumps({'type': 'blocked', 'action': 'block', 'violations': []})}\n\n"
                 else:
                     detail = "Gateway config error"
-                    logger.error("PS gateway config error for %s: %s", current_user.email, e)
+                    logger.error("PS gateway config error for %s: %s", user_ref, e)
                     yield f"data: {json.dumps({'type': 'error', 'detail': detail})}\n\n"
                 return
             except openai.AuthenticationError as e:
                 detail = "Gateway auth failed — check PS App ID."
-                logger.error("PS gateway auth failed for %s: %s", current_user.email, e)
+                logger.error("PS gateway auth failed for %s: %s", user_ref, e)
                 yield f"data: {json.dumps({'type': 'error', 'detail': detail})}\n\n"
                 return
             except openai.PermissionDeniedError as e:
@@ -1365,7 +1374,7 @@ async def chat_stream(
                 return
             except Exception as e:
                 detail = "Gateway error"
-                logger.error("PS gateway error for %s: %s", current_user.email, e)
+                logger.error("PS gateway error for %s: %s", user_ref, e)
                 yield f"data: {json.dumps({'type': 'error', 'detail': detail})}\n\n"
                 return
 
@@ -1385,7 +1394,7 @@ async def chat_stream(
             try:
                 prompt_tok_est = estimate_text_tokens(last_user_msg)
                 logger.info("PS prompt scan: user=%s, prompt_chars=%d, estimated_tokens=%d, prompt_preview=%.120s",
-                            current_user.email, len(last_user_msg), prompt_tok_est, last_user_msg)
+                            user_ref, len(last_user_msg), prompt_tok_est, last_user_msg)
                 ps_result = await ps_client.protect_prompt(
                     user_prompt=last_user_msg,
                     system_prompt=system_prompt,
@@ -1411,7 +1420,7 @@ async def chat_stream(
                 else:
                     last_user_msg_eff = last_user_msg
             except Exception as e:
-                logger.error("PS prompt scan error for %s: %s", current_user.email, e)
+                logger.error("PS prompt scan error for %s: %s", user_ref, e)
                 err_hint = "PS App ID may be wrong for this tenant — re-enter it in ⚙ Settings → Prompt Security."
                 yield ("data: " + json.dumps({'type': 'error', 'detail': f'PS scan failed. {err_hint}'}) + "\n\n")
                 return
@@ -1466,7 +1475,7 @@ async def chat_stream(
                     final_action = "modify"
                     yield f"data: {json.dumps({'type': 'sanitized', 'text': reply})}\n\n"
             except Exception as e:
-                logger.error("PS response scan error for %s: %s", current_user.email, e)
+                logger.error("PS response scan error for %s: %s", user_ref, e)
                 err_hint = "PS App ID may be wrong for this tenant — re-enter it in ⚙ Settings → Prompt Security."
                 yield ("data: " + json.dumps({'type': 'error', 'detail': f'PS response scan failed. {err_hint}'}) + "\n\n")
                 return
@@ -1503,10 +1512,7 @@ async def upload_sanitize(
         ps_app_id = decrypt(current_user.ps_api_key_enc)
     except ValueError:
         raise HTTPException(status_code=400, detail="PS key could not be decrypted — re-enter it in Settings.")
-    ps_client = PromptSecurityClient(
-        base_url=_validate_external_https_url(current_user.ps_tenant.base_url, "base_url"),
-        app_id=ps_app_id,
-    )
+    ps_client = _build_prompt_security_client(current_user.ps_tenant.base_url, ps_app_id)
     mime = (file.content_type or "application/octet-stream").split(";")[0].strip()
     filename = file.filename or "upload"
     if mime not in ALLOWED_SANITIZE_TYPES and not filename.lower().endswith(ALLOWED_SANITIZE_EXTENSIONS):
@@ -1531,10 +1537,10 @@ async def upload_sanitize(
             job_id = await ps_client.sanitize_file_submit(file_bytes, file.filename or "upload")
             result = await ps_client.sanitize_file_poll(job_id, max_seconds=30)
         except TimeoutError as e:
-            logger.error("File sanitization timeout for %s: %s", current_user.email, e)
+            logger.error("File sanitization timeout for %s: %s", _log_user_ref(current_user), e)
             raise HTTPException(status_code=504, detail="PS file sanitization timed out")
         except Exception as e:
-            logger.error("File sanitization error for %s: %s", current_user.email, e)
+            logger.error("File sanitization error for %s: %s", _log_user_ref(current_user), e)
             raise HTTPException(status_code=502, detail="PS file sanitization failed")
         scan_ms = round((time.monotonic() - t0) * 1000)
         action = result.get("action", result.get("status", "pass"))
@@ -1618,7 +1624,7 @@ async def validate_llm_key(
                 else:
                     return {"valid": True, "provider": provider}  # non-401 likely means key is valid but other issue
         except Exception as e:
-            logger.warning("LLM key validation failed for %s/%s: %s", current_user.email, provider, e)
+            logger.warning("LLM key validation failed for %s/%s: %s", _log_user_ref(current_user), provider, e)
             return {"valid": False, "provider": provider, "error": "Provider validation request failed"}
 
     url = urls.get(provider)
@@ -1638,7 +1644,7 @@ async def validate_llm_key(
             else:
                 return {"valid": False, "provider": provider, "error": f"HTTP {resp.status_code}"}
     except Exception as e:
-        logger.warning("LLM key validation failed for %s/%s: %s", current_user.email, provider, e)
+        logger.warning("LLM key validation failed for %s/%s: %s", _log_user_ref(current_user), provider, e)
         return {"valid": False, "provider": provider, "error": "Provider validation request failed"}
 
 
@@ -1758,14 +1764,11 @@ def _build_ps_api_client(user: User) -> Optional[PromptSecurityClient]:
     try:
         ps_app_id = decrypt(user.ps_api_key_enc)
     except ValueError:
-        logger.warning("PS key decrypt failed for %s", user.email)
+        logger.warning("PS key decrypt failed for %s", _log_user_ref(user))
         return None
     if not ps_app_id:
         return None
-    return PromptSecurityClient(
-        base_url=_validate_external_https_url(user.ps_tenant.base_url, "base_url"),
-        app_id=ps_app_id,
-    )
+    return _build_prompt_security_client(user.ps_tenant.base_url, ps_app_id)
 
 
 def _extract_response_text(resp) -> str:
