@@ -255,7 +255,7 @@ and `LOCAL_OPENAI_MODEL_IDS` in `.env`, then rebuild `app` and `litellm`.
 ### Setup
 
 1. Log in as admin and go to **PS Tenants** in the admin dashboard.
-2. Create a tenant with your PS `base_url` (API mode) and optionally a `gateway_url` (Gateway mode).
+2. Create a tenant with your PS `base_url` (API mode) and optionally a `gateway_url` (Gateway mode). Both URLs must use `https://` and a public hostname; localhost, `.local`, private IPs, and reserved networks are rejected to prevent SSRF or local-network routing through tenant configuration.
 3. In ⚙ **Settings → Prompt Security**, select the tenant, enter your PS App ID, and choose API or Gateway mode.
 
 ### Modes
@@ -268,6 +268,8 @@ and `LOCAL_OPENAI_MODEL_IDS` in `.env`, then rebuild `app` and `litellm`.
 
 
 > **Important:** Each PS tenant has its own App ID. If you switch tenants, you must re-enter the App ID for the new tenant. The previous App ID is automatically cleared on tenant change.
+
+> **Upgrade note:** Existing instances that already contain Prompt Security tenants with `http://`, localhost, `.local`, private-IP, or reserved-network URLs must update or recreate those tenants with public HTTPS URLs. These legacy values are intentionally no longer supported because tenant URLs are used by server-side PS calls and unsafe targets can expose internal services.
 
 ---
 
