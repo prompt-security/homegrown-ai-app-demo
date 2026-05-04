@@ -71,6 +71,27 @@ def test_frontend_gates_compare_mode_to_admins():
     assert "const effectiveSkipPs = Boolean(skipPs && canUseCompareMode());" in html
 
 
+def test_ps_tenant_schema_documents_https_public_host_contract():
+    from schemas import PSTenantCreate, PSTenantUpdate
+
+    def string_schema(prop: dict) -> dict:
+        if "anyOf" not in prop:
+            return prop
+        return next(item for item in prop["anyOf"] if item.get("type") == "string")
+
+    create_schema = PSTenantCreate.model_json_schema()
+    update_schema = PSTenantUpdate.model_json_schema()
+
+    for schema in (create_schema, update_schema):
+        base_url = schema["properties"]["base_url"]
+        assert "private IPs" in base_url["description"]
+        assert string_schema(base_url)["pattern"] == "^https://"
+
+        gateway_url = schema["properties"]["gateway_url"]
+        assert "localhost" in gateway_url["description"]
+        assert string_schema(gateway_url)["pattern"] == "^https://"
+
+
 def test_dockerfile_uses_non_root_runtime_user():
     dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
 

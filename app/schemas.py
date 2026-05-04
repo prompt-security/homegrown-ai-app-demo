@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -34,15 +34,45 @@ class APIKeyCreateResponse(BaseModel):
 
 
 # ── PS Tenants ────────────────────────────────────────────────────────────────
+PS_BASE_URL_DESCRIPTION = (
+    "Prompt Security API base URL. Must be HTTPS, include a public hostname, "
+    "and must not target localhost, .local hosts, private IPs, or reserved networks."
+)
+PS_GATEWAY_URL_DESCRIPTION = (
+    "Optional Prompt Security gateway URL. Must be HTTPS, include a public hostname, "
+    "and must not target localhost, .local hosts, private IPs, or reserved networks."
+)
+
+
 class PSTenantCreate(BaseModel):
     name: str
-    base_url: str
-    gateway_url: Optional[str] = None
+    base_url: str = Field(
+        ...,
+        description=PS_BASE_URL_DESCRIPTION,
+        pattern=r"^https://",
+        examples=["https://api.prompt.security"],
+    )
+    gateway_url: Optional[str] = Field(
+        default=None,
+        description=PS_GATEWAY_URL_DESCRIPTION,
+        pattern=r"^https://",
+        examples=["https://gateway.prompt.security/v1"],
+    )
 
 class PSTenantUpdate(BaseModel):
     name: Optional[str] = None
-    base_url: Optional[str] = None
-    gateway_url: Optional[str] = None
+    base_url: Optional[str] = Field(
+        default=None,
+        description=PS_BASE_URL_DESCRIPTION,
+        pattern=r"^https://",
+        examples=["https://api.prompt.security"],
+    )
+    gateway_url: Optional[str] = Field(
+        default=None,
+        description=PS_GATEWAY_URL_DESCRIPTION,
+        pattern=r"^https://",
+        examples=["https://gateway.prompt.security/v1"],
+    )
 
 class PSTenantOut(BaseModel):
     id: int
