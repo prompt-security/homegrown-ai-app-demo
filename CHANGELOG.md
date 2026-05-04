@@ -12,7 +12,7 @@
 ### Security
 - Remediate code-scanning findings for Prompt Security URL validation, client error handling, API key hashing, CDN integrity, token-count logging, and the container runtime user — @david.abutbul
 - Normalize legacy public `http://` Prompt Security tenant URLs to HTTPS during startup and disable PS for unsafe legacy tenant URLs so upgrades soft-fail instead of breaking chat, public API, or file sanitization flows — @david.abutbul
-- Document that existing instances must update or recreate Prompt Security tenants using `http://`, localhost, `.local`, private-IP, or reserved-network URLs because these values are intentionally rejected to prevent SSRF and local-network exposure — @david.abutbul
+- Document that existing instances must update or recreate Prompt Security tenants using `http://`, localhost, `.local`, private-IP, or reserved-network URLs because these values are intentionally rejected as part of CodeQL alert 12 (`py/full-ssrf`) remediation — @david.abutbul
 
 ## [2026-05-03]
 ### Added
