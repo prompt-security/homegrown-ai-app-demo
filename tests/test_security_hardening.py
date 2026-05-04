@@ -63,6 +63,14 @@ def test_frontend_only_disables_models_that_require_missing_keys():
     assert "if (m.requires_key && !m.key_set)" in html
 
 
+def test_frontend_gates_compare_mode_to_admins():
+    html = (REPO_ROOT / "app/static/index.html").read_text(encoding="utf-8")
+
+    assert "function canUseCompareMode()" in html
+    assert "AUTH_USER?.role === 'admin'" in html
+    assert "const effectiveSkipPs = Boolean(skipPs && canUseCompareMode());" in html
+
+
 def test_dockerfile_uses_non_root_runtime_user():
     dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
 
@@ -127,3 +135,40 @@ def test_external_url_validation_allows_https_hostnames():
         main._validate_external_https_url("https://test.prompt.security/v1", "gateway_url")
         == "https://test.prompt.security/v1"
     )
+
+
+def test_legacy_public_http_url_can_be_normalized():
+    import main
+
+    assert main._normalize_legacy_public_http_url("http://test.prompt.security/api") == "https://test.prompt.security/api"
+    assert main._normalize_legacy_public_http_url("http://localhost/api") is None
+    assert main._normalize_legacy_public_http_url("http://10.0.0.1/api") is None
+
+
+@pytest.mark.asyncio
+async def test_invalid_persisted_ps_base_url_soft_fails(db, test_user, test_tenant):
+    import main
+    from crypto import encrypt
+
+    test_tenant.base_url = "http://localhost"
+    test_user.ps_tenant_id = test_tenant.id
+    test_user.ps_tenant = test_tenant
+    test_user.ps_api_key_enc = encrypt("app-id")
+    test_user.ps_enabled = True
+
+    assert main._build_ps_api_client(test_user) is None
+
+
+@pytest.mark.asyncio
+async def test_legacy_invalid_ps_tenant_disables_existing_users(db, test_user, test_tenant):
+    import main
+
+    test_tenant.base_url = "http://localhost"
+    test_user.ps_tenant_id = test_tenant.id
+    test_user.ps_enabled = True
+    await db.commit()
+
+    await main._migrate_legacy_ps_tenant_urls(db)
+    await db.refresh(test_user)
+
+    assert test_user.ps_enabled is False

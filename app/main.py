@@ -12,7 +12,7 @@ from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 import openai
@@ -135,7 +135,7 @@ def _model_meta(model_id: str) -> dict:
     return {
         "category": "free" if is_free else "paid",
         "provider": {"openai": "OpenAI", "anthropic": "Anthropic", "google": "Google", "perplexity": "Perplexity", "openrouter": "OpenRouter"}[provider],
-        "requires_key": None if is_free else provider,
+        "requires_key": provider,
     }
 
 
@@ -215,11 +215,69 @@ def _validate_optional_external_https_url(value: Optional[str], field_name: str)
     return _validate_external_https_url(value, field_name)
 
 
+def _normalize_legacy_public_http_url(value: str) -> Optional[str]:
+    parsed = urlparse((value or "").strip().rstrip("/"))
+    host = parsed.hostname
+    if parsed.scheme != "http" or not host or parsed.username or parsed.password:
+        return None
+
+    normalized_host = host.rstrip(".").lower()
+    if normalized_host == "localhost" or normalized_host.endswith(".local") or "." not in normalized_host:
+        return None
+    try:
+        ip = ipaddress.ip_address(normalized_host.strip("[]"))
+    except ValueError:
+        pass
+    else:
+        if not ip.is_global:
+            return None
+
+    return urlunparse(parsed._replace(scheme="https"))
+
+
 def _build_prompt_security_client(base_url: str, app_id: str) -> PromptSecurityClient:
     return PromptSecurityClient(
         base_url=_validate_external_https_url(base_url, "base_url"),
         app_id=app_id,
     )
+
+
+async def _migrate_legacy_ps_tenant_urls(db: AsyncSession) -> None:
+    result = await db.execute(select(PSTenant))
+    tenants = result.scalars().all()
+    changed = False
+    for tenant in tenants:
+        try:
+            _validate_external_https_url(tenant.base_url, "base_url")
+            continue
+        except HTTPException:
+            normalized = _normalize_legacy_public_http_url(tenant.base_url)
+            if normalized:
+                logger.warning(
+                    "Normalizing legacy PS tenant base_url tenant_id=%s from %s to %s",
+                    tenant.id,
+                    tenant.base_url,
+                    normalized,
+                )
+                tenant.base_url = normalized
+                changed = True
+                continue
+
+        users = (
+            await db.execute(select(User).where(User.ps_tenant_id == tenant.id, User.ps_enabled == True))
+        ).scalars().all()
+        if users:
+            logger.warning(
+                "Disabling PS for %d user(s) on legacy invalid PS tenant tenant_id=%s base_url=%s",
+                len(users),
+                tenant.id,
+                tenant.base_url,
+            )
+            for user in users:
+                user.ps_enabled = False
+            changed = True
+    if changed:
+        await db.commit()
 
 
 async def refresh_model_cache() -> list[dict]:
@@ -287,6 +345,7 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
 
     async with AsyncSessionLocal() as db:
+        await _migrate_legacy_ps_tenant_urls(db)
         existing = await db.scalar(select(User).where(User.email == ADMIN_EMAIL))
         if not existing:
             admin = User(
@@ -1512,11 +1571,9 @@ async def upload_sanitize(
 ):
     if not (current_user.ps_enabled and current_user.ps_tenant and current_user.ps_api_key_enc):
         raise HTTPException(status_code=400, detail="Prompt Security is not configured. Set up PS in Settings first.")
-    try:
-        ps_app_id = decrypt(current_user.ps_api_key_enc)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="PS key could not be decrypted — re-enter it in Settings.")
-    ps_client = _build_prompt_security_client(current_user.ps_tenant.base_url, ps_app_id)
+    ps_client = _build_ps_api_client(current_user)
+    if not ps_client:
+        raise HTTPException(status_code=400, detail="Prompt Security is not configured. Set up PS in Settings first.")
     mime = (file.content_type or "application/octet-stream").split(";")[0].strip()
     filename = file.filename or "upload"
     if mime not in ALLOWED_SANITIZE_TYPES and not filename.lower().endswith(ALLOWED_SANITIZE_EXTENSIONS):
@@ -1772,7 +1829,16 @@ def _build_ps_api_client(user: User) -> Optional[PromptSecurityClient]:
         return None
     if not ps_app_id:
         return None
-    return _build_prompt_security_client(user.ps_tenant.base_url, ps_app_id)
+    try:
+        return _build_prompt_security_client(user.ps_tenant.base_url, ps_app_id)
+    except HTTPException as exc:
+        logger.warning(
+            "Ignoring invalid persisted PS base_url for %s tenant_id=%s: %s",
+            _log_user_ref(user),
+            user.ps_tenant_id,
+            exc.detail,
+        )
+        return None
 
 
 def _extract_response_text(resp) -> str:

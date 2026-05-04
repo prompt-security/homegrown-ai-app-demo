@@ -59,7 +59,7 @@ def test_model_meta_free():
     meta = _model_meta("meta-llama/llama-3.1-8b-instruct:free")
     assert meta["category"] == "free"
     assert meta["provider"] == "OpenRouter"
-    assert meta["requires_key"] is None
+    assert meta["requires_key"] == "openrouter"
 
 
 def test_model_meta_paid_openai():
@@ -104,4 +104,4 @@ def test_free_suffix_detection():
     ]:
         meta = _model_meta(model_id)
         assert meta["category"] == "free", f"{model_id} should be free"
-        assert meta["requires_key"] is None, f"{model_id} should not require key"
+        assert meta["requires_key"] == "openrouter", f"{model_id} should require OpenRouter key"
