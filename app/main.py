@@ -221,18 +221,11 @@ def _normalize_legacy_public_http_url(value: str) -> Optional[str]:
     if parsed.scheme != "http" or not host or parsed.username or parsed.password:
         return None
 
-    normalized_host = host.rstrip(".").lower()
-    if normalized_host == "localhost" or normalized_host.endswith(".local") or "." not in normalized_host:
-        return None
+    candidate = urlunparse(parsed._replace(scheme="https"))
     try:
-        ip = ipaddress.ip_address(normalized_host.strip("[]"))
-    except ValueError:
-        pass
-    else:
-        if not ip.is_global:
-            return None
-
-    return urlunparse(parsed._replace(scheme="https"))
+        return _validate_external_https_url(candidate, "base_url")
+    except HTTPException:
+        return None
 
 
 def _build_prompt_security_client(base_url: str, app_id: str) -> PromptSecurityClient:
