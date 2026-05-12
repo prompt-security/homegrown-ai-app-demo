@@ -2034,8 +2034,9 @@ reply = await client.chat.completions.create(
       document.getElementById('adminSep').style.display = 'block';
       document.getElementById('adminPsLink').style.display = 'inline';
     }
+    updateCompareAvailability();
     updatePsStatus();
-    if (AUTH_USER?.ps_configured) enterCompareMode();
+    if (canUseCompareMode() && AUTH_USER?.ps_configured) enterCompareMode();
     await Promise.all([loadModels(), loadSessions(), loadStats()]);
     scheduleTokenEstimate();
   }
@@ -2059,7 +2060,7 @@ reply = await client.chat.completions.create(
       psStatusEl.title = 'Not configured — click ⚙ to set up';
       gear.className = '';
     }
-    if (AUTH_USER?.ps_configured && AUTH_USER?.ps_enabled && !compareModeActive) enterCompareMode();
+    if (canUseCompareMode() && AUTH_USER?.ps_configured && AUTH_USER?.ps_enabled && !compareModeActive) enterCompareMode();
   }
 
   async function quickTogglePs() {
@@ -2110,7 +2111,7 @@ reply = await client.chat.completions.create(
         const opt = document.createElement('option');
         opt.value = m.id;
         const provTag = m.provider ? ` [${m.provider}]` : '';
-        if (!m.key_set) {
+        if (m.requires_key && !m.key_set) {
           opt.textContent = m.id + provTag + ' (key required)';
           opt.disabled = true;
           opt.style.color = 'var(--text-muted)';
@@ -2753,7 +2754,19 @@ reply = await client.chat.completions.create(
 
   const compareModeBtn = document.getElementById('compareModeBtn');
 
+  function canUseCompareMode() {
+    return AUTH_USER?.role === 'admin';
+  }
+
+  function updateCompareAvailability() {
+    const display = canUseCompareMode() ? '' : 'none';
+    compareModeBtn.style.display = display;
+    document.querySelectorAll('.demo-compare-btn').forEach(btn => { btn.style.display = display; });
+    if (!canUseCompareMode() && compareModeActive) exitCompare();
+  }
+
   function enterCompareMode() {
+    if (!canUseCompareMode()) return;
     compareModeActive = true;
     chatEl.style.display = 'none';
     compareColumns.classList.add('active');
@@ -2772,6 +2785,7 @@ reply = await client.chat.completions.create(
   }
   document.getElementById('cmpExitBtn').addEventListener('click', exitCompare);
   compareModeBtn.addEventListener('click', () => {
+    if (!canUseCompareMode()) return;
     if (compareModeActive) exitCompare(); else enterCompareMode();
   });
 
@@ -3576,12 +3590,13 @@ if (evt.type === 'done') {
   async function streamIntoBubble(bubble, footer, promptText, skipPs) {
     const model = document.getElementById('modelSelect').value || undefined;
     const sys = localStorage.getItem(SYS_KEY) || undefined;
+    const effectiveSkipPs = Boolean(skipPs && canUseCompareMode());
     const scrollContainer = bubble.closest('.cmp-messages') || bubble.closest('.compare-bubble')?.parentElement;
     const scrollBub = () => { if (scrollContainer) scrollContainer.scrollTop = scrollContainer.scrollHeight; };
     try {
       const res = await authFetch('/chat/stream', {
         method: 'POST',
-        body: JSON.stringify({ messages: [{ role: 'user', content: promptText }], model, skip_ps: skipPs }),
+        body: JSON.stringify({ messages: [{ role: 'user', content: promptText }], model, skip_ps: effectiveSkipPs }),
       });
       if (!res.ok) {
         bubble.textContent = `Error: ${res.statusText}`; return;
@@ -3640,6 +3655,7 @@ if (evt.type === 'done') {
   }
 
   function runCompare(promptText) {
+    if (!canUseCompareMode()) return;
     enterCompareMode();
     cmpLeftMsgs.innerHTML = '';
     cmpRightMsgs.innerHTML = '';

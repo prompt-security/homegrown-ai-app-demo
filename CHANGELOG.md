@@ -1,5 +1,19 @@
 # Changelog
 
+## [2026-05-04]
+### Added
+- Shared Codex skill for managing the local demo app stack and inference setup — @david.abutbul
+- Local OpenAI-compatible inference endpoint configuration for Docker-hosted LiteLLM testing — @david.abutbul
+
+### Changed
+- Make the LiteLLM host port configurable for local environments with an existing proxy on port 4000 — @david.abutbul
+- Require provider keys for all non-local model metadata, including OpenRouter `:free` entries, so the UI disables models that would fail without configured credentials — @david.abutbul
+
+### Security
+- Remediate code-scanning findings for Prompt Security URL validation, client error handling, API key hashing, CDN integrity, token-count logging, and the container runtime user — @david.abutbul
+- Normalize legacy public `http://` Prompt Security tenant URLs to HTTPS during startup and disable PS for unsafe legacy tenant URLs so upgrades soft-fail instead of breaking chat, public API, or file sanitization flows — @david.abutbul
+- Document that existing instances must update or recreate Prompt Security tenants using `http://`, localhost, `.local`, private-IP, or reserved-network URLs because these values are intentionally rejected as part of CodeQL alert 12 (`py/full-ssrf`) remediation — @david.abutbul
+
 ## [2026-05-03]
 ### Added
 - Demo storytelling: severity badges (HIGH/MEDIUM), attacker-goal, and SE talking-point on every scenario card

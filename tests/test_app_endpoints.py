@@ -475,6 +475,9 @@ async def test_chat_stream_non_admin_cannot_bypass_ps_with_skip_flag(client, db,
 
 @pytest.mark.asyncio
 async def test_chat_stream_admin_can_bypass_ps_with_skip_flag(client, db, test_tenant):
+    test_tenant.base_url = "http://localhost"
+    await db.commit()
+
     admin = User(
         email="admin-skip@test.com",
         hashed_password=hash_password("password"),

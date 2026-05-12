@@ -40,12 +40,26 @@ def test_detect_provider_openrouter_default():
     assert _detect_provider("mistralai/mistral-7b-instruct:free") == "openrouter"
 
 
+def test_local_openai_model_metadata(monkeypatch):
+    import main
+
+    model_id = "huggingface/Qwen3VL-8B-Instruct-F16"
+    monkeypatch.setattr(main, "_LOCAL_OPENAI_MODEL_IDS", {model_id})
+
+    assert main._detect_provider(model_id) == "local_openai"
+    assert main._model_meta(model_id) == {
+        "category": "local",
+        "provider": "Local OpenAI",
+        "requires_key": None,
+    }
+
+
 def test_model_meta_free():
     from main import _model_meta
     meta = _model_meta("meta-llama/llama-3.1-8b-instruct:free")
     assert meta["category"] == "free"
     assert meta["provider"] == "OpenRouter"
-    assert meta["requires_key"] is None
+    assert meta["requires_key"] == "openrouter"
 
 
 def test_model_meta_paid_openai():
@@ -90,4 +104,4 @@ def test_free_suffix_detection():
     ]:
         meta = _model_meta(model_id)
         assert meta["category"] == "free", f"{model_id} should be free"
-        assert meta["requires_key"] is None, f"{model_id} should not require key"
+        assert meta["requires_key"] == "openrouter", f"{model_id} should require OpenRouter key"

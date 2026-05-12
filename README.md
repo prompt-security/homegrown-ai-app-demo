@@ -122,6 +122,7 @@ ADMIN_PASSWORD=your_admin_password
 
 # ── LiteLLM proxy ─────────────────────────────────────────────────────────────
 LITELLM_BASE_URL=http://litellm:4000
+LITELLM_HOST_PORT=4000
 # Generate with: python -c "import secrets; print(secrets.token_hex(32))"
 LITELLM_MASTER_KEY=your_litellm_master_key
 
@@ -172,11 +173,16 @@ Models are configured in `litellm/config.yaml`. By default the following are ena
 | `meta-llama/llama-3.1-8b-instruct:free`                    | OpenRouter | **Free** — requires `OPENROUTER_API_KEY` |
 | `nvidia/nemotron-nano-9b-v2:free`                          | OpenRouter | **Free** — requires `OPENROUTER_API_KEY` |
 | `mistralai/mistral-7b-instruct:free`                       | OpenRouter | **Free** — requires `OPENROUTER_API_KEY` |
+| `huggingface/Qwen3VL-8B-Instruct-F16`                      | Local OpenAI-compatible | Uses `LOCAL_OPENAI_BASE_URL` |
 
 
 Get a free OpenRouter key at [openrouter.ai](https://openrouter.ai).
 
 > **Note:** Per-user LLM override settings are hidden from the UI by default. If you need them later, set `SHOW_LLM_KEY_SETTINGS=true` and rebuild the app.
+
+If another service already uses host port `4000`, set `LITELLM_HOST_PORT=4001`
+in `.env`. The app still talks to LiteLLM through Docker at
+`LITELLM_BASE_URL=http://litellm:4000`.
 
 ---
 
@@ -227,12 +233,29 @@ Remote Ollama should be placed behind a reverse proxy (nginx, Caddy, etc.) that 
 
 ---
 
+## Local OpenAI-compatible endpoint
+
+For local servers that expose OpenAI-style `/v1/models` and `/v1/chat/completions`
+endpoints, add these values to `.env`:
+
+```bash
+LOCAL_OPENAI_BASE_URL=http://host.docker.internal:8081/v1
+LOCAL_OPENAI_API_KEY=local-dev-key
+LOCAL_OPENAI_MODEL_IDS=huggingface/Qwen3VL-8B-Instruct-F16
+```
+
+The default `litellm/config.yaml` includes that model ID. For a different local
+model, update both `model_name` / `litellm_params.model` in `litellm/config.yaml`
+and `LOCAL_OPENAI_MODEL_IDS` in `.env`, then rebuild `app` and `litellm`.
+
+---
+
 ## Prompt Security
 
 ### Setup
 
 1. Log in as admin and go to **PS Tenants** in the admin dashboard.
-2. Create a tenant with your PS `base_url` (API mode) and optionally a `gateway_url` (Gateway mode).
+2. Create a tenant with your PS `base_url` (API mode) and optionally a `gateway_url` (Gateway mode). Both URLs must use `https://` and a public hostname; localhost, `.local`, private IPs, and reserved networks are rejected to remediate CodeQL alert 12 (`py/full-ssrf`) where tenant-controlled URLs were used by server-side Prompt Security requests.
 3. In ⚙ **Settings → Prompt Security**, select the tenant, enter your PS App ID, and choose API or Gateway mode.
 
 ### Modes
@@ -245,6 +268,8 @@ Remote Ollama should be placed behind a reverse proxy (nginx, Caddy, etc.) that 
 
 
 > **Important:** Each PS tenant has its own App ID. If you switch tenants, you must re-enter the App ID for the new tenant. The previous App ID is automatically cleared on tenant change.
+
+> **Upgrade note:** Existing instances that already contain Prompt Security tenants with `http://`, localhost, `.local`, private-IP, or reserved-network URLs must update or recreate those tenants with public HTTPS URLs. These legacy values are intentionally no longer supported as part of the CodeQL alert 12 (`py/full-ssrf`) remediation.
 
 ---
 

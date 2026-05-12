@@ -129,6 +129,14 @@ model_list:
       model: ollama/gemma3:270m
       api_base: os.environ/OLLAMA_BASE_URL
 
+  # ── Local OpenAI-compatible endpoint ─────────────────────────────────────
+  # Default test target: llama.cpp / OpenAI-style server on the host at :8081.
+  - model_name: huggingface/Qwen3VL-8B-Instruct-F16
+    litellm_params:
+      model: openai/huggingface/Qwen3VL-8B-Instruct-F16
+      api_base: os.environ/LOCAL_OPENAI_BASE_URL
+      api_key: os.environ/LOCAL_OPENAI_API_KEY
+
 litellm_settings:
   drop_params: true
   request_timeout: 60

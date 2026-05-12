@@ -1,5 +1,6 @@
 import os
 import secrets
+import hmac
 from hashlib import sha256
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -51,6 +52,10 @@ def create_api_key() -> str:
 
 
 def hash_api_key(raw_key: str) -> str:
+    return hmac.new(SECRET_KEY.encode(), raw_key.encode(), sha256).hexdigest()
+
+
+def legacy_hash_api_key(raw_key: str) -> str:
     return sha256(raw_key.encode()).hexdigest()
 
 
@@ -97,11 +102,13 @@ async def get_current_api_key(
     if not raw_key:
         raise exc
 
+    current_hash = hash_api_key(raw_key)
+    legacy_hash = legacy_hash_api_key(raw_key)
     result = await db.execute(
         select(APIKey, User)
         .join(User, User.id == APIKey.user_id)
         .where(
-            APIKey.key_hash == hash_api_key(raw_key),
+            APIKey.key_hash.in_([current_hash, legacy_hash]),
             APIKey.is_active == True,
             User.is_active == True,
         )
@@ -112,6 +119,8 @@ async def get_current_api_key(
         raise exc
 
     api_key, user = row
+    if hmac.compare_digest(api_key.key_hash, legacy_hash):
+        api_key.key_hash = current_hash
     api_key.last_used_at = datetime.now(timezone.utc)
     await db.commit()
     return api_key, user
