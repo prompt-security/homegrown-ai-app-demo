@@ -52,13 +52,14 @@ class ChatSession(Base):
     __tablename__ = "chat_sessions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    guest_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(255), default="New Conversation")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
-    user: Mapped[User] = relationship("User", back_populates="sessions")
+    user: Mapped[Optional[User]] = relationship("User", back_populates="sessions")
     messages: Mapped[list["Message"]] = relationship(
         "Message", back_populates="session", order_by="Message.id",
         cascade="all, delete-orphan",
@@ -70,7 +71,8 @@ class Message(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     session_id: Mapped[str] = mapped_column(String(36), ForeignKey("chat_sessions.id", ondelete="CASCADE"))
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    guest_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
     role: Mapped[str] = mapped_column(String(20))  # user | assistant
     content: Mapped[str] = mapped_column(Text)
     model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
@@ -78,22 +80,55 @@ class Message(Base):
     ps_action: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # pass | modify | block
     ps_violations: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     response_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    prompt_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    total_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
     session: Mapped[ChatSession] = relationship("ChatSession", back_populates="messages")
-    user: Mapped[User] = relationship("User", back_populates="messages")
+    user: Mapped[Optional[User]] = relationship("User", back_populates="messages")
 
 
 class AuditEvent(Base):
     __tablename__ = "audit_events"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     user_email: Mapped[str] = mapped_column(String(255))
     event_type: Mapped[str] = mapped_column(String(60))   # ps_config_changed | llm_key_added | user_created | etc.
     detail: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+
+
+class DemoScenario(Base):
+    __tablename__ = "demo_scenarios"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(60), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(150))
+    category: Mapped[str] = mapped_column(String(60))
+    severity: Mapped[str] = mapped_column(String(10), default="MEDIUM")
+    prompt: Mapped[str] = mapped_column(Text)
+    expected_action: Mapped[str] = mapped_column(String(20), default="block")
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    attacker_goal: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    why_caught: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    talking_point: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    entities: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    meta: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

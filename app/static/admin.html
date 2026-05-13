@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<link rel="icon" type="image/png" href="/static/favicon.png">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Admin · AI Chat Demo</title>
@@ -79,7 +80,7 @@ tr:hover td{background:rgba(255,255,255,0.015);cursor:pointer}
 .badge-gw{background:rgba(108,99,255,0.12);color:var(--accent)}
 
 /* ── Buttons ── */
-.btn{border-radius:8px;cursor:pointer;font-family:var(--font);font-size:13px;font-weight:500;padding:7px 14px;transition:all 0.15s;border:1px solid transparent;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;border-radius:8px;cursor:pointer;font-family:var(--font);font-size:13px;font-weight:500;padding:7px 14px;transition:all 0.15s;border:1px solid transparent;white-space:nowrap}
 .btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:var(--accent-h)}
 .btn-outline{background:transparent;border-color:var(--border);color:var(--muted)}.btn-outline:hover{border-color:var(--accent);color:var(--accent)}
 .btn-danger{background:transparent;border-color:rgba(231,76,60,0.4);color:var(--red)}.btn-danger:hover{background:rgba(231,76,60,0.1)}
@@ -128,6 +129,20 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
 .recent-msg .meta{display:flex;gap:8px;align-items:center;flex-shrink:0}
 .recent-msg .preview{font-size:12px;color:var(--muted);flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:0;min-width:0}
 
+/* ── Settings tab ── */
+.setting-row{display:flex;align-items:center;justify-content:flex-start;gap:16px;padding:16px 18px;border-bottom:1px solid var(--border)}
+.setting-row:last-child{border-bottom:none}
+.setting-label{font-size:13px;font-weight:600}
+.setting-desc{font-size:12px;color:var(--muted);margin-top:3px}
+.pill-toggle{position:relative;display:inline-block;width:42px;height:24px;flex-shrink:0;vertical-align:middle}
+.pill-toggle input{opacity:0;width:0;height:0;position:absolute}
+.pill-track{position:absolute;inset:0;border-radius:12px;background:var(--border);cursor:pointer;transition:background 0.2s}
+.pill-track::after{content:'';position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform 0.2s}
+.pill-toggle input:checked+.pill-track{background:var(--accent)}
+.pill-toggle input:checked+.pill-track::after{transform:translateX(18px)}
+.pill-toggle.status .pill-track{background:var(--red)}
+.pill-toggle.status input:checked+.pill-track{background:var(--green)}
+
 /* ── misc ── */
 .empty{color:var(--muted);font-size:13px;text-align:center;padding:24px}
 </style>
@@ -155,11 +170,19 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     </button>
     <button class="nav-item" id="nav-tenants" onclick="showTab('tenants',this)">
       <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="3" width="13" height="10" rx="2"/><path d="M5 8h6M5 11h4" stroke-linecap="round"/></svg>
-      PS Tenants
+      Prompt Security Tenants
     </button>
     <button class="nav-item" id="nav-activity" onclick="showTab('activity',this)">
       <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="1,9 3,9 5,3 7,13 9,7 11,10 13,10"/></svg>
       Activity Log
+    </button>
+    <button class="nav-item" id="nav-scenarios" onclick="showTab('scenarios',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 8h6M5 5h6M5 11h3"/></svg>
+      Demo Scenarios
+    </button>
+    <button class="nav-item" id="nav-settings" onclick="showTab('settings',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M8 5a3 3 0 1 0 0 6A3 3 0 0 0 8 5zm0 1.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z"/><path d="M8 0a1 1 0 0 0-1 1v.56a5.9 5.9 0 0 0-1.47.61L5 1.64a1 1 0 0 0-1.41 0l-.95.95A1 1 0 0 0 2.64 4l-.41.53A5.9 5.9 0 0 0 1.56 6H1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h.56c.15.52.37 1.01.65 1.47L1.64 11a1 1 0 0 0 0 1.41l.95.95A1 1 0 0 0 4 13.36l.53.41c.46.28.95.5 1.47.65V15a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-.58c.52-.15 1.01-.37 1.47-.65L11 13.36a1 1 0 0 0 1.41 0l.95-.95A1 1 0 0 0 13.36 11l.41-.53c.28-.46.5-.95.65-1.47H15a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-.58a5.9 5.9 0 0 0-.65-1.47l.41-.53a1 1 0 0 0 0-1.41l-.95-.95A1 1 0 0 0 11 1.64l-.53-.41A5.9 5.9 0 0 0 9 .56V1a1 1 0 0 0-1-1zm0 1.5V1h.01L8 1.5z" opacity=".3"/></svg>
+      Settings
     </button>
     <hr class="nav-sep">
     <a class="nav-item" href="/">
@@ -177,7 +200,10 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
 <div id="main">
   <div id="topbar">
     <h1 id="topbarTitle">Overview</h1>
-    <button class="btn btn-outline btn-sm" onclick="refreshCurrent()">↻ Refresh</button>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span id="userModeChip" style="font-size:11px;padding:3px 8px;border-radius:10px;font-weight:600;background:var(--surface2);color:var(--muted)">—</span>
+      <button class="btn btn-outline btn-sm" onclick="refreshCurrent()">↻ Refresh</button>
+    </div>
   </div>
   <div id="content">
 
@@ -201,33 +227,29 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
 
     <!-- ── PS tab ── -->
     <div id="tab-ps" class="tab-panel">
-      <div class="mode-switcher">
-        <button class="mode-btn active" id="msBtnApi" onclick="adminSwitchMode('api')">API Mode</button>
-        <button class="mode-btn" id="msBtnGw" onclick="adminSwitchMode('gateway')">Gateway Mode</button>
-      </div>
       <div class="ps-mode-grid">
-        <div class="ps-card" id="psApiCard">
+        <div class="ps-card" id="psApiCard" style="cursor:pointer" onclick="adminSwitchMode('api')">
           <div class="ct">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="var(--accent)"><path d="M8 1L2 3.5V7c0 3.8 2.6 7.3 6 8.2C11.4 14.3 14 10.8 14 7V3.5L8 1z"/></svg>
             API Mode
             <span class="badge badge-on" id="apiActiveBadge" style="display:none">Active</span>
           </div>
           <div class="cd">Your app explicitly calls the PS scan API before and after each LLM call. Full visibility into violations, categories, and risk scores.</div>
-          <div class="cf">App → PS Scan API<br>→ LLM (direct call)<br>→ PS Scan API<br>→ User</div>
+          <div class="cf">App → Prompt Security Scan API<br>→ LLM (direct call)<br>→ Prompt Security Scan API<br>→ User</div>
           <div style="display:flex;gap:8px;align-items:center">
             <button class="btn btn-outline btn-sm" onclick="testConnection('api')">Test Connection</button>
             <span id="apiStatusTxt" style="font-size:11px;color:var(--muted)">Not tested</span>
           </div>
           <div id="apiTestResult" class="test-result"></div>
         </div>
-        <div class="ps-card" id="psGwCard">
+        <div class="ps-card" id="psGwCard" style="cursor:pointer" onclick="adminSwitchMode('gateway')">
           <div class="ct">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="var(--green)"><rect x="1" y="2" width="14" height="2.5" rx="1"/><rect x="3" y="6.5" width="10" height="2.5" rx="1"/><rect x="5" y="11" width="6" height="2.5" rx="1"/></svg>
             Gateway Mode
             <span class="badge badge-on" id="gwActiveBadge" style="display:none">Active</span>
           </div>
-          <div class="cd">Point your OpenAI client at the PS Gateway — one URL change. PS scans all traffic transparently and routes through OpenRouter.</div>
-          <div class="cf">App → PS Gateway<br>&nbsp;&nbsp;&nbsp;(scans + routes)<br>→ OpenRouter → LLM<br>→ User</div>
+          <div class="cd">Point your OpenAI client at the Prompt Security Gateway — one URL change. Prompt Security scans all traffic transparently and routes through OpenRouter.</div>
+          <div class="cf">App → Prompt Security Gateway<br>&nbsp;&nbsp;&nbsp;(scans + routes)<br>→ OpenRouter → LLM<br>→ User</div>
           <div style="display:flex;gap:8px;align-items:center">
             <button class="btn btn-outline btn-sm" onclick="testConnection('gw')">Test Connection</button>
             <span id="gwStatusTxt" style="font-size:11px;color:var(--muted)">Not tested</span>
@@ -283,9 +305,16 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
       <!-- User list -->
       <div id="userList">
         <div class="panel">
-          <div class="panel-head"><h3>Users</h3><button class="btn btn-primary btn-sm" onclick="openUserModal()">+ New User</button></div>
+          <div class="panel-head">
+            <h3>Users</h3>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-outline btn-sm" onclick="exportUsers()">↓ Export</button>
+              <label class="btn btn-outline btn-sm" style="cursor:pointer" title="Import JSON">↑ Import<input type="file" id="userImportInput" accept=".json" style="display:none" onchange="importUsers(this)"></label>
+              <button class="btn btn-primary btn-sm" onclick="openUserModal()">+ New User</button>
+            </div>
+          </div>
           <table>
-            <thead><tr><th>Email</th><th>Role</th><th>PS Tenant</th><th>PS Key</th><th>PS Scan</th><th>Limit</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Email</th><th>Role</th><th>Prompt Security Tenant</th><th>Prompt Security Key</th><th>Prompt Security Scan</th><th>Limit</th><th>Status</th><th></th></tr></thead>
             <tbody id="userTable"></tbody>
           </table>
         </div>
@@ -295,7 +324,14 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     <!-- ── Tenants tab ── -->
     <div id="tab-tenants" class="tab-panel">
       <div class="panel">
-        <div class="panel-head"><h3>Prompt Security Tenants</h3><button class="btn btn-primary btn-sm" onclick="openTenantModal()">+ New Tenant</button></div>
+        <div class="panel-head">
+          <h3>Prompt Security Tenants</h3>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-outline btn-sm" onclick="exportTenants()">↓ Export</button>
+            <label class="btn btn-outline btn-sm" style="cursor:pointer" title="Import JSON">↑ Import<input type="file" id="tenantImportInput" accept=".json" style="display:none" onchange="importTenants(this)"></label>
+            <button class="btn btn-primary btn-sm" onclick="openTenantModal()">+ New Tenant</button>
+          </div>
+        </div>
         <table>
           <thead><tr><th>Name</th><th>Base URL</th><th>Gateway URL</th><th>Users</th><th></th></tr></thead>
           <tbody id="tenantTable"></tbody>
@@ -317,13 +353,97 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
               <option value="audit">Config events</option>
             </select>
             <button class="btn btn-outline btn-sm" onclick="loadActivity()">↻ Refresh</button>
+            <button class="btn btn-danger btn-sm" onclick="clearActivity()">🗑 Clear Logs</button>
           </div>
         </div>
         <table>
-          <thead><tr><th>Time</th><th>User</th><th>Role</th><th>Model</th><th>PS</th><th style="width:38%">Preview</th></tr></thead>
+          <thead><tr><th>Time</th><th>User</th><th>Role</th><th>Model</th><th>Prompt Security</th><th style="width:38%">Preview</th></tr></thead>
           <tbody id="actTable"></tbody>
         </table>
         <div id="actEmpty" style="display:none" class="empty">No activity yet.</div>
+      </div>
+    </div>
+
+    <!-- ── Demo Scenarios tab ── -->
+    <div id="tab-scenarios" class="tab-panel">
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Demo Scenarios</h3>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-outline btn-sm" onclick="exportScenarios()">↓ Export</button>
+            <label class="btn btn-outline btn-sm" style="cursor:pointer" title="Import JSON">↑ Import<input type="file" id="scenarioImportInput" accept=".json" style="display:none" onchange="importScenarios(this)"></label>
+            <button class="btn btn-primary btn-sm" onclick="openScenarioModal()">+ New Scenario</button>
+          </div>
+        </div>
+        <table>
+          <thead><tr><th>Severity</th><th>Title</th><th>Expected</th><th>Active</th><th></th></tr></thead>
+          <tbody id="scenarioTable"></tbody>
+        </table>
+        <div id="scenarioEmpty" class="empty" style="display:none">No scenarios yet.</div>
+      </div>
+    </div>
+
+    <!-- ── Settings tab ── -->
+    <div id="tab-settings" class="tab-panel">
+      <div class="panel">
+        <div class="panel-head"><h3>Settings</h3></div>
+        <div class="setting-row" style="flex-direction:column;align-items:flex-start;gap:12px">
+          <div class="setting-label">Access Mode</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;max-width:600px">
+            <div id="modeCardUserMgmt" onclick="onUserMgmtToggle(true)" style="cursor:pointer;border-radius:10px;padding:14px 16px;border:2px solid transparent;transition:all .15s">
+              <div style="font-size:12px;font-weight:700;margin-bottom:8px">👤 User Management</div>
+              <ul style="font-size:11px;color:var(--text-muted);margin:0;padding-left:14px;line-height:1.8">
+                <li>Login required to access the chat</li>
+                <li>Registered users with email &amp; password</li>
+                <li>Per-user daily message limits</li>
+                <li>Per-user Prompt Security tenant &amp; model restrictions</li>
+                <li>Full user audit trail</li>
+              </ul>
+            </div>
+            <div id="modeCardOpenMode" onclick="onUserMgmtToggle(false)" style="cursor:pointer;border-radius:10px;padding:14px 16px;border:2px solid transparent;transition:all .15s">
+              <div style="font-size:12px;font-weight:700;margin-bottom:8px">🌐 Open Mode</div>
+              <ul style="font-size:11px;color:var(--text-muted);margin:0;padding-left:14px;line-height:1.8">
+                <li>No login required — anyone can chat</li>
+                <li>Guests identified by name &amp; IP</li>
+                <li>Single fixed model for all guests</li>
+                <li>Shared Prompt Security config applied globally</li>
+                <li>Guest activity tracked by identifier</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="setting-row" style="flex-wrap:wrap;row-gap:10px">
+          <div style="flex:1;min-width:200px">
+            <div class="setting-label">Fix Model</div>
+            <div class="setting-desc">Lock all users to a single model, hiding the model selector in the chat UI.</div>
+          </div>
+          <label class="pill-toggle">
+            <input type="checkbox" id="settingFixModel" onchange="onFixModelToggle(this.checked)">
+            <span class="pill-track"></span>
+          </label>
+          <div id="fixModelPickerWrap" style="display:none;width:100%;padding-left:2px">
+            <select id="fixModelSelect" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:6px 10px;width:100%;max-width:360px;outline:none" onchange="onFixModelSelect(this.value)">
+              <option value="">Loading models…</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:20px;border:1px solid rgba(231,76,60,0.35)">
+        <div class="panel-head" style="background:rgba(231,76,60,0.07)">
+          <h3 style="color:var(--red)">⚠️ Danger Zone</h3>
+        </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label" style="color:var(--red)">Reset All Stats</div>
+            <div class="setting-desc">
+              Permanently deletes <strong>all chat sessions, messages, token usage records, and audit log events</strong>.
+              User accounts, Prompt Security tenants, app settings, and demo scenarios are preserved.
+              <strong>This cannot be undone.</strong>
+            </div>
+          </div>
+          <button class="btn btn-danger" onclick="resetStats()" style="white-space:nowrap;flex-shrink:0">Reset Stats</button>
+        </div>
       </div>
     </div>
 
@@ -332,13 +452,13 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
 
 <!-- ── User Modal ── -->
 <div class="backdrop" id="userBackdrop">
-  <div class="modal">
+  <div class="modal" style="max-width:780px;width:94vw">
     <h3 id="userModalTitle">New User</h3>
     <input type="hidden" id="userModalId">
     <div class="field"><label>Email</label><input type="email" id="umEmail" placeholder="se@company.com"></div>
     <div class="field"><label id="umPwLabel">Password</label><input type="password" id="umPassword" placeholder="Leave blank to keep current"></div>
     <div class="field"><label>Role</label><select id="umRole"><option value="se">SE (regular user)</option><option value="admin">Admin</option></select></div>
-    <div class="field"><label>PS Tenant</label><select id="umTenant"><option value="">— Not assigned —</option></select></div>
+    <div class="field"><label>Prompt Security Tenant</label><select id="umTenant"><option value="">— Not assigned —</option></select></div>
     <div class="field"><label>Daily Message Limit</label><input type="number" id="umLimit" placeholder="e.g. 50 (0 = unlimited)"></div>
     <div class="field">
       <label>Allowed Models</label>
@@ -358,7 +478,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
 <!-- ── Tenant Modal ── -->
 <div class="backdrop" id="tenantBackdrop">
   <div class="modal">
-    <h3 id="tenantModalTitle">New PS Tenant</h3>
+    <h3 id="tenantModalTitle">New Prompt Security Tenant</h3>
     <input type="hidden" id="tenantModalId">
     <div class="field"><label>Name</label><input type="text" id="tmName" placeholder="e.g. apsouth"></div>
     <div class="field"><label>Base URL</label><input type="text" id="tmBase" placeholder="https://apsouth.prompt.security"></div>
@@ -417,6 +537,10 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
 
   // ── Tab navigation ────────────────────────────────────────────────────────
   let _currentTab = 'overview';
+  let _scenarios = [];
+  let _scenarioPreviewId = null;
+  let _openCatId = null;
+  let _appSettings = { user_mgmt_enabled: true };
 
   function showTab(name, el) {
     _currentTab = name;
@@ -424,13 +548,15 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
     document.getElementById('tab-' + name).classList.add('active');
     if (el) el.classList.add('active');
-    const titles = { overview:'Overview', ps:'Prompt Security', users:'Users', tenants:'PS Tenants', activity:'Activity Log' };
+    const titles = { overview:'Overview', ps:'Prompt Security', users:'Users', tenants:'Prompt Security Tenants', activity:'Activity Log', scenarios:'Demo Scenarios', settings:'Settings' };
     document.getElementById('topbarTitle').textContent = titles[name] || name;
     if (name==='overview')  loadOverview();
     if (name==='ps')        loadPs();
     if (name==='users')     loadUsers();
     if (name==='tenants')   loadTenants();
     if (name==='activity')  loadActivity();
+    if (name==='scenarios') loadScenarios();
+    if (name==='settings')  loadSettings();
   }
 
   function refreshCurrent() { showTab(_currentTab, document.getElementById('nav-'+_currentTab)); }
@@ -444,30 +570,126 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     const initials = user.email.substring(0,2).toUpperCase();
     document.getElementById('footerAvatar').textContent = initials;
     document.getElementById('footerEmail').textContent = user.email;
-    loadOverview();
+    await Promise.all([loadSettings(), loadOverview()]);
+  }
+
+  function updateUserModeChip(enabled) {
+    const chip = document.getElementById('userModeChip');
+    if (enabled) {
+      chip.textContent = '👤 User Management';
+      chip.style.background = 'rgba(108,99,255,0.15)';
+      chip.style.color = 'var(--accent)';
+    } else {
+      chip.textContent = '🌐 Open Mode';
+      chip.style.background = 'rgba(46,204,113,0.15)';
+      chip.style.color = 'var(--green)';
+    }
+  }
+
+  async function loadSettings() {
+    const sr = await api('/app/settings');
+    if (!sr.ok) return;
+    const settings = await sr.json();
+    _appSettings = settings;
+    const enabled = settings.user_mgmt_enabled !== false;
+    updateUserModeChip(enabled);
+    updateModeCards(enabled);
+    const fixEnabled = settings.fixed_model_enabled === true;
+    document.getElementById('settingFixModel').checked = fixEnabled;
+    document.getElementById('fixModelPickerWrap').style.display = fixEnabled ? 'block' : 'none';
+    if (fixEnabled) await populateFixModelSelect(settings.fixed_model_id);
+  }
+
+  async function populateFixModelSelect(selectedId) {
+    const res = await api('/models');
+    if (!res.ok) return;
+    const { models } = await res.json();
+    const sel = document.getElementById('fixModelSelect');
+    sel.innerHTML = '<option value="">— Select a model —</option>';
+    models.forEach(m => {
+      if (!m.key_set) return;
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.id + (m.provider ? ` [${m.provider}]` : '');
+      if (m.id === selectedId) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  }
+
+  async function onFixModelToggle(enabled) {
+    document.getElementById('fixModelPickerWrap').style.display = enabled ? 'block' : 'none';
+    await api('/admin/app-settings', {
+      method: 'PATCH',
+      body: JSON.stringify({ fixed_model_enabled: enabled, fixed_model_id: enabled ? (document.getElementById('fixModelSelect').value || '') : '' }),
+    });
+    if (enabled) await populateFixModelSelect(null);
+  }
+
+  async function onFixModelSelect(modelId) {
+    await api('/admin/app-settings', {
+      method: 'PATCH',
+      body: JSON.stringify({ fixed_model_enabled: true, fixed_model_id: modelId }),
+    });
+  }
+
+  function updateModeCards(enabled) {
+    const userCard = document.getElementById('modeCardUserMgmt');
+    const openCard = document.getElementById('modeCardOpenMode');
+    const activeStyle  = 'background:rgba(108,99,255,0.1);border-color:var(--accent)';
+    const inactiveStyle = 'background:var(--surface2);border-color:var(--border)';
+    userCard.style.cssText += ';' + (enabled  ? activeStyle : inactiveStyle);
+    openCard.style.cssText += ';' + (!enabled ? activeStyle : inactiveStyle);
+    userCard.querySelector('div').style.color = enabled  ? 'var(--accent)' : 'var(--text-muted)';
+    openCard.querySelector('div').style.color = !enabled ? 'var(--accent)' : 'var(--text-muted)';
+  }
+
+  async function onUserMgmtToggle(enabled) {
+    _appSettings.user_mgmt_enabled = enabled;
+    updateUserModeChip(enabled);
+    updateModeCards(enabled);
+    await api('/admin/app-settings', {
+      method: 'PATCH',
+      body: JSON.stringify({ user_mgmt_enabled: enabled }),
+    });
   }
 
   // ── Overview ──────────────────────────────────────────────────────────────
   async function loadOverview() {
+    const sr = await api('/app/settings');
+    const userMgmtEnabled = sr.ok ? (await sr.json()).user_mgmt_enabled !== false : true;
+
+    if (!userMgmtEnabled) {
+      await loadOverviewOpenMode();
+    } else {
+      await loadOverviewUserMode();
+    }
+  }
+
+  async function loadOverviewUserMode() {
     const res = await api('/admin/stats');
     if (!res.ok) return;
     const d = await res.json();
 
     const scanRate = d.total_messages > 0 ? Math.round(d.ps_scanned / d.total_messages * 100) : 0;
+    const fmtTok = n => n >= 1_000_000 ? (n/1_000_000).toFixed(1)+'M' : n >= 1_000 ? (n/1_000).toFixed(1)+'K' : String(n);
     document.getElementById('overviewCards').innerHTML = `
       <div class="card blue"><div class="lbl">Total Users</div><div class="val">${d.total_users}</div><div class="sub">${d.active_users_today} active today</div></div>
       <div class="card grey"><div class="lbl">Total Messages</div><div class="val">${d.total_messages.toLocaleString()}</div><div class="sub">${d.total_sessions} sessions</div></div>
       <div class="card grey"><div class="lbl">Today</div><div class="val">${d.messages_today}</div><div class="sub">messages sent</div></div>
+      <div class="card purple"><div class="lbl">Tokens (all time)</div><div class="val">${fmtTok(d.total_tokens_all)}</div><div class="sub">${fmtTok(d.total_tokens_month)} this month · ${fmtTok(d.total_tokens_today)} today</div></div>
       <div class="card red"><div class="lbl">PS Blocked</div><div class="val">${d.ps_blocked}</div><div class="sub">of ${d.ps_scanned} scanned</div></div>
       <div class="card green"><div class="lbl">Scan Rate</div><div class="val">${scanRate}%</div><div class="sub">messages scanned</div></div>
     `;
+    document.querySelector('#tab-overview .panel-head h3').textContent = 'Top Users';
+    document.querySelector('#tab-overview .panel-head thead th:first-child, #tab-overview thead th:first-child').textContent = 'Email';
 
-    // Messages per day chart
+    await new Promise(r => requestAnimationFrame(r));
+
     const days = d.messages_by_day || [];
     if (dayChartI) dayChartI.destroy();
     dayChartI = buildLine('dayChart', days.map(x=>x.date.slice(5)), days.map(x=>x.count));
+    document.querySelector('#dayChart').closest('.chart-box').querySelector('h3').textContent = 'Messages per Day';
 
-    // Model usage chart
     const models = d.messages_by_model || {};
     const mKeys = Object.keys(models); const mVals = mKeys.map(k=>models[k]);
     const shortKeys = mKeys.map(k => k.split('/').pop().replace('openai/','').substring(0,20));
@@ -475,18 +697,66 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     if (mKeys.length) modelChartI = buildDoughnut('modelChart', shortKeys, mVals);
     else document.getElementById('modelChart').parentElement.innerHTML += '<div class="empty" style="font-size:12px">No data yet</div>';
 
-    // Top users
     const tbody = document.getElementById('topUsersBody');
     const topUsers = d.top_users || d.user_counts_today || [];
-    tbody.innerHTML = topUsers.length
-      ? topUsers.map(u=>`<tr><td>${esc(u.email)}</td><td>${u.message_count||u.count}</td></tr>`).join('')
-      : `<tr><td colspan="2" class="empty">No messages yet</td></tr>`;
+    tbody.innerHTML = '';
+    if (topUsers.length) {
+      for (const u of topUsers) {
+        const tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+        tr.innerHTML = `<td><strong style="color:var(--accent)">${esc(u.email)}</strong></td><td>${u.message_count||u.count}</td>`;
+        tr.addEventListener('click', () => goToUserDetail(u.id));
+        tbody.appendChild(tr);
+      }
+    } else {
+      tbody.innerHTML = `<tr><td colspan="2" class="empty">No messages yet</td></tr>`;
+    }
+  }
+
+  async function loadOverviewOpenMode() {
+    const res = await api('/admin/guest-stats');
+    if (!res.ok) return;
+    const d = await res.json();
+
+    const fmtTok = n => n >= 1_000_000 ? (n/1_000_000).toFixed(1)+'M' : n >= 1_000 ? (n/1_000).toFixed(1)+'K' : String(n);
+    document.getElementById('overviewCards').innerHTML = `
+      <div class="card blue"><div class="lbl">Unique Guests</div><div class="val">${d.total_guests}</div><div class="sub">${d.guests_today} active today</div></div>
+      <div class="card grey"><div class="lbl">Total Chats</div><div class="val">${d.total_events.toLocaleString()}</div><div class="sub">${d.events_today} today</div></div>
+      <div class="card purple"><div class="lbl">Tokens (all time)</div><div class="val">${fmtTok(d.total_tokens_all)}</div><div class="sub">${fmtTok(d.total_tokens_month)} this month</div></div>
+    `;
+    document.querySelector('#tab-overview .panel-head h3').textContent = 'Top Guests';
+    document.querySelector('#tab-overview thead tr').innerHTML = '<th>Guest</th><th>Chats</th><th>Tokens (all time)</th><th>Tokens (this month)</th>';
+
+    await new Promise(r => requestAnimationFrame(r));
+
+    const days = d.events_by_day || [];
+    if (dayChartI) dayChartI.destroy();
+    dayChartI = buildLine('dayChart', days.map(x=>x.date.slice(5)), days.map(x=>x.count));
+    document.querySelector('#dayChart').closest('.chart-box').querySelector('h3').textContent = 'Guest Chats per Day';
+
+    if (modelChartI) { modelChartI.destroy(); modelChartI = null; }
+    document.getElementById('modelChart').closest('.chart-box').style.display = 'none';
+
+    const tbody = document.getElementById('topUsersBody');
+    tbody.innerHTML = '';
+    if (d.top_guests.length) {
+      for (const g of d.top_guests) {
+        const tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+        tr.innerHTML = `<td><strong style="color:var(--accent)">${esc(g.identifier)}</strong></td><td>${g.count}</td><td>${fmtTok(g.tokens_total)}</td><td>${fmtTok(g.tokens_month)}</td>`;
+        tr.addEventListener('click', () => goToGuestDetail(g.identifier));
+        tbody.appendChild(tr);
+      }
+    } else {
+      tbody.innerHTML = `<tr><td colspan="4" class="empty">No guest activity yet</td></tr>`;
+    }
   }
 
   // ── PS tab ────────────────────────────────────────────────────────────────
   let _psStats = null;
 
   async function loadPs() {
+    adminSwitchMode('api');
     const res = await api('/admin/stats');
     if (!res.ok) return;
     _psStats = await res.json();
@@ -509,8 +779,6 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
   }
 
   function adminSwitchMode(mode) {
-    document.getElementById('msBtnApi').classList.toggle('active', mode==='api');
-    document.getElementById('msBtnGw').classList.toggle('active', mode==='gateway');
     document.getElementById('psApiCard').classList.toggle('active-mode', mode==='api');
     document.getElementById('psGwCard').classList.toggle('active-mode', mode==='gateway');
     document.getElementById('apiActiveBadge').style.display = mode==='api' ? '' : 'none';
@@ -545,10 +813,179 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
   let _detailUserId = null;
 
   async function loadUsers() {
+    const sr = await api('/app/settings');
+    const userMgmtEnabled = sr.ok ? (await sr.json()).user_mgmt_enabled !== false : true;
+    if (!userMgmtEnabled) {
+      document.getElementById('userList').style.display = '';
+      document.getElementById('userDetail').classList.remove('show');
+      await loadGuestAudit();
+      return;
+    }
+    // Restore user-management panel state (may have been mutated by guest audit view)
+    const panel = document.querySelector('#tab-users #userList .panel');
+    panel.querySelector('.panel-head h3').textContent = 'Users';
+    panel.querySelector('.panel-head div').style.display = '';
+    document.querySelector('#tab-users #userList .panel thead tr').innerHTML =
+      '<th>Email</th><th>Role</th><th>Prompt Security Tenant</th><th>Prompt Security Key</th><th>Prompt Security Scan</th><th>Limit</th><th>Status</th><th></th>';
+    document.getElementById('guestAuditCards')?.remove();
+    document.getElementById('guestChartRow')?.remove();
+    if (guestDayChartI) { guestDayChartI.destroy(); guestDayChartI = null; }
+
     const res = await api('/admin/users');
     if (!res.ok) return;
     allUsers = await res.json();
     renderUserTable();
+  }
+
+  let guestDayChartI = null;
+
+  async function loadGuestAudit() {
+    const res = await api('/admin/guest-stats');
+    if (!res.ok) return;
+    const d = await res.json();
+
+    const tbody = document.getElementById('userTable');
+    const thead = tbody.closest('table').querySelector('thead tr');
+
+    // Swap table columns for guest view
+    thead.innerHTML = '<th>Guest Identifier</th><th>Total Chats</th><th>Tokens (all time)</th><th>Tokens (this month)</th><th>Last Seen</th>';
+
+    // Swap panel header title and hide user-management buttons
+    const panel = document.querySelector('#tab-users #userList .panel');
+    panel.querySelector('.panel-head h3').textContent = 'Guest Activity (Open Mode)';
+    panel.querySelector('.panel-head div').style.display = 'none';
+
+    let auditCards = document.getElementById('guestAuditCards');
+    if (!auditCards) {
+      auditCards = document.createElement('div');
+      auditCards.id = 'guestAuditCards';
+      auditCards.className = 'cards';
+      auditCards.style.marginBottom = '16px';
+      panel.insertBefore(auditCards, panel.querySelector('table'));
+
+      const chartRow = document.createElement('div');
+      chartRow.id = 'guestChartRow';
+      chartRow.className = 'chart-row';
+      chartRow.innerHTML = '<div class="chart-box"><h3>Guest Chats per Day</h3><canvas id="guestDayChart" height="110"></canvas></div>';
+      panel.insertBefore(chartRow, panel.querySelector('table'));
+    }
+
+    const fmtTok = n => n >= 1_000_000 ? (n/1_000_000).toFixed(1)+'M' : n >= 1_000 ? (n/1_000).toFixed(1)+'K' : String(n);
+    auditCards.innerHTML = `
+      <div class="card blue"><div class="lbl">Unique Guests</div><div class="val">${d.total_guests}</div><div class="sub">${d.guests_today} today</div></div>
+      <div class="card grey"><div class="lbl">Total Chats</div><div class="val">${d.total_events.toLocaleString()}</div><div class="sub">${d.events_today} today</div></div>
+      <div class="card purple"><div class="lbl">Tokens (all time)</div><div class="val">${fmtTok(d.total_tokens_all)}</div><div class="sub">${fmtTok(d.total_tokens_month)} this month</div></div>
+    `;
+
+    await new Promise(r => requestAnimationFrame(r));
+    if (guestDayChartI) guestDayChartI.destroy();
+    const days = d.events_by_day || [];
+    guestDayChartI = buildLine('guestDayChart', days.map(x => x.date.slice(5)), days.map(x => x.count));
+
+    tbody.innerHTML = '';
+    if (d.top_guests.length) {
+      for (const g of d.top_guests) {
+        const tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+        tr.innerHTML = `
+          <td><strong style="color:var(--accent)">${esc(g.identifier)}</strong></td>
+          <td>${g.count}</td>
+          <td style="font-size:12px">${fmtTok(g.tokens_total)}</td>
+          <td style="font-size:12px">${fmtTok(g.tokens_month)}</td>
+          <td style="font-size:12px;color:var(--muted)">${esc(g.last_seen)}</td>`;
+        tr.addEventListener('click', () => openGuestActivityModal(g.identifier));
+        tbody.appendChild(tr);
+      }
+    } else {
+      tbody.innerHTML = `<tr><td colspan="5" class="empty">No guest activity yet</td></tr>`;
+    }
+  }
+
+  let _guestSessions = [];
+
+  async function openGuestActivityModal(identifier) {
+    document.getElementById('guestActivityTitle').textContent = identifier;
+    document.getElementById('gaFrom').value = '';
+    document.getElementById('gaTo').value = '';
+    document.getElementById('gaPs').value = '';
+    document.getElementById('guestActivityTable').innerHTML = '<tr><td colspan="5" class="empty">Loading…</td></tr>';
+    document.getElementById('guestActivityBackdrop').classList.add('open');
+
+    const res = await api('/admin/guest-activity?identifier=' + encodeURIComponent(identifier));
+    if (!res.ok) return;
+    _guestSessions = await res.json();
+
+    renderGuestActivity();
+  }
+
+  function closeGuestActivityModal() {
+    document.getElementById('guestActivityBackdrop').classList.remove('open');
+    _guestSessions = [];
+  }
+
+  function renderGuestActivity() {
+    const from  = document.getElementById('gaFrom').value;
+    const to    = document.getElementById('gaTo').value;
+    const ps    = document.getElementById('gaPs').value;
+
+    const psColors = { block:'var(--red)', modify:'var(--yellow)', pass:'var(--green)', gateway:'var(--accent)' };
+    const psLabels = { block:'🚫 Blocked', modify:'⚠️ Modified', pass:'✅ Pass', gateway:'🔀 Gateway' };
+
+    let totalMsgs = 0, filteredMsgs = 0;
+    const tbody = document.getElementById('guestActivityTable');
+    const rows = [];
+
+    for (const session of _guestSessions) {
+      if (from && session.created_at < from) continue;
+      if (to   && session.created_at > to + ' 23:59:59') continue;
+
+      const msgs = session.messages.filter(m => {
+        if (ps) {
+          const action = m.ps_action || 'none';
+          if (ps === 'none' && m.ps_scanned) return false;
+          if (ps !== 'none' && action !== ps) return false;
+        }
+        return true;
+      });
+
+      totalMsgs += session.messages.length;
+      filteredMsgs += msgs.length;
+      if (!msgs.length) continue;
+
+      if (rows.length) rows.push(`<tr><td colspan="5" style="padding:4px 10px"><hr style="border:none;border-top:1px solid var(--border);margin:0"></td></tr>`);
+
+      for (const m of msgs) {
+        const isUser = m.role === 'user';
+        const action = m.ps_action || (m.ps_scanned ? 'pass' : 'none');
+        const psChip = isUser ? '' : (m.ps_scanned
+          ? `<span style="font-size:10px;padding:1px 6px;border-radius:4px;border:1px solid rgba(126,207,176,0.4);color:#7ecfb0;background:rgba(126,207,176,0.07)"><img src="/static/favicon.png" style="width:11px;height:11px;vertical-align:middle;border-radius:2px;margin-right:3px">Prompt Security</span> <span style="font-size:10px;color:${psColors[action]||'var(--muted)'}">${psLabels[action]||''}</span>`
+          : `<span style="font-size:10px;padding:1px 6px;border-radius:4px;border:1px solid rgba(240,192,96,0.4);color:#f0c060;background:rgba(240,192,96,0.07)">🤖 Raw LLM</span>`);
+        const modelChip = m.model
+          ? `<span style="font-size:10px;color:var(--muted);margin-left:6px">${esc(m.model.split('/').pop())}</span>`
+          : '';
+        const tokenChip = (!isUser && m.total_tokens)
+          ? `<span style="font-size:10px;color:var(--muted);margin-left:6px" title="prompt: ${m.prompt_tokens ?? '?'} · completion: ${m.completion_tokens ?? '?'}">🔢 ${m.total_tokens} tok</span>`
+          : '';
+        rows.push(`<tr>
+          <td colspan="5" style="padding:6px 10px 6px ${isUser ? '24px' : '10px'}">
+            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:3px">
+              <span style="font-size:11px;font-weight:600;color:${isUser ? 'var(--accent)' : 'var(--green)'}">${isUser ? '<img src="/static/favicon.png" style="width:12px;height:12px;vertical-align:middle;border-radius:2px;margin-right:4px">Prompt' : '🤖 LLM Response'}</span>
+              <span style="font-size:10px;color:var(--muted)">${m.created_at}</span>
+              ${psChip}${modelChip}${tokenChip}
+            </div>
+            <div style="font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word;max-height:120px;overflow-y:auto">${esc(m.content)}</div>
+          </td>
+        </tr>`);
+      }
+    }
+
+    const totalSessions = _guestSessions.length;
+    document.getElementById('gaCount').textContent =
+      `${filteredMsgs} of ${totalMsgs} messages · ${totalSessions} session${totalSessions !== 1 ? 's' : ''}`;
+
+    tbody.innerHTML = rows.length
+      ? rows.join('')
+      : '<tr><td colspan="5" class="empty">No matching messages</td></tr>';
   }
 
   function renderUserTable() {
@@ -576,11 +1013,39 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     loadUsers();
   }
 
+  async function goToGuestDetail(identifier) {
+    _currentTab = 'users';
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-users').classList.add('active');
+    document.getElementById('nav-users').classList.add('active');
+    document.getElementById('topbarTitle').textContent = 'Users';
+    await loadGuestAudit();
+    await openGuestActivityModal(identifier);
+  }
+
+  async function goToUserDetail(userId) {
+    // Switch tab without triggering loadUsers internally, then await it, then open detail
+    _currentTab = 'users';
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-users').classList.add('active');
+    document.getElementById('nav-users').classList.add('active');
+    document.getElementById('topbarTitle').textContent = 'Users';
+    await loadUsers();
+    await openUserDetail(userId);
+  }
+
   // User detail
   async function openUserDetail(userId) {
     _detailUserId = userId;
-    const u = allUsers.find(x => x.id === userId);
-    if (!u) return;
+    let u = allUsers.find(x => x.id === userId);
+    if (!u) {
+      const r = await api(`/admin/users/${userId}`);
+      if (!r.ok) return;
+      u = await r.json();
+      if (!allUsers.find(x => x.id === userId)) allUsers.push(u);
+    }
     document.getElementById('userList').style.display = 'none';
     const det = document.getElementById('userDetail');
     det.classList.add('show');
@@ -619,8 +1084,10 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
       ? msgs.map(m => `
         <div class="recent-msg">
           <div class="meta">
-            <span class="badge ${m.role==='user'?'badge-admin':'badge-on'}" style="font-size:10px">${m.role}</span>
-            ${m.ps_action ? `<span style="font-size:11px">${psIcons[m.ps_action]||''}</span>` : ''}
+            <span class="badge ${m.role==='user'?'badge-admin':'badge-on'}" style="font-size:10px">${m.role==='user'?'<img src="/static/favicon.png" style="width:11px;height:11px;vertical-align:middle;border-radius:2px;margin-right:3px">Prompt':'🤖 LLM Response'}</span>
+            ${m.role!=='user' ? (m.ps_action
+              ? `<span style="font-size:10px;padding:1px 6px;border-radius:4px;border:1px solid rgba(126,207,176,0.4);color:#7ecfb0;background:rgba(126,207,176,0.07)"><img src="/static/favicon.png" style="width:11px;height:11px;vertical-align:middle;border-radius:2px;margin-right:3px">Prompt Security</span> <span style="font-size:11px">${psIcons[m.ps_action]||''}</span>`
+              : `<span style="font-size:10px;padding:1px 6px;border-radius:4px;border:1px solid rgba(240,192,96,0.4);color:#f0c060;background:rgba(240,192,96,0.07)">🤖 Raw LLM</span>`) : ''}
             ${m.model ? `<span style="font-size:10px;color:var(--muted)">${esc(m.model.split('/').pop().substring(0,18))}</span>` : ''}
           </div>
           <div class="preview">${esc(m.content_preview)}</div>
@@ -697,13 +1164,66 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
 
   async function deleteUser() {
     const id = document.getElementById('userModalId').value;
-    if (!id || !confirm('Delete this user? This cannot be undone.')) return;
+    if (!id) return;
+    if (!await showConfirm('Delete this user? This cannot be undone.')) return;
     const res = await api(`/admin/users/${id}`, { method:'DELETE' });
     if (res.ok||res.status===204) { closeUserModal(); loadUsers(); }
     else { document.getElementById('userModalErr').textContent = 'Failed to delete user'; }
   }
 
-  // ── PS Tenants ────────────────────────────────────────────────────────────
+  function exportUsers() {
+    const data = allUsers.map(({ id, ps_tenant, ps_app_id, ps_api_key, ...rest }) => rest);
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `users-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  async function importUsers(input) {
+    const file = input.files[0];
+    if (!file) return;
+    input.value = '';
+    let rows;
+    try { rows = JSON.parse(await file.text()); } catch { showAlert('Import Failed', 'Invalid JSON file.'); return; }
+    if (!Array.isArray(rows)) { showAlert('Import Failed', 'Expected a JSON array.'); return; }
+    const existingEmails = new Set(allUsers.map(x => x.email.trim().toLowerCase()));
+    const dupes = [], noPassword = [], toImport = [];
+    for (const row of rows) {
+      if (!row.email) continue;
+      if (existingEmails.has(row.email.trim().toLowerCase())) { dupes.push(row.email); continue; }
+      if (!row.password) { noPassword.push(row.email); continue; }
+      toImport.push(row);
+    }
+    if (toImport.length === 0) {
+      const parts = [];
+      if (dupes.length) parts.push(`${dupes.length} already exist:\n• ${dupes.join('\n• ')}`);
+      if (noPassword.length) parts.push(`${noPassword.length} missing password field:\n• ${noPassword.join('\n• ')}`);
+      showAlert('Nothing to Import', parts.join('\n\n') || 'No valid rows found.');
+      return;
+    }
+    let imported = 0;
+    for (const row of toImport) {
+      const body = {
+        email: row.email.trim(), password: row.password,
+        role: row.role || 'user',
+        daily_message_limit: row.daily_message_limit || null,
+        allowed_models: Array.isArray(row.allowed_models) && row.allowed_models.length ? row.allowed_models : null,
+        is_active: row.is_active ?? true,
+        ps_enabled: row.ps_enabled ?? false,
+      };
+      const res = await api('/admin/users', { method: 'POST', body: JSON.stringify(body) });
+      if (res.ok) imported++;
+    }
+    await loadUsers();
+    let msg = `Successfully imported ${imported} user${imported !== 1 ? 's' : ''}.`;
+    if (dupes.length) msg += `\n\nSkipped ${dupes.length} duplicate${dupes.length !== 1 ? 's' : ''}:\n• ${dupes.join('\n• ')}`;
+    if (noPassword.length) msg += `\n\nSkipped ${noPassword.length} missing password:\n• ${noPassword.join('\n• ')}`;
+    showAlert('Import Complete', msg);
+  }
+
+  // ── Prompt Security Tenants ────────────────────────────────────────────────────────────
   let allTenants = [];
   async function loadTenants() {
     const res = await api('/admin/ps-tenants');
@@ -721,7 +1241,11 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
           <td style="font-size:12px;color:var(--muted)">${esc(t.base_url)}</td>
           <td style="font-size:12px;color:var(--muted)">${t.gateway_url ? esc(t.gateway_url) : '<span style="color:var(--muted)">—</span>'}</td>
           <td>${countMap[t.id]||0}</td>
-          <td><button class="btn btn-outline btn-sm" onclick="openTenantModal(${t.id})">Edit</button></td>
+          <td style="display:flex;gap:6px">
+            <button class="btn btn-outline btn-sm" onclick="openTenantModal(${t.id})">Edit</button>
+            <button class="btn btn-outline btn-sm" onclick="duplicateTenantInline(${t.id})">Duplicate</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteTenantInline(${t.id})">Delete</button>
+          </td>
         </tr>`).join('')
       : `<tr><td colspan="5" class="empty">No tenants defined yet</td></tr>`;
   }
@@ -731,14 +1255,14 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     if (tenantId) {
       const t = allTenants.find(x => x.id===tenantId);
       if (!t) return;
-      document.getElementById('tenantModalTitle').textContent = 'Edit PS Tenant';
+      document.getElementById('tenantModalTitle').textContent = 'Edit Prompt Security Tenant';
       document.getElementById('tenantModalId').value = tenantId;
       document.getElementById('tmName').value = t.name;
       document.getElementById('tmBase').value = t.base_url;
       document.getElementById('tmGw').value   = t.gateway_url||'';
       document.getElementById('tenantDeleteBtn').style.display = 'block';
     } else {
-      document.getElementById('tenantModalTitle').textContent = 'New PS Tenant';
+      document.getElementById('tenantModalTitle').textContent = 'New Prompt Security Tenant';
       document.getElementById('tenantModalId').value = '';
       document.getElementById('tmName').value = '';
       document.getElementById('tmBase').value = '';
@@ -763,14 +1287,97 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
 
   async function deleteTenant() {
     const id = document.getElementById('tenantModalId').value;
-    if (!id||!confirm('Delete this PS tenant? Users assigned to it will lose their PS config.')) return;
+    if (!id) return;
+    if (!await showConfirm('Delete this Prompt Security tenant? Users assigned to it will lose their Prompt Security config.')) return;
     const res = await api(`/admin/ps-tenants/${id}`, { method:'DELETE' });
     if (res.ok||res.status===204) { closeTenantModal(); loadTenants(); }
     else { document.getElementById('tenantModalErr').textContent='Failed to delete tenant'; }
   }
 
+  async function duplicateTenantInline(id) {
+    const t = allTenants.find(x => x.id === id);
+    if (!t) return;
+    const body = { name: t.name + ' (copy)', base_url: t.base_url, gateway_url: t.gateway_url || null };
+    const res = await api('/admin/ps-tenants', { method: 'POST', body: JSON.stringify(body) });
+    if (res.ok) await loadTenants();
+  }
+
+  async function deleteTenantInline(id) {
+    const t = allTenants.find(x => x.id === id);
+    if (!t) return;
+    if (!await showConfirm(`Delete "${t.name}"? Users assigned to it will lose their Prompt Security config.`)) return;
+    const res = await api(`/admin/ps-tenants/${id}`, { method: 'DELETE' });
+    if (res.ok || res.status === 204) await loadTenants();
+  }
+
+  function exportTenants() {
+    const data = allTenants.map(({ id, ...rest }) => rest);
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `ps-tenants-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  async function importTenants(input) {
+    const file = input.files[0];
+    if (!file) return;
+    input.value = '';
+    let rows;
+    try { rows = JSON.parse(await file.text()); } catch { showAlert('Import Failed', 'Invalid JSON file.'); return; }
+    if (!Array.isArray(rows)) { showAlert('Import Failed', 'Expected a JSON array.'); return; }
+    const existingNames = new Set(allTenants.map(x => x.name.trim().toLowerCase()));
+    const dupes = [], toImport = [];
+    for (const row of rows) {
+      if (!row.name || !row.base_url) continue;
+      if (existingNames.has(row.name.trim().toLowerCase())) dupes.push(row.name);
+      else toImport.push(row);
+    }
+    if (toImport.length === 0) {
+      showAlert('Nothing to Import', `All ${dupes.length} tenant${dupes.length !== 1 ? 's' : ''} already exist:\n\n• ${dupes.join('\n• ')}`);
+      return;
+    }
+    let imported = 0;
+    for (const row of toImport) {
+      const body = { name: row.name.trim(), base_url: row.base_url.trim(), gateway_url: row.gateway_url?.trim() || null };
+      const res = await api('/admin/ps-tenants', { method: 'POST', body: JSON.stringify(body) });
+      if (res.ok) imported++;
+    }
+    await loadTenants();
+    let msg = `Successfully imported ${imported} tenant${imported !== 1 ? 's' : ''}.`;
+    if (dupes.length) msg += `\n\nSkipped ${dupes.length} duplicate${dupes.length !== 1 ? 's' : ''}:\n• ${dupes.join('\n• ')}`;
+    showAlert('Import Complete', msg);
+  }
+
   // ── Activity log ──────────────────────────────────────────────────────────
   let _actRows = [];
+  async function clearActivity() {
+    if (!await showConfirm('Clear all activity logs? This deletes all messages, chat sessions, and audit events. This cannot be undone.', 'Clear All')) return;
+    const res = await api('/admin/activity', { method: 'DELETE' });
+    if (res.ok || res.status === 204) await loadActivity();
+  }
+
+  async function resetStats() {
+    const first = await showConfirm(
+      '⚠️ WARNING: This will permanently delete ALL chat sessions, messages, token usage records, and audit log events across every user and guest.\n\nUser accounts, Prompt Security tenants, settings, and demo scenarios will NOT be affected.\n\nThis action is irreversible. Are you sure you want to continue?',
+      'Yes, continue'
+    );
+    if (!first) return;
+
+    const second = await showConfirm(
+      '🛑 FINAL WARNING\n\nYou are about to wipe all historical usage data. Once deleted, this data cannot be recovered.\n\nClick "Reset Everything" only if you are absolutely certain.',
+      'Reset Everything'
+    );
+    if (!second) return;
+
+    const res = await api('/admin/activity', { method: 'DELETE' });
+    if (res.ok || res.status === 204) {
+      showAlert('Stats Reset', 'All chat sessions, messages, token records, and audit events have been deleted.');
+      await loadOverview();
+    }
+  }
+
   async function loadActivity() {
     const res = await api('/admin/activity?limit=200');
     if (!res.ok) return;
@@ -786,12 +1393,12 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
   const AUDIT_ICONS = {
     ps_config_changed: '🔒', llm_keys_updated: '🔑', user_created: '➕',
     user_updated: '✏️', user_deleted: '🗑', tenant_created: '🏢',
-    tenant_updated: '🏢', tenant_deleted: '🗑',
+    tenant_updated: '🏢', tenant_deleted: '🗑', guest_chat: '👤',
   };
   const AUDIT_LABELS = {
     ps_config_changed: 'PS Config', llm_keys_updated: 'LLM Keys', user_created: 'User Created',
     user_updated: 'User Updated', user_deleted: 'User Deleted', tenant_created: 'Tenant Created',
-    tenant_updated: 'Tenant Updated', tenant_deleted: 'Tenant Deleted',
+    tenant_updated: 'Tenant Updated', tenant_deleted: 'Tenant Deleted', guest_chat: 'Guest Chat',
   };
 
   function renderActivity() {
@@ -840,10 +1447,583 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
   document.getElementById('actRoleFilter').addEventListener('change', renderActivity);
   document.getElementById('userBackdrop').addEventListener('click', e => { if(e.target.id==='userBackdrop') closeUserModal(); });
   document.getElementById('tenantBackdrop').addEventListener('click', e => { if(e.target.id==='tenantBackdrop') closeTenantModal(); });
+  // Modals defined after this script block — register after DOM is fully parsed
+  const _smCountries = {
+    AF:'Afghanistan',AX:'Åland Islands',AL:'Albania',DZ:'Algeria',AS:'American Samoa',
+    AD:'Andorra',AO:'Angola',AI:'Anguilla',AG:'Antigua and Barbuda',AR:'Argentina',
+    AM:'Armenia',AW:'Aruba',AU:'Australia',AT:'Austria',AZ:'Azerbaijan',
+    BS:'Bahamas',BH:'Bahrain',BD:'Bangladesh',BB:'Barbados',BY:'Belarus',
+    BE:'Belgium',BZ:'Belize',BJ:'Benin',BM:'Bermuda',BT:'Bhutan',
+    BO:'Bolivia',BA:'Bosnia and Herzegovina',BW:'Botswana',BR:'Brazil',BN:'Brunei',
+    BG:'Bulgaria',BF:'Burkina Faso',BI:'Burundi',CV:'Cabo Verde',KH:'Cambodia',
+    CM:'Cameroon',CA:'Canada',KY:'Cayman Islands',CF:'Central African Republic',
+    TD:'Chad',CL:'Chile',CN:'China',CO:'Colombia',KM:'Comoros',
+    CG:'Congo',CD:'DR Congo',CK:'Cook Islands',CR:'Costa Rica',HR:'Croatia',
+    CU:'Cuba',CW:'Curaçao',CY:'Cyprus',CZ:'Czech Republic',DK:'Denmark',
+    DJ:'Djibouti',DM:'Dominica',DO:'Dominican Republic',EC:'Ecuador',EG:'Egypt',
+    SV:'El Salvador',GQ:'Equatorial Guinea',ER:'Eritrea',EE:'Estonia',SZ:'Eswatini',
+    ET:'Ethiopia',FK:'Falkland Islands',FO:'Faroe Islands',FJ:'Fiji',FI:'Finland',
+    FR:'France',PF:'French Polynesia',GA:'Gabon',GM:'Gambia',GE:'Georgia',
+    DE:'Germany',GH:'Ghana',GI:'Gibraltar',GR:'Greece',GL:'Greenland',
+    GD:'Grenada',GU:'Guam',GT:'Guatemala',GN:'Guinea',GW:'Guinea-Bissau',
+    GY:'Guyana',HT:'Haiti',VA:'Vatican City',HN:'Honduras',HK:'Hong Kong',
+    HU:'Hungary',IS:'Iceland',IN:'India',ID:'Indonesia',IR:'Iran',
+    IQ:'Iraq',IE:'Ireland',IL:'Israel',IT:'Italy',JM:'Jamaica',
+    JP:'Japan',JO:'Jordan',KZ:'Kazakhstan',KE:'Kenya',KI:'Kiribati',
+    KP:'North Korea',KR:'South Korea',KW:'Kuwait',KG:'Kyrgyzstan',LA:'Laos',
+    LV:'Latvia',LB:'Lebanon',LS:'Lesotho',LR:'Liberia',LY:'Libya',
+    LI:'Liechtenstein',LT:'Lithuania',LU:'Luxembourg',MO:'Macao',MG:'Madagascar',
+    MW:'Malawi',MY:'Malaysia',MV:'Maldives',ML:'Mali',MT:'Malta',
+    MH:'Marshall Islands',MR:'Mauritania',MU:'Mauritius',MX:'Mexico',
+    FM:'Micronesia',MD:'Moldova',MC:'Monaco',MN:'Mongolia',ME:'Montenegro',
+    MA:'Morocco',MZ:'Mozambique',MM:'Myanmar',NA:'Namibia',NR:'Nauru',
+    NP:'Nepal',NL:'Netherlands',NZ:'New Zealand',NI:'Nicaragua',NE:'Niger',
+    NG:'Nigeria',NU:'Niue',MK:'North Macedonia',NO:'Norway',OM:'Oman',
+    PK:'Pakistan',PW:'Palau',PS:'Palestine',PA:'Panama',PG:'Papua New Guinea',
+    PY:'Paraguay',PE:'Peru',PH:'Philippines',PL:'Poland',PT:'Portugal',
+    PR:'Puerto Rico',QA:'Qatar',RO:'Romania',RU:'Russia',RW:'Rwanda',
+    KN:'Saint Kitts and Nevis',LC:'Saint Lucia',VC:'Saint Vincent and the Grenadines',
+    WS:'Samoa',SM:'San Marino',ST:'São Tomé and Príncipe',SA:'Saudi Arabia',
+    SN:'Senegal',RS:'Serbia',SC:'Seychelles',SL:'Sierra Leone',SG:'Singapore',
+    SX:'Sint Maarten',SK:'Slovakia',SI:'Slovenia',SB:'Solomon Islands',
+    SO:'Somalia',ZA:'South Africa',SS:'South Sudan',ES:'Spain',LK:'Sri Lanka',
+    SD:'Sudan',SR:'Suriname',SE:'Sweden',CH:'Switzerland',SY:'Syria',
+    TW:'Taiwan',TJ:'Tajikistan',TZ:'Tanzania',TH:'Thailand',TL:'Timor-Leste',
+    TG:'Togo',TO:'Tonga',TT:'Trinidad and Tobago',TN:'Tunisia',TR:'Turkey',
+    TM:'Turkmenistan',TV:'Tuvalu',UG:'Uganda',UA:'Ukraine',
+    AE:'United Arab Emirates',GB:'United Kingdom',US:'United States',
+    UY:'Uruguay',UZ:'Uzbekistan',VU:'Vanuatu',VE:'Venezuela',VN:'Vietnam',
+    VG:'British Virgin Islands',VI:'US Virgin Islands',YE:'Yemen',ZM:'Zambia',ZW:'Zimbabwe'
+  };
+  function _smCountryFlag(code) {
+    return [...code.toUpperCase()].map(c => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65)).join('');
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('guestActivityBackdrop').addEventListener('click', e => { if(e.target.id==='guestActivityBackdrop') closeGuestActivityModal(); });
+    document.getElementById('scenarioBackdrop').addEventListener('click', e => { if(e.target.id==='scenarioBackdrop') closeScenarioModal(); });
+    document.getElementById('scenarioPreviewBackdrop').addEventListener('click', e => { if(e.target.id==='scenarioPreviewBackdrop') document.getElementById('scenarioPreviewBackdrop').classList.remove('open'); });
+
+    // Populate country select
+    const sel = document.getElementById('smCountryCode');
+    Object.entries(_smCountries).sort((a,b) => a[1].localeCompare(b[1])).forEach(([code, name]) => {
+      const opt = document.createElement('option');
+      opt.value = code;
+      opt.textContent = `${_smCountryFlag(code)}  ${name} (${code})`;
+      sel.appendChild(opt);
+    });
+
+    // Auto-fill name + flag on country select
+    sel.addEventListener('change', function() {
+      const code = this.value;
+      if (!code) return;
+      document.getElementById('smCountryName').value = _smCountries[code] || '';
+      document.getElementById('smFlag').value = _smCountryFlag(code);
+    });
+
+    // Show/hide country section based on category
+    function smToggleCountrySection() {
+      const isPii = document.getElementById('smCategory').value.toLowerCase() === 'pii detection';
+      document.getElementById('smCountrySection').style.display = isPii ? '' : 'none';
+    }
+    document.getElementById('smCategory').addEventListener('change', smToggleCountrySection);
+    window._smToggleCountrySection = smToggleCountrySection;
+  });
 
   function logout() { localStorage.clear(); window.location.replace('/login'); }
 
+  // ── Demo Scenarios ────────────────────────────────────────────────────────
+  async function loadScenarios() {
+    const res = await api('/admin/demo-scenarios');
+    if (!res.ok) return;
+    _scenarios = await res.json();
+    renderScenarios();
+  }
+
+  function renderScenarios() {
+    const tbody = document.getElementById('scenarioTable');
+    const empty = document.getElementById('scenarioEmpty');
+    tbody.innerHTML = '';
+    if (!_scenarios.length) { empty.style.display = 'block'; return; }
+    empty.style.display = 'none';
+    const sevCls = { HIGH: 'color:var(--red)', MEDIUM: 'color:var(--yellow)', LOW: 'color:var(--green)' };
+    const expCls = { block: 'color:var(--red)', modify: 'color:var(--yellow)', pass: 'color:var(--green)' };
+    const groups = [];
+    const seen = {};
+    _scenarios.forEach(s => {
+      if (!seen[s.category]) { seen[s.category] = []; groups.push(seen[s.category]); }
+      seen[s.category].push(s);
+    });
+    groups.forEach((group, gi) => {
+      const catId = `scenarioCat_${gi}`;
+      const count = group.length;
+      const hdr = document.createElement('tr');
+      hdr.style.cssText = 'cursor:pointer;user-select:none';
+      hdr.dataset.catHdr = catId;
+      hdr.innerHTML = `<td colspan="5" style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);background:var(--surface);border-bottom:1px solid var(--border)">
+        <span class="cat-chevron" style="display:inline-block;margin-right:6px;transition:transform 0.2s">▶</span>${esc(group[0].category)}<span style="margin-left:8px;font-weight:400;opacity:0.6">(${count})</span>
+      </td>`;
+      hdr.addEventListener('click', () => {
+        const open = hdr.dataset.open === '1';
+        tbody.querySelectorAll('tr[data-cat-hdr]').forEach(h => {
+          h.dataset.open = '0';
+          h.querySelector('.cat-chevron').style.transform = '';
+          tbody.querySelectorAll(`tr[data-cat="${h.dataset.catHdr}"]`).forEach(r => r.style.display = 'none');
+        });
+        if (!open) {
+          hdr.dataset.open = '1';
+          hdr.querySelector('.cat-chevron').style.transform = 'rotate(90deg)';
+          tbody.querySelectorAll(`tr[data-cat="${catId}"]`).forEach(r => r.style.display = '');
+          _openCatId = catId;
+        } else {
+          _openCatId = null;
+        }
+      });
+      tbody.appendChild(hdr);
+      group.forEach(s => {
+        const flag = s.meta?.flag || '';
+        const tr = document.createElement('tr');
+        tr.dataset.cat = catId;
+        tr.style.display = 'none';
+        tr.innerHTML = `
+          <td><span style="font-size:11px;font-weight:700;${sevCls[s.severity]||''}">${esc(s.severity)}</span></td>
+          <td style="font-size:13px">${flag ? flag + ' ' : ''}${esc(s.title)}</td>
+          <td><span style="font-size:11px;font-weight:600;${expCls[s.expected_action]||''}">${esc(s.expected_action)}</span></td>
+          <td style="vertical-align:middle"><label class="pill-toggle status">
+            <input type="checkbox" ${s.is_active ? 'checked' : ''} onchange="toggleScenarioActive(${s.id}, this.checked)">
+            <span class="pill-track"></span>
+          </label></td>
+          <td style="white-space:nowrap">
+            <button class="btn btn-outline btn-sm" onclick="previewScenario(${s.id})">Preview</button>
+            <button class="btn btn-outline btn-sm" onclick="openScenarioModal(${s.id})" style="margin-left:4px">Edit</button>
+            <button class="btn btn-outline btn-sm" onclick="duplicateScenario(${s.id})" style="margin-left:4px">Duplicate</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteScenarioInline(${s.id})" style="margin-left:4px">Delete</button>
+          </td>`;
+        tbody.appendChild(tr);
+      });
+    });
+    // restore accordion state
+    if (_openCatId) {
+      const hdr = tbody.querySelector(`tr[data-cat-hdr="${_openCatId}"]`);
+      if (hdr) {
+        hdr.dataset.open = '1';
+        hdr.querySelector('.cat-chevron').style.transform = 'rotate(90deg)';
+        tbody.querySelectorAll(`tr[data-cat="${_openCatId}"]`).forEach(r => r.style.display = '');
+      }
+    }
+  }
+
+  async function toggleScenarioActive(id, active) {
+    await api(`/admin/demo-scenarios/${id}`, { method: 'PATCH', body: JSON.stringify({ is_active: active }) });
+  }
+
+  function showConfirm(msg, okLabel = 'Delete') {
+    return new Promise(resolve => {
+      document.getElementById('confirmMsg').textContent = msg;
+      document.getElementById('confirmOkBtn').textContent = okLabel;
+      const backdrop = document.getElementById('confirmBackdrop');
+      backdrop.classList.add('open');
+      const done = result => { backdrop.classList.remove('open'); resolve(result); };
+      document.getElementById('confirmOkBtn').onclick = () => done(true);
+      document.getElementById('confirmCancelBtn').onclick = () => done(false);
+    });
+  }
+
+  function showAlert(title, body) {
+    document.getElementById('alertTitle').textContent = title;
+    document.getElementById('alertBody').textContent = body;
+    document.getElementById('alertBackdrop').classList.add('open');
+  }
+
+  function exportScenarios() {
+    const data = _scenarios.map(({ id, key, ...rest }) => rest);
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `demo-scenarios-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  async function importScenarios(input) {
+    const file = input.files[0];
+    if (!file) return;
+    input.value = '';
+    let rows;
+    try { rows = JSON.parse(await file.text()); } catch { showAlert('Import Failed', 'Invalid JSON file.'); return; }
+    if (!Array.isArray(rows)) { showAlert('Import Failed', 'Expected a JSON array.'); return; }
+    const existingTitles = new Set(_scenarios.map(x => x.title.trim().toLowerCase()));
+    const dupes = [], toImport = [];
+    for (const row of rows) {
+      if (!row.title || !row.category || !row.prompt) continue;
+      if (existingTitles.has(row.title.trim().toLowerCase())) dupes.push(row.title);
+      else toImport.push(row);
+    }
+    if (toImport.length === 0) {
+      showAlert('Nothing to Import', `All ${dupes.length} scenario${dupes.length !== 1 ? 's' : ''} already exist:\n\n• ${dupes.join('\n• ')}`);
+      return;
+    }
+    const maxSort = _scenarios.length ? Math.max(..._scenarios.map(x => x.sort_order)) : 0;
+    let imported = 0;
+    for (const [i, row] of toImport.entries()) {
+      const body = {
+        title: row.title, category: row.category, severity: row.severity || 'MEDIUM',
+        prompt: row.prompt, expected_action: row.expected_action || 'block',
+        description: row.description || null, attacker_goal: row.attacker_goal || null,
+        why_caught: row.why_caught || null, talking_point: row.talking_point || null,
+        entities: row.entities || null, meta: row.meta || null,
+        sort_order: maxSort + 10 + i * 10, is_active: row.is_active ?? false,
+      };
+      const res = await api('/admin/demo-scenarios', { method: 'POST', body: JSON.stringify(body) });
+      if (res.ok) imported++;
+    }
+    await loadScenarios();
+    let msg = `Successfully imported ${imported} scenario${imported !== 1 ? 's' : ''}.`;
+    if (dupes.length) msg += `\n\nSkipped ${dupes.length} duplicate${dupes.length !== 1 ? 's' : ''}:\n• ${dupes.join('\n• ')}`;
+    showAlert('Import Complete', msg);
+  }
+
+  async function deleteScenarioInline(id) {
+    const s = _scenarios.find(x => x.id === id);
+    if (!s) return;
+    if (!await showConfirm(`Delete "${s.title}"?`)) return;
+    const res = await api(`/admin/demo-scenarios/${id}`, { method: 'DELETE' });
+    if (res.ok || res.status === 204) await loadScenarios();
+  }
+
+  async function duplicateScenario(id) {
+    const s = _scenarios.find(x => x.id === id);
+    if (!s) return;
+    const maxSort = Math.max(..._scenarios.map(x => x.sort_order));
+    const body = {
+      title: s.title + ' (copy)',
+      category: s.category, severity: s.severity, prompt: s.prompt,
+      expected_action: s.expected_action, description: s.description,
+      attacker_goal: s.attacker_goal, why_caught: s.why_caught,
+      talking_point: s.talking_point, entities: s.entities,
+      meta: s.meta, sort_order: maxSort + 10, is_active: false,
+    };
+    const res = await api('/admin/demo-scenarios', { method: 'POST', body: JSON.stringify(body) });
+    if (res.ok) await loadScenarios();
+  }
+
+  function openScenarioModal(id) {
+    const s = id ? _scenarios.find(x => x.id === id) : null;
+    document.getElementById('scenarioModalTitle').textContent = s ? 'Edit Scenario' : 'New Scenario';
+    document.getElementById('scenarioModalId').value = s ? s.id : '';
+    document.getElementById('smTitle').value = s?.title || '';
+    document.getElementById('smCategory').value = s?.category || '';
+    document.getElementById('smSeverity').value = s?.severity || 'MEDIUM';
+    document.getElementById('smExpected').value = s?.expected_action || 'block';
+    const maxSort = _scenarios.length ? Math.max(..._scenarios.map(x => x.sort_order)) : 0;
+    document.getElementById('smSort').value = s ? s.sort_order : maxSort + 10;
+    document.getElementById('smActive').checked = s ? s.is_active : true;
+    document.getElementById('smPrompt').value = s?.prompt || '';
+    document.getElementById('smDesc').value = s?.description || '';
+    document.getElementById('smAttackerGoal').value = s?.attacker_goal || '';
+    document.getElementById('smWhyCaught').value = s?.why_caught || '';
+    document.getElementById('smTalkingPoint').value = s?.talking_point || '';
+    document.getElementById('smEntities').value = (s?.entities || []).join(', ');
+    document.getElementById('smCountryCode').value = s?.meta?.country_code || '';
+    document.getElementById('smCountryName').value = s?.meta?.country_name || '';
+    document.getElementById('smFlag').value = s?.meta?.flag || '';
+    document.getElementById('scenarioDeleteBtn').style.display = s ? 'inline-flex' : 'none';
+    document.getElementById('scenarioModalErr').textContent = '';
+    if (window._smToggleCountrySection) window._smToggleCountrySection();
+    document.getElementById('scenarioBackdrop').classList.add('open');
+  }
+
+  function closeScenarioModal() {
+    document.getElementById('scenarioBackdrop').classList.remove('open');
+  }
+
+  async function saveScenario() {
+    const id = document.getElementById('scenarioModalId').value;
+    const entities = document.getElementById('smEntities').value.split(',').map(e => e.trim()).filter(Boolean);
+    const cc = document.getElementById('smCountryCode').value.trim();
+    const meta = cc ? {
+      country_code: cc,
+      country_name: document.getElementById('smCountryName').value.trim(),
+      flag: document.getElementById('smFlag').value.trim(),
+    } : null;
+    const body = {
+      title: document.getElementById('smTitle').value.trim(),
+      category: document.getElementById('smCategory').value.trim(),
+      severity: document.getElementById('smSeverity').value,
+      expected_action: document.getElementById('smExpected').value,
+      sort_order: parseInt(document.getElementById('smSort').value) || 0,
+      is_active: document.getElementById('smActive').checked,
+      prompt: document.getElementById('smPrompt').value.trim(),
+      description: document.getElementById('smDesc').value.trim() || null,
+      attacker_goal: document.getElementById('smAttackerGoal').value.trim() || null,
+      why_caught: document.getElementById('smWhyCaught').value.trim() || null,
+      talking_point: document.getElementById('smTalkingPoint').value.trim() || null,
+      entities: entities.length ? entities : null,
+      meta,
+    };
+    if (!body.title || !body.category || !body.prompt) {
+      document.getElementById('scenarioModalErr').textContent = 'Title, category and prompt are required.';
+      return;
+    }
+    if (body.category.toLowerCase() === 'pii detection' && (!cc || !body.meta?.country_name)) {
+      document.getElementById('scenarioModalErr').textContent = 'Country and Country Name are required for PII Detection scenarios.';
+      document.getElementById('smCountrySection').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return;
+    }
+    const res = id
+      ? await api(`/admin/demo-scenarios/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+      : await api('/admin/demo-scenarios', { method: 'POST', body: JSON.stringify(body) });
+    if (!res.ok) { document.getElementById('scenarioModalErr').textContent = 'Save failed.'; return; }
+    closeScenarioModal();
+    await loadScenarios();
+  }
+
+  async function deleteScenario() {
+    const id = document.getElementById('scenarioModalId').value;
+    if (!id || !await showConfirm('Delete this scenario?')) return;
+    await api(`/admin/demo-scenarios/${id}`, { method: 'DELETE' });
+    closeScenarioModal();
+    await loadScenarios();
+  }
+
+  function previewScenario(id) {
+    const s = _scenarios.find(x => x.id === id);
+    if (!s) return;
+
+    // Title
+    const flag = s.meta?.flag || '';
+    document.getElementById('scenarioPreviewTitle').textContent = `${flag} ${s.title}`.trim();
+
+    // Meta chips
+    const metaEl = document.getElementById('scenarioPreviewMeta');
+    metaEl.innerHTML = '';
+    if (s.category) {
+      const c = document.createElement('span');
+      c.style.cssText = 'font-size:11px;padding:2px 8px;border-radius:999px;background:rgba(108,99,255,0.15);border:1px solid rgba(108,99,255,0.3);color:#a09fff;font-weight:600';
+      c.textContent = s.category;
+      metaEl.appendChild(c);
+    }
+    if (s.severity) {
+      const sevCls = s.severity === 'HIGH' ? 'severity-high' : 'severity-medium';
+      const sv = document.createElement('span');
+      sv.className = `scenario-severity ${sevCls}`;
+      sv.textContent = s.severity;
+      metaEl.appendChild(sv);
+    }
+    if (s.expected_action) {
+      const expColor = s.expected_action === 'block' ? 'rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.35);color:#fca5a5' : s.expected_action === 'modify' ? 'rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);color:#fde68a' : 'rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);color:#86efac';
+      const ex = document.createElement('span');
+      ex.style.cssText = `font-size:11px;padding:2px 8px;border-radius:999px;background:${expColor};font-weight:600`;
+      ex.textContent = s.expected_action.toUpperCase();
+      metaEl.appendChild(ex);
+    }
+    const badge = document.createElement('span');
+    badge.style.cssText = 'font-size:11px;padding:2px 8px;border-radius:999px;background:rgba(148,163,184,0.1);border:1px solid rgba(148,163,184,0.25);color:#94a3b8;font-weight:600';
+    badge.textContent = 'Built In';
+    metaEl.appendChild(badge);
+
+    // Description
+    const descEl = document.getElementById('scenarioPreviewDesc');
+    if (s.description) { descEl.textContent = s.description; descEl.style.display = ''; }
+    else descEl.style.display = 'none';
+
+    // Prompt
+    document.getElementById('scenarioPreviewText').textContent = s.prompt || '(no prompt)';
+
+    // Grid fields
+    const grid = document.getElementById('scenarioPreviewGrid');
+    grid.innerHTML = '';
+    const gridFields = [
+      ['Attacker Goal', s.attacker_goal],
+      ['Why PS Caught This', s.why_caught],
+      ['Country', s.meta?.country ? `${s.meta.flag || ''} ${s.meta.country}`.trim() : null],
+      ['Country Code', s.meta?.country_code || null],
+    ].filter(([, v]) => v);
+    gridFields.forEach(([label, val]) => {
+      const cell = document.createElement('div');
+      cell.style.cssText = 'background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px';
+      cell.innerHTML = `<div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">${label}</div><div style="font-size:13px;line-height:1.5;color:var(--text)">${val}</div>`;
+      grid.appendChild(cell);
+    });
+    grid.style.display = gridFields.length ? 'grid' : 'none';
+
+    // Entities
+    const entWrap = document.getElementById('scenarioPreviewEntitiesWrap');
+    const entEl = document.getElementById('scenarioPreviewEntities');
+    const entities = Array.isArray(s.entities) ? s.entities : [];
+    if (entities.length) {
+      entEl.innerHTML = entities.map(e => `<span style="font-size:11px;padding:2px 8px;border-radius:999px;background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);font-family:monospace">${e}</span>`).join('');
+      entWrap.style.display = '';
+    } else entWrap.style.display = 'none';
+
+    // Talking point
+    const talkWrap = document.getElementById('scenarioPreviewTalkWrap');
+    const talkEl = document.getElementById('scenarioPreviewTalk');
+    if (s.talking_point) { talkEl.textContent = s.talking_point; talkWrap.style.display = ''; }
+    else talkWrap.style.display = 'none';
+
+    _scenarioPreviewId = id;
+    document.getElementById('scenarioPreviewBackdrop').classList.add('open');
+  }
+
   init();
 </script>
+
+<!-- ── Demo Scenario Modal ── -->
+<div class="backdrop" id="scenarioBackdrop">
+  <div class="modal" style="max-width:980px;width:96vw">
+    <h3 id="scenarioModalTitle" style="margin-bottom:14px">New Scenario</h3>
+    <input type="hidden" id="scenarioModalId">
+
+    <!-- Top row: Title + Category + Severity + Expected + Sort + Active -->
+    <div style="display:grid;grid-template-columns:2fr 2fr 1fr 1fr 80px auto;gap:10px;align-items:end;margin-bottom:12px">
+      <div class="field" style="margin:0"><label>Title</label><input type="text" id="smTitle" placeholder="e.g. United States"></div>
+      <div class="field" style="margin:0"><label>Category</label>
+        <select id="smCategory">
+          <option value="">Select a category…</option>
+          <option value="PII Detection">PII Detection</option>
+          <option value="Prompt Injection">Prompt Injection</option>
+          <option value="Prompt Leak">Prompt Leak</option>
+          <option value="Topic Policy">Topic Policy</option>
+          <option value="Token DoS">Token DoS</option>
+        </select>
+      </div>
+      <div class="field" style="margin:0"><label>Severity</label>
+        <select id="smSeverity"><option value="HIGH">HIGH</option><option value="MEDIUM" selected>MEDIUM</option><option value="LOW">LOW</option></select>
+      </div>
+      <div class="field" style="margin:0"><label>Expected Action</label>
+        <select id="smExpected"><option value="block">block</option><option value="modify">modify</option><option value="pass">pass</option></select>
+      </div>
+      <div class="field" style="margin:0"><label>Sort</label><input type="number" id="smSort" value="0" min="0"></div>
+      <div class="field" style="margin:0">
+        <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);display:block;margin-bottom:8px">Active</label>
+        <label class="pill-toggle status"><input type="checkbox" id="smActive" checked><span class="pill-track"></span></label>
+      </div>
+    </div>
+
+    <!-- Two-column body -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <!-- Left: Prompt + Description evenly split -->
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div class="field" style="margin:0;flex:1;display:flex;flex-direction:column">
+          <label>Prompt</label>
+          <textarea id="smPrompt" style="resize:none;font-family:monospace;font-size:12px;flex:1"></textarea>
+        </div>
+        <div class="field" style="margin:0;flex:1;display:flex;flex-direction:column">
+          <label>Description <span style="color:var(--muted);font-weight:400">(shown in demo panel)</span></label>
+          <textarea id="smDesc" style="resize:none;flex:1"></textarea>
+        </div>
+      </div>
+      <!-- Right: remaining fields spread out -->
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div class="field" style="margin:0;flex:1;display:flex;flex-direction:column"><label>Attacker Goal</label><textarea id="smAttackerGoal" style="flex:1;resize:none"></textarea></div>
+        <div class="field" style="margin:0;flex:1;display:flex;flex-direction:column"><label>Why PS Catches It</label><textarea id="smWhyCaught" style="flex:1;resize:none"></textarea></div>
+        <div class="field" style="margin:0;flex:1;display:flex;flex-direction:column"><label>SE Talking Point</label><textarea id="smTalkingPoint" style="flex:1;resize:none"></textarea></div>
+        <div class="field" style="margin:0"><label>Entities <span style="color:var(--muted);font-weight:400">(comma-separated)</span></label><input type="text" id="smEntities" placeholder="e.g. US_SSN, PHONE_NUMBER, EMAIL_ADDRESS"></div>
+      </div>
+    </div>
+
+    <!-- Country section (full width, PII only) -->
+    <div id="smCountrySection" style="display:none;background:rgba(108,99,255,0.06);border:1px solid rgba(108,99,255,0.2);border-radius:8px;padding:12px 14px;margin-bottom:10px">
+      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Country <span style="color:var(--red,#e74c3c)">*</span> <span style="font-weight:400;text-transform:none;letter-spacing:0">(required for PII Detection)</span></div>
+      <div style="display:grid;grid-template-columns:2fr 1fr 80px;gap:8px;align-items:end">
+        <div class="field" style="margin:0"><select id="smCountryCode" style="width:100%"><option value="">Select a country…</option></select></div>
+        <div class="field" style="margin:0"><label>Country Name</label><input type="text" id="smCountryName" placeholder="United States"></div>
+        <div class="field" style="margin:0"><label>Flag</label><input type="text" id="smFlag" placeholder="🇺🇸" style="font-size:18px"></div>
+      </div>
+    </div>
+
+    <div class="err-msg" id="scenarioModalErr"></div>
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-danger btn-sm" id="scenarioDeleteBtn" style="display:none;margin-right:auto" onclick="deleteScenario()">Delete</button>
+      <button class="btn btn-outline" onclick="closeScenarioModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveScenario()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Scenario Preview Modal ── -->
+<div class="backdrop" id="scenarioPreviewBackdrop">
+  <div class="modal" style="max-width:680px;width:94vw;max-height:90vh;overflow-y:auto">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px">
+      <div>
+        <h3 id="scenarioPreviewTitle" style="font-size:15px;font-weight:700;margin:0 0 6px"></h3>
+        <div id="scenarioPreviewMeta" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"></div>
+      </div>
+    </div>
+
+    <div id="scenarioPreviewDesc" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:13px;line-height:1.6;color:var(--text-muted)"></div>
+
+    <div style="margin-bottom:4px;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">Prompt</div>
+    <pre id="scenarioPreviewText" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:12px;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow-y:auto;line-height:1.6;margin:0 0 12px"></pre>
+
+    <div id="scenarioPreviewGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px"></div>
+
+    <div id="scenarioPreviewEntitiesWrap" style="display:none;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Entities</div>
+      <div id="scenarioPreviewEntities" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    </div>
+
+    <div id="scenarioPreviewTalkWrap" style="display:none">
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">SE Talking Point</div>
+      <div id="scenarioPreviewTalk" style="background:rgba(108,99,255,0.08);border:1px solid rgba(108,99,255,0.25);border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--text)"></div>
+    </div>
+
+    <div class="modal-actions" style="margin-top:18px">
+      <button class="btn btn-outline" onclick="document.getElementById('scenarioPreviewBackdrop').classList.remove('open')">Close</button>
+      <button class="btn" style="background:var(--accent);color:#fff;border:none" onclick="if(_scenarioPreviewId){duplicateScenario(_scenarioPreviewId);document.getElementById('scenarioPreviewBackdrop').classList.remove('open');}">Duplicate</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Alert Modal ── -->
+<div class="backdrop" id="alertBackdrop" style="z-index:1100">
+  <div class="modal" style="max-width:480px">
+    <h3 id="alertTitle" style="margin-bottom:12px"></h3>
+    <div id="alertBody" style="font-size:13px;color:var(--muted);line-height:1.7;white-space:pre-wrap;max-height:60vh;overflow-y:auto"></div>
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn btn-primary" onclick="document.getElementById('alertBackdrop').classList.remove('open')">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Guest Activity Modal ── -->
+<div class="backdrop" id="guestActivityBackdrop">
+  <div class="modal" style="max-width:1100px;width:94vw;max-height:90vh;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <h3 id="guestActivityTitle" style="font-size:15px;font-weight:700;word-break:break-all"></h3>
+      <button class="btn btn-outline btn-sm" onclick="closeGuestActivityModal()">✕ Close</button>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <input type="date" id="gaFrom" class="filter-sel" placeholder="From" onchange="renderGuestActivity()">
+      <input type="date" id="gaTo" class="filter-sel" placeholder="To" onchange="renderGuestActivity()">
+      <select id="gaPs" class="filter-sel" onchange="renderGuestActivity()">
+        <option value="">All Prompt Security actions</option>
+        <option value="block">Blocked</option>
+        <option value="modify">Modified</option>
+        <option value="pass">Passed</option>
+        <option value="none">No Prompt Security</option>
+      </select>
+      <span id="gaCount" style="margin-left:auto;font-size:12px;color:var(--muted);align-self:center"></span>
+    </div>
+    <div style="overflow-y:auto;flex:1">
+      <table style="border-collapse:collapse;width:100%">
+        <tbody id="guestActivityTable"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── Confirm Modal ── -->
+<div class="backdrop" id="confirmBackdrop" style="z-index:1100">
+  <div class="modal" style="max-width:400px">
+    <div id="confirmMsg" style="font-size:14px;line-height:1.6;margin-bottom:20px"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" id="confirmCancelBtn">Cancel</button>
+      <button class="btn btn-danger" id="confirmOkBtn">Delete</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
