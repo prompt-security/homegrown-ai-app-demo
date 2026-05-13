@@ -78,7 +78,7 @@ docker compose up -d
 > **Note:** On first run, LiteLLM applies ~110 database migrations. This takes 3–5 minutes. Subsequent starts are instant. Check progress with:
 >
 > ```bash
-> docker logs -f demo-hgapp-litellm-1
+> docker logs -f homegrown-ai-app-demo-litellm-1
 > ```
 
 ### 3. Open the app
