@@ -1,4 +1,0 @@
-services:
-  app:
-    volumes:
-      - ./app:/app

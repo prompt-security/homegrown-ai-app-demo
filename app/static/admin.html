@@ -171,7 +171,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     </button>
     <button class="nav-item" id="nav-tenants" onclick="showTab('tenants',this)">
       <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="3" width="13" height="10" rx="2"/><path d="M5 8h6M5 11h4" stroke-linecap="round"/></svg>
-      Prompt Security Tenants
+      Prompt Security Instances
     </button>
     <button class="nav-item" id="nav-activity" onclick="showTab('activity',this)">
       <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="1,9 3,9 5,3 7,13 9,7 11,10 13,10"/></svg>
@@ -315,7 +315,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
             </div>
           </div>
           <table>
-            <thead><tr><th>Email</th><th>Role</th><th>Prompt Security Tenant</th><th>Prompt Security Key</th><th>Prompt Security Scan</th><th>Limit</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Email</th><th>Role</th><th>Prompt Security Instance</th><th>Prompt Security Key</th><th>Prompt Security Scan</th><th>Limit</th><th>Status</th><th></th></tr></thead>
             <tbody id="userTable"></tbody>
           </table>
         </div>
@@ -326,7 +326,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     <div id="tab-tenants" class="tab-panel">
       <div class="panel">
         <div class="panel-head">
-          <h3>Prompt Security Tenants</h3>
+          <h3>Prompt Security Instances</h3>
           <div style="display:flex;gap:8px">
             <button class="btn btn-outline btn-sm" onclick="exportTenants()">↓ Export</button>
             <label class="btn btn-outline btn-sm" style="cursor:pointer" title="Import JSON">↑ Import<input type="file" id="tenantImportInput" accept=".json" style="display:none" onchange="importTenants(this)"></label>
@@ -459,7 +459,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     <div class="field"><label>Email</label><input type="email" id="umEmail" placeholder="se@company.com"></div>
     <div class="field"><label id="umPwLabel">Password</label><input type="password" id="umPassword" placeholder="Leave blank to keep current"></div>
     <div class="field"><label>Role</label><select id="umRole"><option value="se">SE (regular user)</option><option value="admin">Admin</option></select></div>
-    <div class="field"><label>Prompt Security Tenant</label><select id="umTenant"><option value="">— Not assigned —</option></select></div>
+    <div class="field"><label>Prompt Security Instance</label><select id="umTenant"><option value="">— Not assigned —</option></select></div>
     <div class="field"><label>Daily Message Limit</label><input type="number" id="umLimit" placeholder="e.g. 50 (0 = unlimited)"></div>
     <div class="field">
       <label>Allowed Models</label>
@@ -479,7 +479,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
 <!-- ── Tenant Modal ── -->
 <div class="backdrop" id="tenantBackdrop">
   <div class="modal">
-    <h3 id="tenantModalTitle">New Prompt Security Tenant</h3>
+    <h3 id="tenantModalTitle">New Prompt Security Instance</h3>
     <input type="hidden" id="tenantModalId">
     <div class="field"><label>Name</label><input type="text" id="tmName" placeholder="e.g. apsouth"></div>
     <div class="field"><label>Base URL</label><input type="text" id="tmBase" placeholder="https://apsouth.prompt.security"></div>
@@ -549,7 +549,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
     document.getElementById('tab-' + name).classList.add('active');
     if (el) el.classList.add('active');
-    const titles = { overview:'Overview', ps:'Prompt Security', users:'Users', tenants:'Prompt Security Tenants', activity:'Activity Log', scenarios:'Demo Scenarios', settings:'Settings' };
+    const titles = { overview:'Overview', ps:'Prompt Security', users:'Users', tenants:'Prompt Security Instances', activity:'Activity Log', scenarios:'Demo Scenarios', settings:'Settings' };
     document.getElementById('topbarTitle').textContent = titles[name] || name;
     if (name==='overview')  loadOverview();
     if (name==='ps')        loadPs();
@@ -827,7 +827,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     panel.querySelector('.panel-head h3').textContent = 'Users';
     panel.querySelector('.panel-head div').style.display = '';
     document.querySelector('#tab-users #userList .panel thead tr').innerHTML =
-      '<th>Email</th><th>Role</th><th>Prompt Security Tenant</th><th>Prompt Security Key</th><th>Prompt Security Scan</th><th>Limit</th><th>Status</th><th></th>';
+      '<th>Email</th><th>Role</th><th>Prompt Security Instance</th><th>Prompt Security Key</th><th>Prompt Security Scan</th><th>Limit</th><th>Status</th><th></th>';
     document.getElementById('guestAuditCards')?.remove();
     document.getElementById('guestChartRow')?.remove();
     if (guestDayChartI) { guestDayChartI.destroy(); guestDayChartI = null; }
@@ -1224,7 +1224,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     showAlert('Import Complete', msg);
   }
 
-  // ── Prompt Security Tenants ────────────────────────────────────────────────────────────
+  // ── Prompt Security Instances ────────────────────────────────────────────────────────────
   let allTenants = [];
   async function loadTenants() {
     const res = await api('/admin/ps-tenants');
@@ -1256,14 +1256,14 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     if (tenantId) {
       const t = allTenants.find(x => x.id===tenantId);
       if (!t) return;
-      document.getElementById('tenantModalTitle').textContent = 'Edit Prompt Security Tenant';
+      document.getElementById('tenantModalTitle').textContent = 'Edit Prompt Security Instance';
       document.getElementById('tenantModalId').value = tenantId;
       document.getElementById('tmName').value = t.name;
       document.getElementById('tmBase').value = t.base_url;
       document.getElementById('tmGw').value   = t.gateway_url||'';
       document.getElementById('tenantDeleteBtn').style.display = 'block';
     } else {
-      document.getElementById('tenantModalTitle').textContent = 'New Prompt Security Tenant';
+      document.getElementById('tenantModalTitle').textContent = 'New Prompt Security Instance';
       document.getElementById('tenantModalId').value = '';
       document.getElementById('tmName').value = '';
       document.getElementById('tmBase').value = '';
