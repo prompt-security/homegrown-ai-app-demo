@@ -661,6 +661,7 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
         <button class="dd-item" id="helpMenuBtn">❓ Help & Tips</button>
         <button class="dd-item" id="psSettingsBtn">🔑 Prompt Settings</button>
         <button class="dd-item" id="userScenariosBtn">🎭 Demo Scenarios</button>
+        <hr class="dd-sep">
         <button class="dd-item" id="exportBtn">⬇️ Export Chat (MD)</button>
         <button class="dd-item" id="exportHistoryBtn">💾 Export History (JSON)</button>
         <button class="dd-item" id="importHistoryBtn">📂 Import History (JSON)</button>
@@ -668,6 +669,7 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
         <hr class="dd-sep" id="adminSep" style="display:none">
         <a class="dd-item" id="adminLink" href="/admin" style="display:none;text-decoration:none">🔒 Admin</a>
         <button class="dd-item" id="changeGuestNameBtn" style="display:none">✏️ Change name</button>
+        <hr class="dd-sep" id="openAdminSep" style="display:none">
         <button class="dd-item" id="openAdminBtn" style="display:none">🔒 Admin</button>
         <hr class="dd-sep" id="signOutSep">
         <button class="dd-item" id="logoutBtn">Sign out</button>
@@ -2950,6 +2952,7 @@ reply = await client.chat.completions.create(
         localStorage.setItem('hgapp_open_ps_config', JSON.stringify(cfg));
         localStorage.setItem(HISTORY_DAYS_KEY, document.getElementById('historyDaysSel').value);
         AUTH_USER = { ...AUTH_USER, ps_configured: !!(tenant && key), ps_enabled: enabled, ps_mode: mode };
+        logGuestEvent('ps_config_changed', `tenant=${tenant?.name || 'none'}; mode=${mode}; enabled=${enabled}; app_id=${key ? 'set' : 'unchanged'}`);
         updatePsStatus();
         psBackdrop.classList.remove('open');
         pruneOldSessions();
@@ -3665,6 +3668,15 @@ reply = await client.chat.completions.create(
   // ── Open Mode ─────────────────────────────────────────────────────────────
   function getGuestName() { return localStorage.getItem('hgapp_guest_name') || ''; }
 
+  function logGuestEvent(event_type, detail) {
+    if (!OPEN_MODE) return;
+    fetch('/guest/log-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event_type, detail, guest_name: getGuestName() || 'Guest' }),
+    }).catch(() => {});
+  }
+
   function setGuestName(name) {
     localStorage.setItem('hgapp_guest_name', name);
     document.getElementById('userLabel').textContent = name;
@@ -3684,6 +3696,7 @@ reply = await client.chat.completions.create(
     const adminPsLink = document.getElementById('adminPsLink');
     if (adminPsLink) adminPsLink.style.display = 'none';
     document.getElementById('openAdminBtn').style.display = 'block';
+    document.getElementById('openAdminSep').style.display = 'block';
     document.getElementById('changeGuestNameBtn').style.display = 'block';
     AUTH_USER = { role: 'se', ps_configured: false, ps_enabled: false, ps_mode: 'api' };
 
@@ -4069,18 +4082,23 @@ reply = await client.chat.completions.create(
   const demoPanel = document.getElementById('demoPanel');
   const demoOverlay = document.getElementById('demoPanelOverlay');
 
+  let _demoServerScenarios = null;
+
   async function openDemoPanel() {
     demoPanel.classList.add('open');
     demoOverlay.classList.add('open');
     const warning = document.getElementById('demoPsWarning');
     warning.style.display = (AUTH_USER?.ps_configured && AUTH_USER?.ps_enabled) ? 'none' : 'block';
-    if (!_demoScenarios.length) {
+    if (!_demoServerScenarios) {
       try {
         const res = await fetch('/demo-scenarios');
-        if (res.ok) _demoScenarios = await res.json();
-      } catch {}
-      _buildDemoTabs();
+        if (res.ok) _demoServerScenarios = await res.json();
+        else _demoServerScenarios = [];
+      } catch { _demoServerScenarios = []; }
     }
+    const local = JSON.parse(localStorage.getItem('hgapp_user_scenarios') || '[]').filter(s => s.is_active !== false);
+    _demoScenarios = [..._demoServerScenarios, ...local];
+    _buildDemoTabs();
     const firstCat = _demoScenarios.length ? _demoScenarios[0].category : 'fileScan';
     switchDemoCategory(firstCat);
   }
@@ -5104,6 +5122,7 @@ if (evt.type === 'done') {
     arr.push(newS);
     usSaveLocal(arr);
     _usLocalScenarios = arr;
+    if (OPEN_MODE) logGuestEvent('scenario_created', JSON.stringify({...newS, _duplicated_from: s.title}));
     usRender();
   }
 
@@ -5182,6 +5201,7 @@ if (evt.type === 'done') {
     else { arr.push(s); }
     usSaveLocal(arr);
     _usLocalScenarios = arr;
+    if (OPEN_MODE) logGuestEvent(sid ? 'scenario_updated' : 'scenario_created', JSON.stringify(s));
     document.getElementById('usEditBackdrop').classList.remove('open');
     usRender();
   }
@@ -5189,9 +5209,11 @@ if (evt.type === 'done') {
   function usDelete(sid) {
     const realSid = sid || document.getElementById('usEditId').value;
     if (!realSid) return;
+    const target = usLoadLocal().find(x => x.id === realSid);
     let arr = usLoadLocal().filter(x => x.id !== realSid);
     usSaveLocal(arr);
     _usLocalScenarios = arr;
+    if (target && OPEN_MODE) logGuestEvent('scenario_deleted', `'${target.title}' · ${target.category}`);
     document.getElementById('usEditBackdrop').classList.remove('open');
     usRender();
   }
@@ -5241,6 +5263,12 @@ if (evt.type === 'done') {
       usSaveLocal(existing);
       _usLocalScenarios = existing;
       usRender();
+
+      // Log each imported scenario to the activity log (open mode)
+      if (OPEN_MODE) {
+        // Log each imported scenario with full JSON so admin can preview/export it
+        incoming.filter(s => added.includes(s.title)).forEach(s => logGuestEvent('scenario_created', JSON.stringify({...s, _imported: true})));
+      }
 
       const lines = [];
       if (added.length) lines.push(`✅ <strong>${added.length}</strong> imported: ${added.map(t => `<em>${t}</em>`).join(', ')}`);

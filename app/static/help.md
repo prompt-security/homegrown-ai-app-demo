@@ -15,6 +15,30 @@ Use this environment to explore different attack scenarios, test your Prompt Sec
 
 ---
 
+## Configuring Prompt Security
+
+Click the **Prompt Security** button in the toolbar, then **⚙** (gear icon) to open PS settings.
+
+**You'll need:**
+1. **PS Tenant** — select your organisation's Prompt Security tenant from the dropdown
+2. **PS App ID / API Key** — your application's API key from the PS portal
+
+> Your App ID is stored **encrypted** in your browser — it never touches the server in open mode.
+**Tip:** You need to create your own Homegrown Application in prompt. Do not use the default Homegrown Apps Connector. 
+1. Click on **Homegrown Apps**
+2. Click the **Settings Cog**
+3. Click on **+ Create New**, give it a name and click on **+Add**
+4. You can then define the policy for your application.
+5. Get the Deployment API Key for your specific application under **Deployment** / **Homegrown Apps** tab.
+**Two scanning modes:**
+
+- **API Mode** — the app calls the LLM directly and sends each message to PS for scanning via the REST API. Full visibility into what was blocked or modified.
+- **Gateway Mode** — all LLM traffic is routed *through* the Prompt Security proxy. The simplest deployment pattern — zero code change needed beyond pointing the SDK at the PS URL.
+
+Once configured, the PS button turns **purple** (API mode) or shows a gateway indicator. A **status chip** on every bot message shows whether the response was `BLOCKED`, `MODIFIED`, or `ALLOWED`.
+
+---
+
 ## The Chat Interface
 
 The main chat area works like any AI assistant — type a message and press **Enter** (or **Shift+Enter** for a new line).
@@ -23,9 +47,9 @@ The main chat area works like any AI assistant — type a message and press **En
 
 | Control | What it does |
 |---|---|
-| ⚙️ System prompt | Set a persistent instruction that shapes every response |
+| System prompt | Set a persistent instruction that shapes every response |
 | Demo | Open the scenario slide-out panel |
-| ⚡ Compare | Split-screen Prompt Security vs. raw LLM view |
+| Compare | Split-screen Prompt Security vs. raw LLM view |
 | Prompt Security | Toggle scanning on/off, shows current mode (API / Gateway) |
 
 **Keyboard shortcuts:**
@@ -37,26 +61,6 @@ The main chat area works like any AI assistant — type a message and press **En
 **Session history** appears in the left sidebar. Click any session to return to it — background conversations keep streaming even while you're viewing another session.
 
 ---
-
-## Configuring Prompt Security
-
-Click the **Prompt Security** button in the toolbar, then **⚙** (gear icon) to open PS settings.
-
-**You'll need:**
-1. **PS Tenant** — select your organisation's Prompt Security tenant from the dropdown
-2. **PS App ID / API Key** — your application's API key from the PS portal
-
-> Your App ID is stored **encrypted** in your browser — it never touches the server in open mode.
-
-**Two scanning modes:**
-
-- **API Mode** — the app calls the LLM directly and sends each message to PS for scanning via the REST API. Full visibility into what was blocked or modified.
-- **Gateway Mode** — all LLM traffic is routed *through* the Prompt Security proxy. The simplest deployment pattern — zero code change needed beyond pointing the SDK at the PS URL.
-
-Once configured, the PS button turns **purple** (API mode) or shows a gateway indicator. A **status chip** on every bot message shows whether the response was `BLOCKED`, `MODIFIED`, or `ALLOWED`.
-
----
-
 ## Compare Mode
 
 Compare Mode puts the **protected** and **unprotected** LLM responses side by side — making it immediately obvious what Prompt Security catches.

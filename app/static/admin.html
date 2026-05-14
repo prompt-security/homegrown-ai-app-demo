@@ -67,6 +67,7 @@ table{width:100%;border-collapse:collapse}
 th{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;padding:9px 16px;text-align:left;background:rgba(255,255,255,0.02);border-bottom:1px solid var(--border)}
 td{padding:10px 16px;border-top:1px solid var(--border);font-size:13px;vertical-align:middle}
 tr:hover td{background:rgba(255,255,255,0.015);cursor:pointer}
+tr.audit-scenario-row:hover td{background:rgba(108,99,255,0.08)!important}
 
 /* ── Badges ── */
 .badge{display:inline-flex;align-items:center;border-radius:4px;font-size:11px;font-weight:600;padding:2px 8px;line-height:1.5}
@@ -1394,12 +1395,18 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     ps_config_changed: '🔒', llm_keys_updated: '🔑', user_created: '➕',
     user_updated: '✏️', user_deleted: '🗑', tenant_created: '🏢',
     tenant_updated: '🏢', tenant_deleted: '🗑', guest_chat: '👤',
+    api_key_created: '🗝️', api_key_deleted: '🗝️',
+    scenario_created: '🎭', scenario_updated: '🎭', scenario_deleted: '🎭',
   };
   const AUDIT_LABELS = {
     ps_config_changed: 'PS Config', llm_keys_updated: 'LLM Keys', user_created: 'User Created',
     user_updated: 'User Updated', user_deleted: 'User Deleted', tenant_created: 'Tenant Created',
     tenant_updated: 'Tenant Updated', tenant_deleted: 'Tenant Deleted', guest_chat: 'Guest Chat',
+    api_key_created: 'API Key Created', api_key_deleted: 'API Key Deleted',
+    scenario_created: 'Scenario Created', scenario_updated: 'Scenario Updated', scenario_deleted: 'Scenario Deleted',
   };
+
+  const _auditScenarioMap = {};
 
   function renderActivity() {
     const userF = document.getElementById('actUserFilter').value;
@@ -1413,21 +1420,48 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     if (!rows.length) { empty.style.display='block'; return; }
     empty.style.display = 'none';
     const psIcon = { pass:'✅', modify:'⚠️', block:'🚫', gateway:'🔀' };
+    const SCENARIO_EVENTS = new Set(['scenario_created','scenario_updated','scenario_deleted']);
     rows.forEach(r => {
       const t = new Date(r.created_at);
       const tStr = t.toLocaleDateString([],{month:'short',day:'numeric'}) + ' ' + t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
       if (r.entry_type === 'audit') {
         const icon  = AUDIT_ICONS[r.event_type] || '⚙️';
         const label = AUDIT_LABELS[r.event_type] || r.event_type;
-        tbody.innerHTML += `
-          <tr style="background:rgba(108,99,255,0.04)">
-            <td style="font-size:11px;white-space:nowrap;color:var(--muted)">${tStr}</td>
-            <td style="font-size:12px">${esc(r.user_email)}</td>
-            <td><span class="badge badge-gw" style="font-size:10px">${icon} ${esc(label)}</span></td>
-            <td style="color:var(--muted);font-size:11px">—</td>
-            <td style="color:var(--muted);font-size:11px">—</td>
-            <td style="font-size:12px;color:var(--text);max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.content_preview)}</td>
-          </tr>`;
+        // Try to parse scenario JSON from detail for scenario events
+        let scenarioObj = null;
+        if (SCENARIO_EVENTS.has(r.event_type) && r.detail) {
+          try { const p = JSON.parse(r.detail); if (p && p.title) scenarioObj = p; } catch {}
+        }
+        if (scenarioObj) {
+          _auditScenarioMap[r.id] = scenarioObj;
+          const previewText = scenarioObj._duplicated_from
+            ? `${scenarioObj.title} (copy of "${scenarioObj._duplicated_from}")`
+            : scenarioObj._imported
+              ? `${scenarioObj.title} (imported)`
+              : scenarioObj.title;
+          tbody.innerHTML += `
+            <tr class="audit-scenario-row" data-aid="${esc(r.id)}" style="background:rgba(108,99,255,0.04);cursor:pointer" title="Click to preview scenario">
+              <td style="font-size:11px;white-space:nowrap;color:var(--muted)">${tStr}</td>
+              <td style="font-size:12px">${esc(r.user_email)}</td>
+              <td><span class="badge badge-gw" style="font-size:10px">${icon} ${esc(label)}</span></td>
+              <td style="color:var(--muted);font-size:11px">—</td>
+              <td style="color:var(--muted);font-size:11px">—</td>
+              <td style="font-size:12px;color:var(--text);max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                ${esc(previewText)}
+                <span style="margin-left:6px;font-size:10px;opacity:.6;white-space:nowrap">👁 preview</span>
+              </td>
+            </tr>`;
+        } else {
+          tbody.innerHTML += `
+            <tr style="background:rgba(108,99,255,0.04)">
+              <td style="font-size:11px;white-space:nowrap;color:var(--muted)">${tStr}</td>
+              <td style="font-size:12px">${esc(r.user_email)}</td>
+              <td><span class="badge badge-gw" style="font-size:10px">${icon} ${esc(label)}</span></td>
+              <td style="color:var(--muted);font-size:11px">—</td>
+              <td style="color:var(--muted);font-size:11px">—</td>
+              <td style="font-size:12px;color:var(--text);max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.content_preview)}</td>
+            </tr>`;
+        }
       } else {
         const psCell = r.ps_scanned ? `<span style="font-size:11px">${psIcon[r.ps_action]||''} ${r.ps_action||''}</span>` : '<span style="color:var(--muted);font-size:11px">—</span>';
         tbody.innerHTML += `
@@ -1441,6 +1475,61 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
           </tr>`;
       }
     });
+    // Wire click handlers for scenario rows (can't use inline onclick with large JSON)
+    tbody.querySelectorAll('.audit-scenario-row').forEach(tr => {
+      tr.addEventListener('click', () => openAuditScenarioPreview(_auditScenarioMap[tr.dataset.aid]));
+    });
+  }
+
+  function openAuditScenarioPreview(s) {
+    if (!s) return;
+    const SEV_COLOR = { HIGH:'rgba(231,76,60,0.15)', MEDIUM:'rgba(243,156,18,0.15)', LOW:'rgba(46,204,113,0.15)' };
+    const SEV_TEXT  = { HIGH:'var(--red)', MEDIUM:'#e67e22', LOW:'var(--green)' };
+    const EA_COLOR  = { block:'rgba(231,76,60,0.15)', modify:'rgba(243,156,18,0.15)', allow:'rgba(46,204,113,0.15)' };
+    const EA_TEXT   = { block:'var(--red)', modify:'#e67e22', allow:'var(--green)' };
+    const flag = s.meta?.flag || (s._local ? '' : '');
+    document.getElementById('asprTitle').textContent = `${flag} ${s.title || ''}`.trim();
+    // Meta chips
+    const metaEl = document.getElementById('asprMeta');
+    const sev = (s.severity||'').toUpperCase();
+    const ea  = (s.expected_action||'').toLowerCase();
+    metaEl.innerHTML = `
+      <span class="badge" style="background:${SEV_COLOR[sev]||'rgba(108,99,255,0.1)'};color:${SEV_TEXT[sev]||'var(--accent)'};font-size:10px">${sev||'—'}</span>
+      <span class="badge" style="background:rgba(108,99,255,0.1);color:var(--accent);font-size:10px">${esc(s.category||'—')}</span>
+      <span class="badge" style="background:${EA_COLOR[ea]||'rgba(108,99,255,0.1)'};color:${EA_TEXT[ea]||'var(--accent)'};font-size:10px">Expected: ${esc(ea||'—')}</span>
+      ${s._duplicated_from ? `<span class="badge" style="background:rgba(108,99,255,0.08);color:var(--muted);font-size:10px">Copy of "${esc(s._duplicated_from)}"</span>` : ''}
+      ${s._imported ? `<span class="badge" style="background:rgba(46,204,113,0.1);color:var(--green);font-size:10px">Imported</span>` : ''}`;
+    // Description
+    const descEl = document.getElementById('asprDesc');
+    if (s.description) { descEl.textContent = s.description; descEl.style.display = 'block'; }
+    else descEl.style.display = 'none';
+    // Prompt
+    document.getElementById('asprPrompt').textContent = s.prompt || '(no prompt)';
+    // Grid cards
+    const grid = document.getElementById('asprGrid');
+    grid.innerHTML = '';
+    if (s.attacker_goal) grid.innerHTML += `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">🎯 Attacker Goal</div><div style="font-size:12px;line-height:1.5">${esc(s.attacker_goal)}</div></div>`;
+    if (s.why_caught) grid.innerHTML += `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">🛡 Why PS Caught This</div><div style="font-size:12px;line-height:1.5">${esc(s.why_caught)}</div></div>`;
+    if (s.meta?.country_name) grid.innerHTML += `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">🌍 Country</div><div style="font-size:12px">${esc(s.meta.flag||'')} ${esc(s.meta.country_name)} (${esc(s.meta.country_code||'')})</div></div>`;
+    // Entities
+    const entWrap = document.getElementById('asprEntWrap');
+    const entEl   = document.getElementById('asprEntities');
+    if (s.entities && s.entities.length) {
+      entEl.innerHTML = s.entities.map(e => `<span class="badge" style="background:rgba(108,99,255,0.1);color:var(--accent);font-size:11px">${esc(e)}</span>`).join('');
+      entWrap.style.display = 'block';
+    } else entWrap.style.display = 'none';
+    // Talking point
+    const talkWrap = document.getElementById('asprTalkWrap');
+    if (s.talking_point) { document.getElementById('asprTalk').textContent = s.talking_point; talkWrap.style.display = 'block'; }
+    else talkWrap.style.display = 'none';
+    // Store for export
+    document.getElementById('asprExportBtn').onclick = () => {
+      const clean = Object.fromEntries(Object.entries(s).filter(([k]) => !k.startsWith('_')));
+      const blob = new Blob([JSON.stringify([clean], null, 2)], {type:'application/json'});
+      const a = Object.assign(document.createElement('a'), {href:URL.createObjectURL(blob), download:`scenario-${(s.title||'export').replace(/\s+/g,'-').toLowerCase()}-${new Date().toISOString().slice(0,10)}.json`});
+      a.click(); URL.revokeObjectURL(a.href);
+    };
+    document.getElementById('asprBackdrop').classList.add('open');
   }
 
   document.getElementById('actUserFilter').addEventListener('change', renderActivity);
@@ -1503,6 +1592,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     document.getElementById('guestActivityBackdrop').addEventListener('click', e => { if(e.target.id==='guestActivityBackdrop') closeGuestActivityModal(); });
     document.getElementById('scenarioBackdrop').addEventListener('click', e => { if(e.target.id==='scenarioBackdrop') closeScenarioModal(); });
     document.getElementById('scenarioPreviewBackdrop').addEventListener('click', e => { if(e.target.id==='scenarioPreviewBackdrop') document.getElementById('scenarioPreviewBackdrop').classList.remove('open'); });
+    document.getElementById('asprBackdrop').addEventListener('click', e => { if(e.target.id==='asprBackdrop') document.getElementById('asprBackdrop').classList.remove('open'); });
 
     // Populate country select
     const sel = document.getElementById('smCountryCode');
@@ -1972,6 +2062,34 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     <div class="modal-actions" style="margin-top:18px">
       <button class="btn btn-outline" onclick="document.getElementById('scenarioPreviewBackdrop').classList.remove('open')">Close</button>
       <button class="btn" style="background:var(--accent);color:#fff;border:none" onclick="if(_scenarioPreviewId){duplicateScenario(_scenarioPreviewId);document.getElementById('scenarioPreviewBackdrop').classList.remove('open');}">Duplicate</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Audit Scenario Preview Modal ── -->
+<div class="backdrop" id="asprBackdrop">
+  <div class="modal" style="max-width:680px;width:94vw;max-height:90vh;overflow-y:auto">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px">
+      <div>
+        <h3 id="asprTitle" style="font-size:15px;font-weight:700;margin:0 0 6px"></h3>
+        <div id="asprMeta" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"></div>
+      </div>
+    </div>
+    <div id="asprDesc" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:13px;line-height:1.6;color:var(--text-muted)"></div>
+    <div style="margin-bottom:4px;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">Prompt</div>
+    <pre id="asprPrompt" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:12px;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow-y:auto;line-height:1.6;margin:0 0 12px"></pre>
+    <div id="asprGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px"></div>
+    <div id="asprEntWrap" style="display:none;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Entities</div>
+      <div id="asprEntities" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    </div>
+    <div id="asprTalkWrap" style="display:none;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">SE Talking Point</div>
+      <div id="asprTalk" style="background:rgba(108,99,255,0.08);border:1px solid rgba(108,99,255,0.25);border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--text)"></div>
+    </div>
+    <div class="modal-actions" style="margin-top:18px">
+      <button class="btn btn-outline" onclick="document.getElementById('asprBackdrop').classList.remove('open')">Close</button>
+      <button id="asprExportBtn" class="btn" style="background:var(--accent);color:#fff;border:none">⬇ Export JSON</button>
     </div>
   </div>
 </div>

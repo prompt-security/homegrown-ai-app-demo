@@ -98,7 +98,7 @@ class AuditEvent(Base):
     user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     user_email: Mapped[str] = mapped_column(String(255))
     event_type: Mapped[str] = mapped_column(String(60))   # ps_config_changed | llm_key_added | user_created | etc.
-    detail: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

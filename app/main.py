@@ -417,6 +417,7 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE messages ADD COLUMN IF NOT EXISTS prompt_tokens INTEGER",
             "ALTER TABLE messages ADD COLUMN IF NOT EXISTS completion_tokens INTEGER",
             "ALTER TABLE messages ADD COLUMN IF NOT EXISTS total_tokens INTEGER",
+            "ALTER TABLE audit_events ALTER COLUMN detail TYPE TEXT",
         ]:
             try:
                 await conn.execute(text(sql))
@@ -2000,6 +2001,7 @@ async def admin_activity(
             "role": "system",
             "event_type": ev.event_type,
             "content_preview": ev.detail or ev.event_type,
+            "detail": ev.detail,
             "model": None,
             "ps_scanned": False,
             "ps_action": None,
@@ -2095,6 +2097,20 @@ async def guest_models():
 async def guest_ps_tenants(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(PSTenant).order_by(PSTenant.name))
     return result.scalars().all()
+
+
+_GUEST_LOG_ALLOWED = {"ps_config_changed", "scenario_created", "scenario_updated", "scenario_deleted"}
+
+@app.post("/guest/log-event", status_code=204)
+async def guest_log_event(body: dict, http_request: Request, db: AsyncSession = Depends(get_db)):
+    event_type = (body.get("event_type") or "").strip()
+    if event_type not in _GUEST_LOG_ALLOWED:
+        return
+    detail = (body.get("detail") or "")[:8000]
+    guest_name = (body.get("guest_name") or "Guest")[:120]
+    ip = http_request.client.host if http_request.client else "unknown"
+    user_email = f"{guest_name} ({ip}) [open mode]"
+    await _log_audit(db, None, user_email, event_type, detail)
 
 
 @app.post("/guest/chat/stream")
@@ -2511,6 +2527,7 @@ async def create_demo_scenario(
     db.add(s)
     await db.commit()
     await db.refresh(s)
+    await _log_audit(db, admin.id, admin.email, "scenario_created", f"'{s.title}' · {s.category} · {s.severity}")
     return {"id": s.id, "key": s.key}
 
 
@@ -2534,6 +2551,7 @@ async def update_demo_scenario(
     if "meta" in body:
         s.meta = body["meta"] or None
     await db.commit()
+    await _log_audit(db, admin.id, admin.email, "scenario_updated", f"'{s.title}' · {s.category}")
     return {"ok": True}
 
 
@@ -2546,5 +2564,6 @@ async def delete_demo_scenario(
     s = await db.get(DemoScenario, scenario_id)
     if not s:
         raise HTTPException(status_code=404, detail="Scenario not found")
+    await _log_audit(db, admin.id, admin.email, "scenario_deleted", f"'{s.title}' · {s.category}")
     await db.delete(s)
     await db.commit()

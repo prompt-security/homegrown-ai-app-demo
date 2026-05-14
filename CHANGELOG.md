@@ -1,7 +1,17 @@
 # Changelog
 
+## [2026-05-14]
+### Added
+- Activity log scenario rows are now clickable: `scenario_created`/`scenario_updated`/`scenario_deleted` entries with parseable JSON detail open a full scenario preview modal (category, severity, expected action, description, prompt, attacker goal, why caught, entities, talking point) with an ⬇ Export JSON button to download the scenario as a ready-to-import file; copy/import origin shown as chips — @pj.norris
+- Scenario audit log entries now store the full scenario JSON: `AuditEvent.detail` widened from `VARCHAR(500)` to `TEXT` (startup migration); `/guest/log-event` limit raised to 8,000 chars; all `logGuestEvent` scenario calls now pass `JSON.stringify(s)` — @pj.norris
+
+### Fixed
+- Scenario imports, duplicates, creates, updates, and deletes via the 🎭 Demo Scenarios modal now all fire open-mode audit events; all `logGuestEvent` calls guarded with `OPEN_MODE` — @pj.norris
+
 ## [2026-05-13]
 ### Added
+- Open mode config changes now appear in the activity log: `POST /guest/log-event` endpoint accepts a whitelist of event types (`ps_config_changed`, `scenario_created`, `scenario_updated`, `scenario_deleted`) and writes an `AuditEvent` with the guest name + IP as identifier; `logGuestEvent()` helper fires-and-forgets from PS config save and custom scenario create/update/delete — @pj.norris
+- Activity log now records demo scenario changes: `scenario_created`, `scenario_updated`, `scenario_deleted` audit events written on each admin CRUD operation with title/category/severity in the detail; admin.html `AUDIT_ICONS`/`AUDIT_LABELS` updated to display them (🎭) alongside existing `api_key_created`/`api_key_deleted` entries that were previously unrendered — @pj.norris
 - Compare mode left pane (Prompt Security) has a subtle green background; right pane (raw LLM) has a subtle amber background — same tints applied to the main chat area (`#chat`) when PS is active (green) or off/unconfigured (amber), updating live via `updatePsStatus()` — @pj.norris
 - Main send button (`sendBtn`) turns red ⏹ Stop in compare mode during streaming and aborts both streams on click — @pj.norris
 - User menu labels updated: "Export Chat (MD)", "Export History (JSON)", "Import History (JSON)"; dropdown widened to 210px — @pj.norris
