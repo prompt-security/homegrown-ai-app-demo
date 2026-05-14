@@ -2,6 +2,7 @@
 
 ## [2026-05-14]
 ### Added
+- First-time open-mode startup wizard: 3-step onboarding (name → PS setup → preferences) shown on first visit; collects guest name, optional PS tenant + API key, history retention, and SE notes preference; sets hgapp_hide_tips so the help modal doesn't double-open — @pj.norris
 - Activity log scenario rows are now clickable: `scenario_created`/`scenario_updated`/`scenario_deleted` entries with parseable JSON detail open a full scenario preview modal (category, severity, expected action, description, prompt, attacker goal, why caught, entities, talking point) with an ⬇ Export JSON button to download the scenario as a ready-to-import file; copy/import origin shown as chips — @pj.norris
 - Scenario audit log entries now store the full scenario JSON: `AuditEvent.detail` widened from `VARCHAR(500)` to `TEXT` (startup migration); `/guest/log-event` limit raised to 8,000 chars; all `logGuestEvent` scenario calls now pass `JSON.stringify(s)` — @pj.norris
 
