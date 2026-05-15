@@ -146,6 +146,30 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
 
 /* ── misc ── */
 .empty{color:var(--muted);font-size:13px;text-align:center;padding:24px}
+/* ── Guest Activity Feed ── */
+.ga-session { margin-bottom:16px; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--surface); }
+.ga-session-header { display:flex; align-items:center; justify-content:space-between; padding:8px 14px; background:var(--surface2); border-bottom:1px solid var(--border); }
+.ga-session-title { font-size:12px; font-weight:600; color:var(--text); }
+.ga-session-date { font-size:11px; color:var(--muted); }
+.ga-msg { padding:10px 14px 4px; }
+.ga-msg.ga-user { padding-left:30px; }
+.ga-bubble { border-radius:8px; padding:8px 12px; }
+.ga-bubble-user { background:rgba(108,99,255,0.07); border:1px solid rgba(108,99,255,0.18); }
+.ga-bubble-bot  { background:rgba(46,204,113,0.05); border:1px solid rgba(46,204,113,0.14); }
+.ga-meta { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:5px; }
+.ga-role { font-size:11px; font-weight:700; }
+.ga-role-user { color:var(--accent); }
+.ga-role-bot  { color:var(--green); }
+.ga-time { font-size:10px; color:var(--muted); }
+.ga-content { font-size:12px; line-height:1.55; white-space:pre-wrap; word-break:break-word; max-height:140px; overflow-y:auto; color:var(--text); }
+.ga-chip { display:inline-flex; align-items:center; font-size:10px; padding:1px 7px; border-radius:4px; font-weight:500; }
+.ga-chip-ps    { border:1px solid rgba(126,207,176,0.35); color:#7ecfb0; background:rgba(126,207,176,0.07); }
+.ga-chip-block { border:1px solid rgba(231,76,60,0.35);  color:var(--red);    background:rgba(231,76,60,0.07); }
+.ga-chip-modify{ border:1px solid rgba(241,196,15,0.35); color:var(--yellow); background:rgba(241,196,15,0.07); }
+.ga-chip-pass  { border:1px solid rgba(46,204,113,0.35); color:var(--green);  background:rgba(46,204,113,0.07); }
+.ga-chip-raw   { border:1px solid rgba(240,192,96,0.35); color:#f0c060;       background:rgba(240,192,96,0.07); }
+.ga-chip-model { border:1px solid var(--border); color:var(--muted); background:transparent; }
+.ga-chip-tok   { border:1px solid var(--border); color:var(--muted); background:transparent; cursor:help; }
 </style>
 </head>
 <body>
@@ -171,7 +195,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     </button>
     <button class="nav-item" id="nav-tenants" onclick="showTab('tenants',this)">
       <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="3" width="13" height="10" rx="2"/><path d="M5 8h6M5 11h4" stroke-linecap="round"/></svg>
-      Prompt Security Instances
+      Prompt Security Regions
     </button>
     <button class="nav-item" id="nav-activity" onclick="showTab('activity',this)">
       <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="1,9 3,9 5,3 7,13 9,7 11,10 13,10"/></svg>
@@ -315,7 +339,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
             </div>
           </div>
           <table>
-            <thead><tr><th>Email</th><th>Role</th><th>Prompt Security Instance</th><th>Prompt Security Key</th><th>Prompt Security Scan</th><th>Limit</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Email</th><th>Role</th><th>Prompt Security Region</th><th>Prompt Security Key</th><th>Prompt Security Scan</th><th>Limit</th><th>Status</th><th></th></tr></thead>
             <tbody id="userTable"></tbody>
           </table>
         </div>
@@ -326,7 +350,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     <div id="tab-tenants" class="tab-panel">
       <div class="panel">
         <div class="panel-head">
-          <h3>Prompt Security Instances</h3>
+          <h3>Prompt Security Regions</h3>
           <div style="display:flex;gap:8px">
             <button class="btn btn-outline btn-sm" onclick="exportTenants()">↓ Export</button>
             <label class="btn btn-outline btn-sm" style="cursor:pointer" title="Import JSON">↑ Import<input type="file" id="tenantImportInput" accept=".json" style="display:none" onchange="importTenants(this)"></label>
@@ -397,7 +421,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
                 <li>Login required to access the chat</li>
                 <li>Registered users with email &amp; password</li>
                 <li>Per-user daily message limits</li>
-                <li>Per-user Prompt Security tenant &amp; model restrictions</li>
+                <li>Per-user Prompt Security region &amp; model restrictions</li>
                 <li>Full user audit trail</li>
               </ul>
             </div>
@@ -439,7 +463,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
             <div class="setting-label" style="color:var(--red)">Reset All Stats</div>
             <div class="setting-desc">
               Permanently deletes <strong>all chat sessions, messages, token usage records, and audit log events</strong>.
-              User accounts, Prompt Security tenants, app settings, and demo scenarios are preserved.
+              User accounts, Prompt Security regions, app settings, and demo scenarios are preserved.
               <strong>This cannot be undone.</strong>
             </div>
           </div>
@@ -459,7 +483,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     <div class="field"><label>Email</label><input type="email" id="umEmail" placeholder="se@company.com"></div>
     <div class="field"><label id="umPwLabel">Password</label><input type="password" id="umPassword" placeholder="Leave blank to keep current"></div>
     <div class="field"><label>Role</label><select id="umRole"><option value="se">SE (regular user)</option><option value="admin">Admin</option></select></div>
-    <div class="field"><label>Prompt Security Instance</label><select id="umTenant"><option value="">— Not assigned —</option></select></div>
+    <div class="field"><label>Prompt Security Region</label><select id="umTenant"><option value="">— Not assigned —</option></select></div>
     <div class="field"><label>Daily Message Limit</label><input type="number" id="umLimit" placeholder="e.g. 50 (0 = unlimited)"></div>
     <div class="field">
       <label>Allowed Models</label>
@@ -479,7 +503,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
 <!-- ── Tenant Modal ── -->
 <div class="backdrop" id="tenantBackdrop">
   <div class="modal">
-    <h3 id="tenantModalTitle">New Prompt Security Instance</h3>
+    <h3 id="tenantModalTitle">New Prompt Security Region</h3>
     <input type="hidden" id="tenantModalId">
     <div class="field"><label>Name</label><input type="text" id="tmName" placeholder="e.g. apsouth"></div>
     <div class="field"><label>Base URL</label><input type="text" id="tmBase" placeholder="https://apsouth.prompt.security"></div>
@@ -549,7 +573,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
     document.getElementById('tab-' + name).classList.add('active');
     if (el) el.classList.add('active');
-    const titles = { overview:'Overview', ps:'Prompt Security', users:'Users', tenants:'Prompt Security Instances', activity:'Activity Log', scenarios:'Demo Scenarios', settings:'Settings' };
+    const titles = { overview:'Overview', ps:'Prompt Security', users:'Users', tenants:'Prompt Security Regions', activity:'Activity Log', scenarios:'Demo Scenarios', settings:'Settings' };
     document.getElementById('topbarTitle').textContent = titles[name] || name;
     if (name==='overview')  loadOverview();
     if (name==='ps')        loadPs();
@@ -827,7 +851,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     panel.querySelector('.panel-head h3').textContent = 'Users';
     panel.querySelector('.panel-head div').style.display = '';
     document.querySelector('#tab-users #userList .panel thead tr').innerHTML =
-      '<th>Email</th><th>Role</th><th>Prompt Security Instance</th><th>Prompt Security Key</th><th>Prompt Security Scan</th><th>Limit</th><th>Status</th><th></th>';
+      '<th>Email</th><th>Role</th><th>Prompt Security Region</th><th>Prompt Security Key</th><th>Prompt Security Scan</th><th>Limit</th><th>Status</th><th></th>';
     document.getElementById('guestAuditCards')?.remove();
     document.getElementById('guestChartRow')?.remove();
     if (guestDayChartI) { guestDayChartI.destroy(); guestDayChartI = null; }
@@ -909,7 +933,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     document.getElementById('gaFrom').value = '';
     document.getElementById('gaTo').value = '';
     document.getElementById('gaPs').value = '';
-    document.getElementById('guestActivityTable').innerHTML = '<tr><td colspan="5" class="empty">Loading…</td></tr>';
+    document.getElementById('guestActivityFeed').innerHTML = '<div class="empty" style="padding:40px 0;text-align:center;color:var(--muted)">Loading…</div>';
     document.getElementById('guestActivityBackdrop').classList.add('open');
 
     const res = await api('/admin/guest-activity?identifier=' + encodeURIComponent(identifier));
@@ -929,12 +953,16 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     const to    = document.getElementById('gaTo').value;
     const ps    = document.getElementById('gaPs').value;
 
-    const psColors = { block:'var(--red)', modify:'var(--yellow)', pass:'var(--green)', gateway:'var(--accent)' };
-    const psLabels = { block:'🚫 Blocked', modify:'⚠️ Modified', pass:'✅ Pass', gateway:'🔀 Gateway' };
+    const psActionChip = {
+      block:   `<span class="ga-chip ga-chip-block">🚫 Blocked</span>`,
+      modify:  `<span class="ga-chip ga-chip-modify">⚠️ Modified</span>`,
+      pass:    `<span class="ga-chip ga-chip-pass">✅ Pass</span>`,
+      gateway: `<span class="ga-chip ga-chip-pass">🔀 Gateway</span>`,
+    };
 
     let totalMsgs = 0, filteredMsgs = 0;
-    const tbody = document.getElementById('guestActivityTable');
-    const rows = [];
+    const container = document.getElementById('guestActivityFeed');
+    const html = [];
 
     for (const session of _guestSessions) {
       if (from && session.created_at < from) continue;
@@ -953,40 +981,69 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
       filteredMsgs += msgs.length;
       if (!msgs.length) continue;
 
-      if (rows.length) rows.push(`<tr><td colspan="5" style="padding:4px 10px"><hr style="border:none;border-top:1px solid var(--border);margin:0"></td></tr>`);
+      // Format date as "15 May 2026 · 11:04"
+      const sessionDate = session.created_at
+        ? new Date(session.created_at).toLocaleString('en-GB', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
+        : '';
+
+      html.push(`<div class="ga-session">
+        <div class="ga-session-header">
+          <span class="ga-session-title">${esc(session.title || 'Conversation')}</span>
+          <span class="ga-session-date">${sessionDate}</span>
+        </div>`);
 
       for (const m of msgs) {
         const isUser = m.role === 'user';
         const action = m.ps_action || (m.ps_scanned ? 'pass' : 'none');
-        const psChip = isUser ? '' : (m.ps_scanned
-          ? `<span style="font-size:10px;padding:1px 6px;border-radius:4px;border:1px solid rgba(126,207,176,0.4);color:#7ecfb0;background:rgba(126,207,176,0.07)"><img src="/static/favicon.png" style="width:11px;height:11px;vertical-align:middle;border-radius:2px;margin-right:3px">Prompt Security</span> <span style="font-size:10px;color:${psColors[action]||'var(--muted)'}">${psLabels[action]||''}</span>`
-          : `<span style="font-size:10px;padding:1px 6px;border-radius:4px;border:1px solid rgba(240,192,96,0.4);color:#f0c060;background:rgba(240,192,96,0.07)">🤖 Raw LLM</span>`);
-        const modelChip = m.model
-          ? `<span style="font-size:10px;color:var(--muted);margin-left:6px">${esc(m.model.split('/').pop())}</span>`
+        const time = m.created_at
+          ? new Date(m.created_at).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' })
           : '';
-        const tokenChip = (!isUser && m.total_tokens)
-          ? `<span style="font-size:10px;color:var(--muted);margin-left:6px" title="prompt: ${m.prompt_tokens ?? '?'} · completion: ${m.completion_tokens ?? '?'}">🔢 ${m.total_tokens} tok</span>`
+        const model = m.model ? esc(m.model.split('/').pop()) : '';
+        const tokTip = m.total_tokens
+          ? `title="prompt: ${m.prompt_tokens ?? '?'} · completion: ${m.completion_tokens ?? '?'}"`
           : '';
-        rows.push(`<tr>
-          <td colspan="5" style="padding:6px 10px 6px ${isUser ? '24px' : '10px'}">
-            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:3px">
-              <span style="font-size:11px;font-weight:600;color:${isUser ? 'var(--accent)' : 'var(--green)'}">${isUser ? '<img src="/static/favicon.png" style="width:12px;height:12px;vertical-align:middle;border-radius:2px;margin-right:4px">Prompt' : '🤖 LLM Response'}</span>
-              <span style="font-size:10px;color:var(--muted)">${m.created_at}</span>
-              ${psChip}${modelChip}${tokenChip}
+
+        if (isUser) {
+          html.push(`<div class="ga-msg ga-user">
+            <div class="ga-bubble ga-bubble-user">
+              <div class="ga-meta">
+                <span class="ga-role ga-role-user">👤 User</span>
+                <span class="ga-time">${time}</span>
+              </div>
+              <div class="ga-content">${esc(m.content)}</div>
             </div>
-            <div style="font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word;max-height:120px;overflow-y:auto">${esc(m.content)}</div>
-          </td>
-        </tr>`);
+          </div>`);
+        } else {
+          const psScannedChip = m.ps_scanned
+            ? `<span class="ga-chip ga-chip-ps"><img src="/static/favicon.png" style="width:11px;height:11px;vertical-align:middle;border-radius:2px;margin-right:3px">Prompt Security</span>${psActionChip[action] || ''}`
+            : `<span class="ga-chip ga-chip-raw">🤖 Raw LLM</span>`;
+          const tokChip = m.total_tokens
+            ? `<span class="ga-chip ga-chip-tok" ${tokTip}>🔢 ${m.total_tokens} tok</span>` : '';
+          const modelChip = model ? `<span class="ga-chip ga-chip-model">${model}</span>` : '';
+
+          html.push(`<div class="ga-msg ga-bot">
+            <div class="ga-bubble ga-bubble-bot">
+              <div class="ga-meta">
+                <span class="ga-role ga-role-bot">🤖 Response</span>
+                <span class="ga-time">${time}</span>
+                ${psScannedChip}${modelChip}${tokChip}
+              </div>
+              <div class="ga-content">${esc(m.content)}</div>
+            </div>
+          </div>`);
+        }
       }
+
+      html.push(`</div>`);
     }
 
     const totalSessions = _guestSessions.length;
     document.getElementById('gaCount').textContent =
       `${filteredMsgs} of ${totalMsgs} messages · ${totalSessions} session${totalSessions !== 1 ? 's' : ''}`;
 
-    tbody.innerHTML = rows.length
-      ? rows.join('')
-      : '<tr><td colspan="5" class="empty">No matching messages</td></tr>';
+    container.innerHTML = html.length
+      ? html.join('')
+      : '<div class="empty" style="padding:40px 0;text-align:center;color:var(--muted)">No matching messages</div>';
   }
 
   function renderUserTable() {
@@ -1224,7 +1281,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     showAlert('Import Complete', msg);
   }
 
-  // ── Prompt Security Instances ────────────────────────────────────────────────────────────
+  // ── Prompt Security Regions ────────────────────────────────────────────────────────────
   let allTenants = [];
   async function loadTenants() {
     const res = await api('/admin/ps-tenants');
@@ -1256,14 +1313,14 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     if (tenantId) {
       const t = allTenants.find(x => x.id===tenantId);
       if (!t) return;
-      document.getElementById('tenantModalTitle').textContent = 'Edit Prompt Security Instance';
+      document.getElementById('tenantModalTitle').textContent = 'Edit Prompt Security Region';
       document.getElementById('tenantModalId').value = tenantId;
       document.getElementById('tmName').value = t.name;
       document.getElementById('tmBase').value = t.base_url;
       document.getElementById('tmGw').value   = t.gateway_url||'';
       document.getElementById('tenantDeleteBtn').style.display = 'block';
     } else {
-      document.getElementById('tenantModalTitle').textContent = 'New Prompt Security Instance';
+      document.getElementById('tenantModalTitle').textContent = 'New Prompt Security Region';
       document.getElementById('tenantModalId').value = '';
       document.getElementById('tmName').value = '';
       document.getElementById('tmBase').value = '';
@@ -1289,7 +1346,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
   async function deleteTenant() {
     const id = document.getElementById('tenantModalId').value;
     if (!id) return;
-    if (!await showConfirm('Delete this Prompt Security tenant? Users assigned to it will lose their Prompt Security config.')) return;
+    if (!await showConfirm('Delete this Prompt Security region? Users assigned to it will lose their Prompt Security config.')) return;
     const res = await api(`/admin/ps-tenants/${id}`, { method:'DELETE' });
     if (res.ok||res.status===204) { closeTenantModal(); loadTenants(); }
     else { document.getElementById('tenantModalErr').textContent='Failed to delete tenant'; }
@@ -1336,7 +1393,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
       else toImport.push(row);
     }
     if (toImport.length === 0) {
-      showAlert('Nothing to Import', `All ${dupes.length} tenant${dupes.length !== 1 ? 's' : ''} already exist:\n\n• ${dupes.join('\n• ')}`);
+      showAlert('Nothing to Import', `All ${dupes.length} region${dupes.length !== 1 ? 's' : ''} already exist:\n\n• ${dupes.join('\n• ')}`);
       return;
     }
     let imported = 0;
@@ -1346,7 +1403,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
       if (res.ok) imported++;
     }
     await loadTenants();
-    let msg = `Successfully imported ${imported} tenant${imported !== 1 ? 's' : ''}.`;
+    let msg = `Successfully imported ${imported} region${imported !== 1 ? 's' : ''}.`;
     if (dupes.length) msg += `\n\nSkipped ${dupes.length} duplicate${dupes.length !== 1 ? 's' : ''}:\n• ${dupes.join('\n• ')}`;
     showAlert('Import Complete', msg);
   }
@@ -1361,7 +1418,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
 
   async function resetStats() {
     const first = await showConfirm(
-      '⚠️ WARNING: This will permanently delete ALL chat sessions, messages, token usage records, and audit log events across every user and guest.\n\nUser accounts, Prompt Security tenants, settings, and demo scenarios will NOT be affected.\n\nThis action is irreversible. Are you sure you want to continue?',
+      '⚠️ WARNING: This will permanently delete ALL chat sessions, messages, token usage records, and audit log events across every user and guest.\n\nUser accounts, Prompt Security regions, settings, and demo scenarios will NOT be affected.\n\nThis action is irreversible. Are you sure you want to continue?',
       'Yes, continue'
     );
     if (!first) return;
@@ -1400,8 +1457,8 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
   };
   const AUDIT_LABELS = {
     ps_config_changed: 'PS Config', llm_keys_updated: 'LLM Keys', user_created: 'User Created',
-    user_updated: 'User Updated', user_deleted: 'User Deleted', tenant_created: 'Tenant Created',
-    tenant_updated: 'Tenant Updated', tenant_deleted: 'Tenant Deleted', guest_chat: 'Guest Chat',
+    user_updated: 'User Updated', user_deleted: 'User Deleted', tenant_created: 'Region Created',
+    tenant_updated: 'Region Updated', tenant_deleted: 'Region Deleted', guest_chat: 'Guest Chat',
     api_key_created: 'API Key Created', api_key_deleted: 'API Key Deleted',
     scenario_created: 'Scenario Created', scenario_updated: 'Scenario Updated', scenario_deleted: 'Scenario Deleted',
   };
@@ -2124,11 +2181,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
       </select>
       <span id="gaCount" style="margin-left:auto;font-size:12px;color:var(--muted);align-self:center"></span>
     </div>
-    <div style="overflow-y:auto;flex:1">
-      <table style="border-collapse:collapse;width:100%">
-        <tbody id="guestActivityTable"></tbody>
-      </table>
-    </div>
+    <div id="guestActivityFeed" style="overflow-y:auto;flex:1;padding:4px 0"></div>
   </div>
 </div>
 

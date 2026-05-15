@@ -1,5 +1,12 @@
 # Changelog
 
+## [2026-05-15]
+### Changed
+- "Prompt Security Instance/Instances" renamed to "Prompt Security Region/Regions" throughout `index.html`, `admin.html`, help docs, wizard, PS settings panel, user table headers, audit log labels, and import/export messages — @pj.norris
+
+### Added
+- Explanation Notes toggle next to SE Notes in toolbar and demo panel; stored in `hga_exp_notes_on` localStorage (default on); when off, hides "Why PS Caught This" panel (`ps-why-section` class) on both single and compare mode bubbles via `body.hide-exp-notes` CSS class; added to startup wizard step 3 defaulting on — @pj.norris
+
 ## [2026-05-14]
 ### Added
 - PS redaction tokens (`[UPPERCASE_TOKEN]`) in bot messages are now rendered as amber inline chips with a ✂ prefix and "Redacted by Prompt Security" tooltip — applied via `highlightRedacted()` post-processor in `renderMd()`, covering normal mode, compare mode, and history replay — @pj.norris
