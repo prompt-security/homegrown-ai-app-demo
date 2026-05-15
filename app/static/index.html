@@ -2332,31 +2332,14 @@ reply = await client.chat.completions.create(
     document.getElementById('wizardBackdrop')?.classList.remove('open');
     document.getElementById('helpBackdrop')?.classList.remove('open');
 
-    // Only show the admin link if the caller already has a valid admin token —
-    // never expose /admin to unauthenticated guests on a public-facing page.
-    const token = localStorage.getItem('hgapp_token');
-    let isAdmin = false;
-    if (token) {
-      try {
-        const r = await fetch('/auth/me', { headers: { Authorization: `Bearer ${token}` } });
-        if (r.ok) {
-          const u = await r.json();
-          isAdmin = u.role === 'admin';
-        }
-      } catch {}
-    }
-
     const msg = document.getElementById('smtpBlockMsg');
     const cta = document.getElementById('smtpBlockCta');
-    if (isAdmin) {
-      if (msg) msg.textContent = 'Email service is not configured. Set up SMTP settings in Admin → Settings before guests can register and use this application.';
-      if (cta) cta.innerHTML = `<a href="/admin" style="display:inline-block;background:var(--accent);color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:11px 28px;border-radius:8px;letter-spacing:0.2px"
-        onmouseover="this.style.background='var(--accent-hover)'" onmouseout="this.style.background='var(--accent)'">
-        Open Admin Settings →</a>`;
-    } else {
-      if (msg) msg.textContent = 'This application is not yet configured. Please contact your administrator.';
-      if (cta) cta.innerHTML = '';
-    }
+
+    if (msg) msg.textContent = 'Email service is not configured. An administrator must complete the setup before this application can be used.';
+    // Always offer the admin login link — /login?next=/admin still requires credentials
+    if (cta) cta.innerHTML = `<a href="/login?next=/admin" style="display:inline-block;background:var(--accent);color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:11px 28px;border-radius:8px;letter-spacing:0.2px"
+      onmouseover="this.style.background='var(--accent-hover)'" onmouseout="this.style.background='var(--accent)'">
+      Administrator Login →</a>`;
 
     const el = document.getElementById('smtpBlockOverlay');
     if (el) el.style.display = 'flex';
