@@ -20,8 +20,8 @@ import httpx
 import openai
 from dotenv import load_dotenv
 from pydantic import BaseModel
-from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile, status
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile, status
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from openai import AsyncOpenAI
 from sqlalchemy import desc, func, select, text
@@ -31,6 +31,7 @@ from sqlalchemy.orm import selectinload
 load_dotenv()
 
 from auth import (
+    ALGORITHM, SECRET_KEY, TOKEN_TTL_H,
     create_access_token, create_api_key, get_current_api_key, get_current_user,
     hash_api_key, hash_password, require_admin, verify_password,
 )
@@ -504,13 +505,29 @@ async def login_page():
     return HTMLResponse(open("static/login.html").read())
 
 @app.get("/admin", response_class=HTMLResponse)
-async def admin_page():
+async def admin_page(request: Request, db: AsyncSession = Depends(get_db)):
+    """Serve admin UI — requires a valid admin session cookie."""
+    token = request.cookies.get("hgapp_session")
+    if not token:
+        return RedirectResponse("/login?next=/admin", status_code=302)
+    try:
+        from jose import JWTError, jwt as _jwt
+        payload = _jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = int(payload.get("sub", 0))
+    except Exception:
+        return RedirectResponse("/login?next=/admin", status_code=302)
+    result = await db.execute(
+        select(User).where(User.id == user_id, User.is_active == True)
+    )
+    user = result.scalar_one_or_none()
+    if not user or user.role != "admin":
+        return RedirectResponse("/login?next=/admin", status_code=302)
     return HTMLResponse(open("static/admin.html").read())
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 @app.post("/auth/login", response_model=TokenResponse)
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(body: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(User).where(User.email == body.email, User.is_active == True)
         .options(selectinload(User.ps_tenant))
@@ -529,10 +546,23 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     await _log_audit(db, user.id, user.email, "user_login", None)
 
     token = create_access_token({"sub": str(user.id)})
+    # httpOnly cookie used for server-side page-level auth (e.g. GET /admin)
+    response.set_cookie(
+        "hgapp_session", token,
+        httponly=True, samesite="lax", secure=False,
+        max_age=TOKEN_TTL_H * 3600,
+    )
     return TokenResponse(
         access_token=token,
         user=_user_out(user),
     )
+
+
+@app.post("/auth/logout", status_code=204)
+async def logout(response: Response):
+    """Clear the server-side session cookie."""
+    response.delete_cookie("hgapp_session", samesite="lax")
+    return
 
 @app.get("/auth/me", response_model=UserOut)
 async def me(current_user: User = Depends(get_current_user)):

@@ -62,7 +62,8 @@
   </form>
 </div>
 <script>
-  if (localStorage.getItem('hgapp_token')) window.location.replace('/');
+  const _next = new URLSearchParams(window.location.search).get('next') || '/';
+  if (localStorage.getItem('hgapp_token')) window.location.replace(_next);
 
   document.getElementById('loginForm').addEventListener('submit', async e => {
     e.preventDefault();
@@ -86,7 +87,7 @@
       const data = await res.json();
       localStorage.setItem('hgapp_token', data.access_token);
       localStorage.setItem('hgapp_user', JSON.stringify(data.user));
-      window.location.replace('/');
+      window.location.replace(_next);
     } catch (e) {
       err.textContent = 'Network error'; btn.disabled = false;
     }

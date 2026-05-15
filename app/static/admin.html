@@ -605,7 +605,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     return fetch(url, {
       ...opts,
       headers: { 'Content-Type':'application/json', 'Authorization':`Bearer ${TOKEN}`, ...(opts.headers||{}) },
-    }).then(r => { if (r.status===401) { localStorage.clear(); window.location.replace('/login'); } return r; });
+    }).then(r => { if (r.status===401) { localStorage.clear(); fetch('/auth/logout',{method:'POST'}).finally(()=>window.location.replace('/login')); } return r; });
   }
   function esc(s='') { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
@@ -1857,7 +1857,11 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     window._smToggleCountrySection = smToggleCountrySection;
   });
 
-  function logout() { localStorage.clear(); window.location.replace('/login'); }
+  async function logout() {
+    localStorage.clear();
+    try { await fetch('/auth/logout', { method: 'POST' }); } catch {}
+    window.location.replace('/login');
+  }
 
   // ── Demo Scenarios ────────────────────────────────────────────────────────
   async function loadScenarios() {
