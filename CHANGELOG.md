@@ -1,6 +1,22 @@
 # Changelog
 
-## [2026-05-15]
+## [2026-05-15] — v2.2.0
+### Added
+- Email Settings panel in Admin → Settings: SMTP host, port, username, encrypted password (Fernet via `email_password_enc`), and from address are now configurable from the UI and stored in the `app_settings` table; env vars (`SMTP_HOST`, `SMTP_PORT`, `EMAIL_USERNAME`, `EMAIL_PASSWORD`, `FROM_EMAIL`) remain as fallback for existing deployments — @pj.norris
+- `POST /admin/test-email` endpoint: sends a test message to a given address using the current SMTP config and writes an `email_settings_tested` audit event — @pj.norris
+- Test Email row in the Email Settings panel with a recipient input and Send Test button showing inline success/error feedback — @pj.norris
+
+## [2026-05-15] — v2.1.0
+### Changed
+- Registration and first sign-in now recorded in activity log: auth-mode login fires `user_login` on every sign-in and `user_first_login` (🌟) on the first ever login (detected by absence of prior login events); open-mode wizard completion fires `guest_registered` (🌟) via `/guest/log-event`; all three event types added to admin activity log icons and labels — @pj.norris
+- All guest audit log entries now store `email (name)` as the identifier (e.g. `pj.norris@sentinelone.com (PJ)`) instead of name-only; `GuestChatRequest` and `/guest/log-event` both accept `guest_email`; frontend passes `getGuestEmail()` on every chat stream and log-event call — @pj.norris
+- Prompt Security `user=` field now sends the guest's email address (falls back to name, then IP) so PS user-level policy and reporting is tied to the verified identity — @pj.norris
+
+### Added
+- Allowed Email Domains setting in Admin → Settings: admins can add/remove domain entries (e.g. `sentinelone.com`) stored as a JSON array in the `app_settings` table under key `allowed_email_domains`; input validates domain format, renders as removable chips, persists immediately via `PATCH /admin/app-settings`; empty list means any domain is allowed — @pj.norris
+- Startup wizard step 1 now asks for email after name: when allowed domains are configured a split `localpart @ domain-dropdown` input is shown (first domain selected by default, required); when no domains are configured a plain optional email input is shown; email stored in `hgapp_guest_email` localStorage — @pj.norris
+- Email verification in wizard step 1: clicking "Send code →" calls `POST /guest/request-email-code` which generates a 4-digit OTP (10-min TTL, stored in-memory), sends a branded HTML email via SMTP (`SMTP_HOST`/`SMTP_PORT`/`EMAIL_USERNAME`/`EMAIL_PASSWORD`/`FROM_EMAIL`); four large digit boxes appear with auto-advance, paste support, and shake-on-error animation; `POST /guest/verify-email-code` validates the code before allowing progression to step 2; Resend and Edit email actions supported — @pj.norris
+
 ### Changed
 - "Prompt Security Instance/Instances" renamed to "Prompt Security Region/Regions" throughout `index.html`, `admin.html`, help docs, wizard, PS settings panel, user table headers, audit log labels, and import/export messages — @pj.norris
 

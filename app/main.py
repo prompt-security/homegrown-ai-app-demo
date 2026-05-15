@@ -1,10 +1,14 @@
 import asyncio
 import base64
+import email.mime.multipart
+import email.mime.text
 import io
 import json
 import logging
 import os
+import random
 import secrets
+import smtplib
 import time
 import uuid
 from collections import defaultdict, deque
@@ -58,6 +62,48 @@ PUBLIC_API_MAX_OUTPUT_TOKENS = int(os.getenv("PUBLIC_API_MAX_OUTPUT_TOKENS", "60
 PUBLIC_API_ALLOW_SYSTEM_PROMPT = os.getenv("PUBLIC_API_ALLOW_SYSTEM_PROMPT", "false").lower() in {"1", "true", "yes", "on"}
 SHOW_LLM_KEY_SETTINGS = os.getenv("SHOW_LLM_KEY_SETTINGS", "false").lower() in {"1", "true", "yes", "on"}
 APP_ENV = os.getenv("APP_ENV", os.getenv("ENV", "development")).lower()
+
+# ── Email / SMTP (env-var fallbacks; DB values take precedence) ──────────────
+SMTP_HOST      = os.getenv("SMTP_HOST", "")
+SMTP_PORT      = int(os.getenv("SMTP_PORT", "587"))
+EMAIL_USERNAME = os.getenv("EMAIL_USERNAME", "")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
+FROM_EMAIL     = os.getenv("FROM_EMAIL", ADMIN_EMAIL)
+APP_BASE_URL   = os.getenv("APP_BASE_URL", "").rstrip("/")
+
+
+async def _get_email_config(db: AsyncSession) -> dict:
+    """Return SMTP config merging DB values (preferred) with env-var fallbacks."""
+    result = await db.execute(select(AppSetting))
+    s = {row.key: row.value for row in result.scalars().all()}
+
+    # Password: decrypt from DB if present, else fall back to env var plaintext
+    enc_pwd = s.get("email_password_enc")
+    if enc_pwd:
+        try:
+            password = decrypt(enc_pwd)
+        except Exception:
+            password = EMAIL_PASSWORD
+    else:
+        password = EMAIL_PASSWORD
+
+    try:
+        port = int(s.get("smtp_port") or SMTP_PORT)
+    except (ValueError, TypeError):
+        port = SMTP_PORT
+
+    return {
+        "smtp_host":      s.get("smtp_host") or SMTP_HOST,
+        "smtp_port":      port,
+        "email_username": s.get("email_username") or EMAIL_USERNAME,
+        "email_password": password,
+        "from_email":     s.get("from_email") or FROM_EMAIL,
+    }
+
+
+# In-memory store: email -> {code, expires_at}  (cleared after verify or expiry)
+_email_verify_codes: dict[str, dict] = {}
+_EMAIL_CODE_TTL = 600  # 10 minutes
 
 # Shared LLM keys (fallback when user has no per-provider key)
 _SHARED_LLM_KEYS = {
@@ -472,6 +518,16 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     user = result.scalar_one_or_none()
     if not user or not user.hashed_password or not verify_password(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    # Detect first-ever login by checking for prior login events
+    prior_logins = await db.scalar(
+        select(func.count(AuditEvent.id))
+        .where(AuditEvent.user_id == user.id, AuditEvent.event_type == "user_login")
+    )
+    if prior_logins == 0:
+        await _log_audit(db, user.id, user.email, "user_first_login", "First sign-in")
+    await _log_audit(db, user.id, user.email, "user_login", None)
+
     token = create_access_token({"sub": str(user.id)})
     return TokenResponse(
         access_token=token,
@@ -2027,15 +2083,36 @@ async def clear_activity(
 
 # ── App settings ─────────────────────────────────────────────────────────────
 
-@app.get("/app/settings")
-async def get_app_settings(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(AppSetting))
-    s = {row.key: row.value for row in result.scalars().all()}
+def _parse_app_settings(s: dict) -> dict:
+    try:
+        domains = json.loads(s.get("allowed_email_domains", "[]"))
+        if not isinstance(domains, list):
+            domains = []
+    except Exception:
+        domains = []
+    try:
+        smtp_port_val = int(s.get("smtp_port", "587") or "587")
+    except (ValueError, TypeError):
+        smtp_port_val = 587
     return {
         "user_mgmt_enabled": s.get("user_mgmt_enabled", "true") != "false",
         "fixed_model_enabled": s.get("fixed_model_enabled", "false") == "true",
         "fixed_model_id": s.get("fixed_model_id", None),
+        "allowed_email_domains": domains,
+        # Email settings
+        "smtp_host": s.get("smtp_host", ""),
+        "smtp_port": smtp_port_val,
+        "email_username": s.get("email_username", ""),
+        "email_password_set": bool(s.get("email_password_enc")),
+        "from_email": s.get("from_email", ""),
     }
+
+
+@app.get("/app/settings")
+async def get_app_settings(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(AppSetting))
+    s = {row.key: row.value for row in result.scalars().all()}
+    return _parse_app_settings(s)
 
 
 @app.patch("/admin/app-settings")
@@ -2044,20 +2121,242 @@ async def update_app_settings(
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    # Keys that should be stored as-is (no lowercasing)
+    _plain_str_keys = {"smtp_host", "smtp_port", "email_username", "from_email"}
     for key, value in body.items():
-        existing = await db.get(AppSetting, key)
-        if existing:
-            existing.value = str(value).lower()
+        if key == "allowed_email_domains":
+            # Store as a JSON array; validate it's a list of strings
+            if not isinstance(value, list):
+                raise HTTPException(status_code=422, detail="allowed_email_domains must be a list")
+            serialised = json.dumps([str(d).lower().strip() for d in value if str(d).strip()])
+            store_key = key
+        elif key == "email_password":
+            # Encrypt password and store under a different key; never store plaintext
+            serialised = encrypt(str(value))
+            store_key = "email_password_enc"
+        elif key in _plain_str_keys:
+            serialised = str(value)
+            store_key = key
         else:
-            db.add(AppSetting(key=key, value=str(value).lower()))
+            serialised = str(value).lower()
+            store_key = key
+        existing = await db.get(AppSetting, store_key)
+        if existing:
+            existing.value = serialised
+        else:
+            db.add(AppSetting(key=store_key, value=serialised))
     await db.commit()
     result = await db.execute(select(AppSetting))
     s = {row.key: row.value for row in result.scalars().all()}
-    return {
-        "user_mgmt_enabled": s.get("user_mgmt_enabled", "true") != "false",
-        "fixed_model_enabled": s.get("fixed_model_enabled", "false") == "true",
-        "fixed_model_id": s.get("fixed_model_id", None),
-    }
+    return _parse_app_settings(s)
+
+
+class TestEmailRequest(BaseModel):
+    to: str
+
+
+@app.post("/admin/test-email")
+async def send_test_email(
+    body: TestEmailRequest,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a test email to verify SMTP configuration."""
+    cfg = await _get_email_config(db)
+    if not cfg["smtp_host"]:
+        raise HTTPException(status_code=503, detail="SMTP host is not configured")
+
+    to = body.to.strip()
+    if not to or "@" not in to:
+        raise HTTPException(status_code=422, detail="Invalid recipient email address")
+
+    def _send_test() -> None:
+        msg = email.mime.multipart.MIMEMultipart("alternative")
+        msg["Subject"] = "HGA Prompt Demo — Test Email"
+        msg["From"]    = cfg["from_email"]
+        msg["To"]      = to
+
+        plain = (
+            "This is a test email from HGA Prompt Demo.\n"
+            "Your email settings are configured correctly."
+        )
+        html = (
+            "<!DOCTYPE html><html><body style='font-family:Arial,sans-serif'>"
+            "<p>This is a test email from <strong>HGA Prompt Demo</strong>.</p>"
+            "<p>Your email settings are configured correctly.</p>"
+            "</body></html>"
+        )
+        msg.attach(email.mime.text.MIMEText(plain, "plain"))
+        msg.attach(email.mime.text.MIMEText(html, "html"))
+
+        smtp = smtplib.SMTP(cfg["smtp_host"], cfg["smtp_port"], timeout=10)
+        try:
+            smtp.ehlo()
+            smtp.starttls()
+            smtp.login(cfg["email_username"], cfg["email_password"])
+            smtp.sendmail(cfg["from_email"], to, msg.as_string())
+        finally:
+            try:
+                smtp.quit()
+            except Exception:
+                pass  # server may close connection before QUIT — email was already sent
+
+    loop = asyncio.get_event_loop()
+    try:
+        await loop.run_in_executor(None, _send_test)
+    except Exception as exc:
+        logger.error("Test email send failed: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    await _log_audit(db, admin.id, admin.email, "email_settings_tested", f"Test email sent to {to}")
+
+    return {"sent": True}
+
+
+# ── Email verification ────────────────────────────────────────────────────────
+
+def _send_verification_email(to_email: str, code: str, guest_name: str, config: dict) -> None:
+    """Blocking SMTP send — run in a thread executor."""
+    msg = email.mime.multipart.MIMEMultipart("alternative")
+    msg["Subject"] = "Your HGA Prompt Demo verification code"
+    msg["From"]    = f"HGA Prompt Demo <{config['from_email']}>"
+    msg["To"]      = to_email
+
+    plain = (
+        f"Hi {guest_name or 'there'},\n\n"
+        f"Your verification code is: {code}\n\n"
+        f"This code expires in 10 minutes.\n\n"
+        f"If you didn't request this, you can safely ignore this email.\n\n"
+        f"— HGA Prompt Demo"
+    )
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#0f1117;font-family:'Inter',Arial,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0f1117;padding:40px 0">
+    <tr><td align="center">
+      <table width="480" cellpadding="0" cellspacing="0"
+             style="background:#1a1d27;border-radius:14px;border:1px solid #2a2d3e;overflow:hidden">
+
+        <!-- Header -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#6c63ff 0%,#5a52e0 100%);padding:28px 36px;text-align:center">
+            <img src="https://assets-global.website-files.com/656f4138f2ff78452cf12053/658da588005946f4a6cbd84e_webpac.png" width="32" height="32"
+                 style="border-radius:6px;margin-bottom:10px;display:block;margin-left:auto;margin-right:auto"
+                 alt="HGA">
+            <div style="color:#fff;font-size:20px;font-weight:700;letter-spacing:-0.3px">HGA Prompt Demo</div>
+            <div style="color:rgba(255,255,255,0.7);font-size:13px;margin-top:4px">Email Verification</div>
+          </td>
+        </tr>
+
+        <!-- Body -->
+        <tr>
+          <td style="padding:36px 36px 28px">
+            <p style="color:#e8eaf6;font-size:15px;margin:0 0 8px">
+              Hi <strong>{guest_name or 'there'}</strong>,
+            </p>
+            <p style="color:#7b80a8;font-size:13px;line-height:1.6;margin:0 0 28px">
+              Use the code below to verify your email address and complete setup.
+              This code expires in <strong style="color:#e8eaf6">10 minutes</strong>.
+            </p>
+
+            <!-- Code box -->
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr><td align="center" style="padding:4px 0 28px">
+                <div style="display:inline-block;background:#20253a;border:2px solid #6c63ff;
+                            border-radius:12px;padding:20px 36px;letter-spacing:14px;
+                            font-size:36px;font-weight:800;color:#fff;font-family:monospace">
+                  {code}
+                </div>
+              </td></tr>
+            </table>
+
+            <p style="color:#7b80a8;font-size:12px;line-height:1.6;margin:0">
+              If you didn't request this code, you can safely ignore this email.
+              Someone may have entered your address by mistake.
+            </p>
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="padding:16px 36px 24px;border-top:1px solid #2a2d3e;text-align:center">
+            <p style="color:#4a4f6a;font-size:11px;margin:0">
+              Sent by HGA Prompt Demo &nbsp;·&nbsp; Powered by Prompt Security
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
+    msg.attach(email.mime.text.MIMEText(plain, "plain"))
+    msg.attach(email.mime.text.MIMEText(html, "html"))
+
+    smtp = smtplib.SMTP(config["smtp_host"], config["smtp_port"], timeout=10)
+    try:
+        smtp.ehlo()
+        smtp.starttls()
+        smtp.login(config["email_username"], config["email_password"])
+        smtp.sendmail(config["from_email"], to_email, msg.as_string())
+    finally:
+        try:
+            smtp.quit()
+        except Exception:
+            pass  # server may close connection before QUIT — email was already sent
+
+
+class EmailCodeRequest(BaseModel):
+    email: str
+    name: Optional[str] = ""
+
+
+class EmailCodeVerify(BaseModel):
+    email: str
+    code: str
+
+
+@app.post("/guest/request-email-code")
+async def request_email_code(body: EmailCodeRequest, db: AsyncSession = Depends(get_db)):
+    """Send a 4-digit verification code to the given email address."""
+    cfg = await _get_email_config(db)
+    if not cfg["smtp_host"]:
+        raise HTTPException(status_code=503, detail="Email service not configured")
+    to = body.email.strip().lower()
+    if not to or "@" not in to:
+        raise HTTPException(status_code=422, detail="Invalid email address")
+
+    code = f"{random.randint(0, 9999):04d}"
+    _email_verify_codes[to] = {"code": code, "expires_at": time.time() + _EMAIL_CODE_TTL}
+
+    loop = asyncio.get_event_loop()
+    try:
+        await loop.run_in_executor(None, _send_verification_email, to, code, body.name or "", cfg)
+    except Exception as exc:
+        logger.error("Failed to send verification email to %s: %s", to, exc)
+        raise HTTPException(status_code=502, detail="Failed to send email. Please check your address and try again.")
+
+    return {"sent": True}
+
+
+@app.post("/guest/verify-email-code")
+async def verify_email_code(body: EmailCodeVerify):
+    """Verify the 4-digit code sent to an email address."""
+    to = body.email.strip().lower()
+    entry = _email_verify_codes.get(to)
+    if not entry:
+        return {"valid": False, "reason": "no_code"}
+    if time.time() > entry["expires_at"]:
+        _email_verify_codes.pop(to, None)
+        return {"valid": False, "reason": "expired"}
+    if entry["code"] != body.code.strip():
+        return {"valid": False, "reason": "wrong_code"}
+    _email_verify_codes.pop(to, None)
+    return {"valid": True}
 
 
 # ── Guest endpoints (open mode — no auth) ────────────────────────────────────
@@ -2075,6 +2374,7 @@ class GuestChatRequest(BaseModel):
     system_prompt: Optional[str] = None
     skip_ps: bool = False
     guest_name: Optional[str] = None
+    guest_email: Optional[str] = None
     ps_config: Optional[GuestPSConfig] = None
     session_id: Optional[str] = None
 
@@ -2099,17 +2399,23 @@ async def guest_ps_tenants(db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 
-_GUEST_LOG_ALLOWED = {"ps_config_changed", "scenario_created", "scenario_updated", "scenario_deleted"}
+_GUEST_LOG_ALLOWED = {"ps_config_changed", "scenario_created", "scenario_updated", "scenario_deleted", "guest_registered"}
 
 @app.post("/guest/log-event", status_code=204)
 async def guest_log_event(body: dict, http_request: Request, db: AsyncSession = Depends(get_db)):
     event_type = (body.get("event_type") or "").strip()
     if event_type not in _GUEST_LOG_ALLOWED:
         return
-    detail = (body.get("detail") or "")[:8000]
-    guest_name = (body.get("guest_name") or "Guest")[:120]
-    ip = http_request.client.host if http_request.client else "unknown"
-    user_email = f"{guest_name} ({ip}) [open mode]"
+    detail      = (body.get("detail")       or "")[:8000]
+    guest_name  = (body.get("guest_name")   or "Guest")[:120]
+    guest_email = (body.get("guest_email")  or "").strip().lower()[:255]
+    ip          = http_request.client.host if http_request.client else "unknown"
+    if guest_email and guest_name:
+        user_email = f"{guest_email} ({guest_name})"
+    elif guest_email:
+        user_email = guest_email
+    else:
+        user_email = f"{guest_name} ({ip}) [open mode]"
     await _log_audit(db, None, user_email, event_type, detail)
 
 
@@ -2131,13 +2437,24 @@ async def guest_chat_stream(
     if not last_user_msg:
         raise HTTPException(status_code=400, detail="No user message found")
 
-    # Build guest identifier from IP addresses
+    # Build guest identifier from email, name, and IP
     local_ip = http_request.client.host if http_request.client else "unknown"
     forwarded = http_request.headers.get("X-Forwarded-For", "")
     public_ip = forwarded.split(",")[0].strip() if forwarded else local_ip
     ip_label = f"{public_ip}" if public_ip == local_ip else f"{public_ip} / {local_ip}"
-    name = (request.guest_name or "").strip()
-    guest_id = name if name else f"guest:{ip_label}"
+    name  = (request.guest_name  or "").strip()
+    email = (request.guest_email or "").strip().lower()
+    # Audit identifier: "email (name)" when both present, fallback to name or IP
+    if email and name:
+        guest_id = f"{email} ({name})"
+    elif email:
+        guest_id = email
+    elif name:
+        guest_id = name
+    else:
+        guest_id = f"guest:{ip_label}"
+    # Username sent to Prompt Security: prefer email, fall back to name/ip
+    ps_user = email or name or f"guest:{ip_label}"
 
     # Ensure a ChatSession exists for this guest
     session_id = request.session_id or str(uuid.uuid4())
@@ -2258,7 +2575,7 @@ async def guest_chat_stream(
                 ps_result = await ps_client.protect_prompt(
                     user_prompt=last_user_msg,
                     system_prompt=system_prompt,
-                    user=guest_id,
+                    user=ps_user,
                 )
                 ps_prompt_raw = {"request": ps_result.raw_request, "response": ps_result.raw}
                 if not ps_result.allowed:
@@ -2303,7 +2620,7 @@ async def guest_chat_stream(
                     response_text=reply,
                     user_prompt=last_user_msg,
                     system_prompt=system_prompt,
-                    user=guest_id,
+                    user=ps_user,
                 )
                 ps_resp_raw = {"request": ps_resp.raw_request, "response": ps_resp.raw}
                 ps_violations = ps_resp.violations

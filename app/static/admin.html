@@ -4,7 +4,7 @@
 <link rel="icon" type="image/png" href="/static/favicon.png">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Admin · AI Chat Demo</title>
+<title>Admin · HGA Prompt Demo</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -454,6 +454,86 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
         </div>
       </div>
 
+      <div class="panel" style="margin-top:20px">
+        <div class="panel-head"><h3>Email Settings</h3></div>
+        <div class="setting-row" style="flex-wrap:wrap;row-gap:10px">
+          <div style="flex:1;min-width:200px">
+            <div class="setting-label">SMTP Host</div>
+            <div class="setting-desc">Outbound mail server hostname.</div>
+          </div>
+          <input type="text" id="emailSmtpHost" placeholder="smtp.office365.com"
+            style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:6px 10px;outline:none;width:100%;max-width:300px">
+        </div>
+        <div class="setting-row" style="flex-wrap:wrap;row-gap:10px">
+          <div style="flex:1;min-width:200px">
+            <div class="setting-label">SMTP Port</div>
+            <div class="setting-desc">Usually 587 (STARTTLS) or 465 (SSL).</div>
+          </div>
+          <input type="number" id="emailSmtpPort" placeholder="587"
+            style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:6px 10px;outline:none;width:80px">
+        </div>
+        <div class="setting-row" style="flex-wrap:wrap;row-gap:10px">
+          <div style="flex:1;min-width:200px">
+            <div class="setting-label">Username</div>
+            <div class="setting-desc">SMTP authentication username.</div>
+          </div>
+          <input type="text" id="emailUsername" placeholder="noreply@company.com"
+            style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:6px 10px;outline:none;width:100%;max-width:300px">
+        </div>
+        <div class="setting-row" style="flex-wrap:wrap;row-gap:10px">
+          <div style="flex:1;min-width:200px">
+            <div class="setting-label">Password</div>
+            <div class="setting-desc">SMTP authentication password. Stored encrypted.</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="password" id="emailPassword" placeholder="Enter password"
+              autocomplete="new-password" data-1p-ignore data-lpignore="true"
+              style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:6px 10px;outline:none;width:100%;max-width:300px">
+            <span id="emailPasswordSavedChip" style="display:none;font-size:11px;background:rgba(39,174,96,0.15);color:var(--green);border:1px solid rgba(39,174,96,0.3);border-radius:12px;padding:2px 8px">Saved</span>
+          </div>
+        </div>
+        <div class="setting-row" style="flex-wrap:wrap;row-gap:10px">
+          <div style="flex:1;min-width:200px">
+            <div class="setting-label">From Address</div>
+            <div class="setting-desc">The sender address shown in outbound emails.</div>
+          </div>
+          <input type="text" id="emailFromAddress" placeholder="HGA Prompt Demo <noreply@company.com>"
+            style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:6px 10px;outline:none;width:100%;max-width:300px">
+        </div>
+        <div class="setting-row">
+          <div></div>
+          <button id="emailSaveBtn" class="btn btn-primary btn-sm" onclick="saveEmailSettings()">Save</button>
+        </div>
+        <div class="setting-row" style="flex-wrap:wrap;row-gap:10px;border-top:1px solid var(--border);padding-top:14px;margin-top:4px">
+          <div style="flex:1;min-width:200px">
+            <div class="setting-label">Test Email</div>
+            <div class="setting-desc">Send a test message to verify your SMTP settings are working.</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input type="text" id="testEmailTo" placeholder="your@email.com"
+              style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:6px 10px;outline:none;width:220px">
+            <button id="testEmailBtn" class="btn btn-outline btn-sm" onclick="testEmail()">Send Test</button>
+            <span id="testEmailMsg" style="font-size:12px"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:20px">
+        <div class="panel-head"><h3>Allowed Email Domains</h3></div>
+        <div class="setting-row" style="flex-direction:column;align-items:flex-start;gap:12px">
+          <div>
+            <div class="setting-desc">Restrict user registration to specific email domains. Leave empty to allow any domain. Changes take effect immediately for new registrations.</div>
+          </div>
+          <div id="domainTagsWrap" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:28px"></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" id="domainInput" placeholder="e.g. sentinelone.com"
+              style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:6px 10px;outline:none;width:240px"
+              onkeydown="if(event.key==='Enter'){addEmailDomain();event.preventDefault()}">
+            <button class="btn btn-outline btn-sm" onclick="addEmailDomain()">+ Add</button>
+          </div>
+        </div>
+      </div>
+
       <div class="panel" style="margin-top:20px;border:1px solid rgba(231,76,60,0.35)">
         <div class="panel-head" style="background:rgba(231,76,60,0.07)">
           <h3 style="color:var(--red)">⚠️ Danger Zone</h3>
@@ -611,6 +691,8 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     }
   }
 
+  let _allowedDomains = [];
+
   async function loadSettings() {
     const sr = await api('/app/settings');
     if (!sr.ok) return;
@@ -623,6 +705,53 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     document.getElementById('settingFixModel').checked = fixEnabled;
     document.getElementById('fixModelPickerWrap').style.display = fixEnabled ? 'block' : 'none';
     if (fixEnabled) await populateFixModelSelect(settings.fixed_model_id);
+    _allowedDomains = Array.isArray(settings.allowed_email_domains) ? settings.allowed_email_domains : [];
+    renderDomainTags();
+    loadEmailSettings(settings);
+  }
+
+  function renderDomainTags() {
+    const wrap = document.getElementById('domainTagsWrap');
+    if (!wrap) return;
+    if (!_allowedDomains.length) {
+      wrap.innerHTML = '<span style="font-size:12px;color:var(--muted);font-style:italic">No restrictions — any domain allowed</span>';
+      return;
+    }
+    wrap.innerHTML = _allowedDomains.map(d => `
+      <span style="display:inline-flex;align-items:center;gap:5px;background:rgba(108,99,255,0.1);border:1px solid rgba(108,99,255,0.3);border-radius:20px;padding:3px 10px;font-size:12px;color:var(--text)">
+        @${esc(d)}
+        <button onclick="removeEmailDomain('${esc(d)}')" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;line-height:1;padding:0;margin-left:2px" title="Remove">&times;</button>
+      </span>`).join('');
+  }
+
+  async function saveEmailDomains() {
+    await api('/admin/app-settings', {
+      method: 'PATCH',
+      body: JSON.stringify({ allowed_email_domains: _allowedDomains }),
+    });
+  }
+
+  async function addEmailDomain() {
+    const input = document.getElementById('domainInput');
+    const raw = input.value.trim().toLowerCase().replace(/^@/, '');
+    if (!raw) return;
+    // Basic domain validation: must have at least one dot, no spaces
+    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(raw)) {
+      input.style.borderColor = 'var(--red)';
+      setTimeout(() => input.style.borderColor = '', 1200);
+      return;
+    }
+    if (_allowedDomains.includes(raw)) { input.value = ''; return; }
+    _allowedDomains.push(raw);
+    input.value = '';
+    renderDomainTags();
+    await saveEmailDomains();
+  }
+
+  async function removeEmailDomain(domain) {
+    _allowedDomains = _allowedDomains.filter(d => d !== domain);
+    renderDomainTags();
+    await saveEmailDomains();
   }
 
   async function populateFixModelSelect(selectedId) {
@@ -655,6 +784,55 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
       method: 'PATCH',
       body: JSON.stringify({ fixed_model_enabled: true, fixed_model_id: modelId }),
     });
+  }
+
+  async function loadEmailSettings(settings) {
+    document.getElementById('emailSmtpHost').value    = settings.smtp_host    || '';
+    document.getElementById('emailSmtpPort').value    = settings.smtp_port    || 587;
+    document.getElementById('emailUsername').value    = settings.email_username || '';
+    document.getElementById('emailFromAddress').value = settings.from_email   || '';
+    const pwdInput = document.getElementById('emailPassword');
+    pwdInput.placeholder = settings.email_password_set ? '(saved — enter to replace)' : 'Enter password';
+    const chip = document.getElementById('emailPasswordSavedChip');
+    if (chip) chip.style.display = settings.email_password_set ? 'inline' : 'none';
+  }
+
+  async function saveEmailSettings() {
+    const btn = document.getElementById('emailSaveBtn');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    const body = {
+      smtp_host:      document.getElementById('emailSmtpHost').value.trim(),
+      smtp_port:      parseInt(document.getElementById('emailSmtpPort').value) || 587,
+      email_username: document.getElementById('emailUsername').value.trim(),
+      from_email:     document.getElementById('emailFromAddress').value.trim(),
+    };
+    const pwd = document.getElementById('emailPassword').value;
+    if (pwd) body.email_password = pwd;
+    const res = await api('/admin/app-settings', { method: 'PATCH', body: JSON.stringify(body) });
+    btn.disabled = false; btn.textContent = 'Saved ✓';
+    setTimeout(() => btn.textContent = 'Save', 2000);
+    if (res.ok) {
+      const s = await res.json();
+      loadEmailSettings(s);
+      document.getElementById('emailPassword').value = '';
+    }
+  }
+
+  async function testEmail() {
+    const to = document.getElementById('testEmailTo').value.trim();
+    if (!to) return;
+    const btn = document.getElementById('testEmailBtn');
+    const msg = document.getElementById('testEmailMsg');
+    btn.disabled = true; btn.textContent = 'Sending…';
+    msg.textContent = '';
+    const res = await api('/admin/test-email', { method: 'POST', body: JSON.stringify({ to }) });
+    btn.disabled = false; btn.textContent = 'Send Test';
+    if (res.ok) {
+      msg.style.color = 'var(--green)'; msg.textContent = '✓ Test email sent successfully';
+    } else {
+      const d = await res.json().catch(() => ({}));
+      msg.style.color = 'var(--red)'; msg.textContent = '✗ ' + (d.detail || 'Failed to send');
+    }
   }
 
   function updateModeCards(enabled) {
@@ -1454,6 +1632,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     tenant_updated: '🏢', tenant_deleted: '🗑', guest_chat: '👤',
     api_key_created: '🗝️', api_key_deleted: '🗝️',
     scenario_created: '🎭', scenario_updated: '🎭', scenario_deleted: '🎭',
+    user_login: '🔓', user_first_login: '🌟', guest_registered: '🌟',
   };
   const AUDIT_LABELS = {
     ps_config_changed: 'PS Config', llm_keys_updated: 'LLM Keys', user_created: 'User Created',
@@ -1461,6 +1640,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     tenant_updated: 'Region Updated', tenant_deleted: 'Region Deleted', guest_chat: 'Guest Chat',
     api_key_created: 'API Key Created', api_key_deleted: 'API Key Deleted',
     scenario_created: 'Scenario Created', scenario_updated: 'Scenario Updated', scenario_deleted: 'Scenario Deleted',
+    user_login: 'Sign In', user_first_login: 'First Sign In', guest_registered: 'Guest Registered',
   };
 
   const _auditScenarioMap = {};

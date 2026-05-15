@@ -275,6 +275,12 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
 .wiz-toggle input:checked + .wiz-toggle-slider { background: var(--accent); }
 .wiz-toggle input:checked + .wiz-toggle-slider::before { transform: translateX(16px); }
 .wiz-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; }
+/* OTP boxes */
+.otp-row { display:flex; gap:10px; justify-content:center; margin:18px 0 8px; }
+.otp-box { width:58px; height:66px; text-align:center; font-size:30px; font-weight:700; border-radius:10px; border:2px solid var(--border); background:var(--surface2); color:var(--text); font-family:var(--font); outline:none; transition:border-color 0.15s; caret-color:transparent; }
+.otp-box:focus { border-color:var(--accent); }
+.otp-box.otp-error { border-color:var(--red); animation:otp-shake 0.3s; }
+@keyframes otp-shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-5px)} 75%{transform:translateX(5px)} }
 .wiz-skip { background: none; border: none; color: var(--text-muted); font-family: var(--font); font-size: 12px; cursor: pointer; padding: 4px 0; text-decoration: underline; transition: color 0.15s; }
 .wiz-skip:hover { color: var(--text); }
 .stab { background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-muted); cursor: pointer; font-family: var(--font); font-size: 12px; font-weight: 500; padding: 6px 12px 8px; transition: all 0.15s; margin-bottom: -1px; }
@@ -664,7 +670,7 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
   <div id="sidebar-header">
     <div style="padding:4px 2px 6px;position:relative">
       <img src="/static/prompt-security-logo.png" alt="Prompt Security">
-      <span style="position:absolute;bottom:8px;right:2px;font-size:9px;color:var(--text-muted);opacity:0.5;letter-spacing:0.3px">v2.0.0</span>
+      <span style="position:absolute;bottom:8px;right:2px;font-size:9px;color:var(--text-muted);opacity:0.5;letter-spacing:0.3px">v2.1.0</span>
     </div>
     <button class="sidebar-btn" id="newChatBtn">✏️ New Chat</button>
   </div>
@@ -680,7 +686,7 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
   <header>
     <img src="/static/favicon.png" alt="" style="width:28px;height:28px;object-fit:contain;border-radius:6px;flex-shrink:0">
     <div>
-      <div class="header-title">AI Chat Demo</div>
+      <div class="header-title">HGA Prompt Demo</div>
       <div class="header-subtitle">powered by Prompt Security</div>
     </div>
     <div class="spacer"></div>
@@ -3737,14 +3743,15 @@ reply = await client.chat.completions.create(
   }
 
   // ── Open Mode ─────────────────────────────────────────────────────────────
-  function getGuestName() { return localStorage.getItem('hgapp_guest_name') || ''; }
+  function getGuestName()  { return localStorage.getItem('hgapp_guest_name')  || ''; }
+  function getGuestEmail() { return localStorage.getItem('hgapp_guest_email') || ''; }
 
   function logGuestEvent(event_type, detail) {
     if (!OPEN_MODE) return;
     fetch('/guest/log-event', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ event_type, detail, guest_name: getGuestName() || 'Guest' }),
+      body: JSON.stringify({ event_type, detail, guest_name: getGuestName() || 'Guest', guest_email: getGuestEmail() || undefined }),
     }).catch(() => {});
   }
 
@@ -3772,12 +3779,12 @@ reply = await client.chat.completions.create(
     AUTH_USER = { role: 'se', ps_configured: false, ps_enabled: false, ps_mode: 'api' };
 
     const name = getGuestName();
-    if (name) {
+    if (_setupTokenValid()) {
       document.getElementById('userLabel').textContent = name;
       document.getElementById('userEmailLabel').textContent = name;
     } else {
-      document.getElementById('userLabel').textContent = '';
-      document.getElementById('userEmailLabel').textContent = 'Guest';
+      document.getElementById('userLabel').textContent = name || '';
+      document.getElementById('userEmailLabel').textContent = name || 'Guest';
       openWizard();
     }
 
@@ -3834,7 +3841,8 @@ reply = await client.chat.completions.create(
       messages,
       model,
       system_prompt: sys,
-      guest_name: getGuestName() || undefined,
+      guest_name:  getGuestName()  || undefined,
+      guest_email: getGuestEmail() || undefined,
       ps_config: {
         base_url: cfg.base_url || null,
         gateway_url: cfg.gateway_url || null,
@@ -4723,7 +4731,8 @@ if (evt.type === 'done') {
             system_prompt: sys,
             skip_ps: skipPs,
             session_id: sessionId || undefined,
-            guest_name: getGuestName() || undefined,
+            guest_name:  getGuestName()  || undefined,
+            guest_email: getGuestEmail() || undefined,
             ps_config: {
               base_url: cfg.base_url || null,
               gateway_url: cfg.gateway_url || null,
@@ -5461,7 +5470,7 @@ if (evt.type === 'done') {
   let _helpIdx = 0;
   // Inlined — no fetch, no async, renders instantly
   const _helpPages = [
-    { title: "Welcome to AI Chat Demo", body: "This demo shows how **Prompt Security** protects AI-powered applications in real time — scanning every prompt and response before it reaches your LLM or your users.\n\nUse this environment to explore different attack scenarios, test your Prompt Security configuration, and walk customers through exactly what Prompt Security catches and why.\n\n**What you can do here:**\n\n- Enable Prompt Security scanning and watch it block, modify, or allow messages\n- Run side-by-side comparisons: the same message with and without PS protection\n- Load pre-built attack scenarios that demonstrate real-world threats\n- Create your own custom scenarios for tailored demos\n\n> **Tip:** Click **Demo** in the toolbar to open the scenario panel and load a pre-built attack scenario instantly." },
+    { title: "Welcome to HGA Prompt Demo", body: "This demo shows how **Prompt Security** protects AI-powered applications in real time — scanning every prompt and response before it reaches your LLM or your users.\n\nUse this environment to explore different attack scenarios, test your Prompt Security configuration, and walk customers through exactly what Prompt Security catches and why.\n\n**What you can do here:**\n\n- Enable Prompt Security scanning and watch it block, modify, or allow messages\n- Run side-by-side comparisons: the same message with and without PS protection\n- Load pre-built attack scenarios that demonstrate real-world threats\n- Create your own custom scenarios for tailored demos\n\n> **Tip:** Click **Demo** in the toolbar to open the scenario panel and load a pre-built attack scenario instantly." },
     { title: "The Chat Interface", body: "The main chat area works like any AI assistant — type a message and press **Enter** (or **Shift+Enter** for a new line).\n\n**Key controls in the toolbar:**\n\n| Control | What it does |\n|---|---|\n| System prompt | Set a persistent instruction that shapes every response |\n| Demo | Open the scenario slide-out panel |\n| Compare | Split-screen Prompt Security vs. raw LLM view |\n| Prompt Security | Toggle scanning on/off, shows current mode (API / Gateway) |\n\n**Keyboard shortcuts:**\n\n- `↑ / ↓` arrows in the input box — cycle through your previous prompts\n- `Enter` — send message\n- `Shift+Enter` — new line without sending\n\n**Session history** appears in the left sidebar. Click any session to return to it — background conversations keep streaming even while you're viewing another session." },
     { title: "Configuring Prompt Security", body: "Click the **Prompt Security** button in the toolbar, then **⚙** (gear icon) to open PS settings.\n\n**You'll need:**\n1. **PS Region** — select your organisation's Prompt Security region from the dropdown\n2. **PS App ID / API Key** — your application's API key from the PS portal\n\n> Your App ID is stored **encrypted** in your browser — it never touches the server in open mode.\n\n**Tip:** You need to create your own Homegrown Application in PS. Do not use the default Homegrown Apps Connector.\n1. Click on **Homegrown Apps**\n2. Click the **Settings Cog**\n3. Click on **+ Create New**, give it a name and click on **+Add**\n4. You can then define the policy for your application.\n5. Get the Deployment API Key for your specific application under **Deployment** / **Homegrown Apps** tab.\n\n<video controls style=\"width:100%;border-radius:8px;margin:10px 0 4px\" preload=\"metadata\"><source src=\"/static/CreateHGA.mp4\" type=\"video/mp4\"></video>\n\n**Two scanning modes:**\n\n- **API Mode** — the app calls the LLM directly and sends each message to PS for scanning via the REST API. Full visibility into what was blocked or modified.\n- **Gateway Mode** — all LLM traffic is routed *through* the Prompt Security proxy. The simplest deployment pattern — zero code change needed beyond pointing the SDK at the PS URL.\n\nOnce configured, the PS button turns **purple** (API mode) or shows a gateway indicator. A **status chip** on every bot message shows whether the response was `BLOCKED`, `MODIFIED`, or `ALLOWED`." },
     { title: "Compare Mode", body: "Compare Mode puts the **protected** and **unprotected** LLM responses side by side — making it immediately obvious what Prompt Security catches.\n\n**How to use it:**\n\n1. Click **⚡ Compare** in the toolbar (or the Compare button in the Demo panel next to a scenario)\n2. Type your message — or load a demo scenario — and press **Enter**\n3. The **left column** shows the response through Prompt Security; the **right column** shows the raw LLM response\n\n**What to look for:**\n\n- Left column message blocked → right column answers freely — shows the risk without PS\n- Left column shows a modified response with PII redacted → right shows the original leak\n- Violation cards appear under blocked/modified messages with the full PS reasoning\n\n> Compare Mode is most powerful when combined with a Demo Scenario — load a prompt injection attack and watch the left side catch it while the right side complies." },
@@ -5519,50 +5528,283 @@ if (evt.type === 'done') {
   // ── Startup Wizard ──────────────────────────────────────────────────────────
   let _wizardCurrentStep = 1;
 
+  let _wizardAllowedDomains = [];
+  let _wizardPendingEmail   = '';
+
+  const SETUP_TOKEN_KEY = 'hgapp_setup_token';
+
+  function _computeSetupToken(name, email, tenantId) {
+    // Encode the three critical values so any manual edit invalidates the token
+    return btoa(unescape(encodeURIComponent([name, email, String(tenantId)].join('|'))));
+  }
+
+  function _setupTokenValid() {
+    const name     = localStorage.getItem('hgapp_guest_name')  || '';
+    const email    = localStorage.getItem('hgapp_guest_email') || '';
+    let   tenantId = '';
+    try {
+      const cfg = JSON.parse(localStorage.getItem('hgapp_open_ps_config') || '{}');
+      tenantId = String(cfg.tenant_id || '');
+    } catch { tenantId = ''; }
+    const stored   = localStorage.getItem(SETUP_TOKEN_KEY) || '';
+    return stored && stored === _computeSetupToken(name, email, tenantId);
+  }
+
+  function _wizardGetEmail() {
+    if (_wizardAllowedDomains.length) {
+      const local  = document.getElementById('wizardEmailLocal').value.trim();
+      const domain = document.getElementById('wizardEmailDomain').value;
+      return local && domain ? `${local}@${domain}` : '';
+    }
+    return document.getElementById('wizardEmailFree').value.trim();
+  }
+
+  async function _wizardSendCode(resend = false) {
+    // Validate name
+    const nameInp = document.getElementById('wizardNameInput');
+    if (!nameInp.value.trim()) { nameInp.focus(); nameInp.style.borderColor = 'var(--red)'; return; }
+    nameInp.style.borderColor = '';
+
+    // Validate email
+    const emailVal = _wizardGetEmail();
+    if (_wizardAllowedDomains.length) {
+      const local = document.getElementById('wizardEmailLocal').value.trim();
+      if (!local) { const li = document.getElementById('wizardEmailLocal'); li.focus(); li.style.borderColor = 'var(--red)'; return; }
+      document.getElementById('wizardEmailLocal').style.borderColor = '';
+    } else if (!emailVal) {
+      // Email is optional when no domains configured — skip verification
+      wizardGoTo(2); return;
+    }
+
+    if (!emailVal) return;
+    _wizardPendingEmail = emailVal;
+
+    // Disable button while sending
+    const btn = document.getElementById('wizardNext1');
+    const origText = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Sending…';
+
+    try {
+      const res = await fetch('/guest/request-email-code', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ email: emailVal, name: nameInp.value.trim() }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        document.getElementById('wizardVerifyError').textContent = d.detail || 'Failed to send code. Please try again.';
+        document.getElementById('wizardVerifyPanel').style.display = 'block';
+        document.getElementById('wizardStep1Footer').style.display = 'none';
+        document.getElementById('wizardEmailWrap').style.display = 'none';
+        return;
+      }
+    } catch {
+      btn.disabled = false; btn.textContent = origText;
+      return;
+    } finally {
+      btn.disabled = false; btn.textContent = origText;
+    }
+
+    // Show verify panel
+    document.getElementById('wizardVerifySentTo').textContent = `Code sent to ${emailVal}`;
+    document.getElementById('wizardVerifyPanel').style.display = 'block';
+    document.getElementById('wizardStep1Footer').style.display = 'none';
+    document.getElementById('wizardEmailWrap').style.display = 'none';
+    document.getElementById('wizardVerifyError').textContent = '';
+    ['otp0','otp1','otp2','otp3'].forEach(id => { document.getElementById(id).value = ''; document.getElementById(id).classList.remove('otp-error'); });
+    setTimeout(() => document.getElementById('otp0').focus(), 80);
+
+    if (resend) {
+      const rb = document.getElementById('wizardResendBtn');
+      rb.textContent = '✓ Sent!'; rb.disabled = true;
+      setTimeout(() => { rb.textContent = 'Resend code'; rb.disabled = false; }, 3000);
+    }
+  }
+
+  async function _wizardVerifyCode() {
+    const code = ['otp0','otp1','otp2','otp3'].map(id => document.getElementById(id).value).join('');
+    if (code.length < 4) {
+      // highlight empty boxes
+      ['otp0','otp1','otp2','otp3'].forEach(id => {
+        if (!document.getElementById(id).value) document.getElementById(id).classList.add('otp-error');
+      });
+      return;
+    }
+    const btn = document.getElementById('wizardVerifyBtn');
+    btn.disabled = true; btn.textContent = 'Checking…';
+
+    try {
+      const res  = await fetch('/guest/verify-email-code', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ email: _wizardPendingEmail, code }),
+      });
+      const data = await res.json();
+      if (data.valid) {
+        wizardGoTo(2);
+      } else {
+        const msg = data.reason === 'expired'    ? 'Code has expired. Please request a new one.'
+                  : data.reason === 'no_code'    ? 'No code found. Please request a new one.'
+                  : 'Incorrect code — please try again.';
+        document.getElementById('wizardVerifyError').textContent = msg;
+        ['otp0','otp1','otp2','otp3'].forEach(id => {
+          const b = document.getElementById(id);
+          b.value = '';
+          b.classList.add('otp-error');
+        });
+        setTimeout(() => document.getElementById('otp0').focus(), 50);
+      }
+    } finally {
+      btn.disabled = false; btn.textContent = 'Verify →';
+    }
+  }
+
   async function openWizard() {
     _wizardCurrentStep = 1;
-    // Ensure tenants are loaded (first-time visitors won't have them yet)
-    if (!_psTenants || !_psTenants.length) {
-      try {
-        const res = await fetch('/guest/ps-tenants');
-        _psTenants = res.ok ? await res.json() : [];
-      } catch { _psTenants = []; }
+    // Fetch app settings (for allowed email domains) and PS tenants in parallel
+    const [settingsRes, tenantsRes] = await Promise.all([
+      fetch('/app/settings').catch(() => null),
+      (!_psTenants || !_psTenants.length) ? fetch('/guest/ps-tenants').catch(() => null) : Promise.resolve(null),
+    ]);
+    if (settingsRes?.ok) {
+      const s = await settingsRes.json();
+      _wizardAllowedDomains = Array.isArray(s.allowed_email_domains) ? s.allowed_email_domains : [];
     }
-    // pre-populate tenant dropdown
+    if (tenantsRes?.ok) _psTenants = await tenantsRes.json();
+
+    // pre-populate PS region dropdown
     const sel = document.getElementById('wizardTenantSelect');
-    sel.innerHTML = '<option value="">— Select instance —</option>';
+    sel.innerHTML = '<option value="">— Select region —</option>';
     (_psTenants || []).forEach(t => {
       const opt = document.createElement('option');
       opt.value = t.id;
       opt.textContent = t.name;
       sel.appendChild(opt);
     });
-    // reset fields
+
+    // Email field setup
+    const splitWrap  = document.getElementById('wizardEmailSplit');
+    const freeInput  = document.getElementById('wizardEmailFree');
+    const domainSel  = document.getElementById('wizardEmailDomain');
+    if (_wizardAllowedDomains.length) {
+      splitWrap.style.display = 'flex';
+      freeInput.style.display = 'none';
+      domainSel.innerHTML = '';
+      _wizardAllowedDomains.forEach((d, i) => {
+        const opt = document.createElement('option');
+        opt.value = d;
+        opt.textContent = d;
+        if (i === 0) opt.selected = true;
+        domainSel.appendChild(opt);
+      });
+      document.getElementById('wizardEmailLocal').value = '';
+    } else {
+      splitWrap.style.display = 'none';
+      freeInput.style.display = '';
+      freeInput.value = '';
+    }
+
+    // reset other fields
     document.getElementById('wizardNameInput').value = '';
     document.getElementById('wizardApiKeyInput').value = '';
     document.getElementById('wizardRetentionSelect').value = '7';
     document.getElementById('wizardSeNotesToggle').checked = true;
+    // reset verify panel
+    document.getElementById('wizardVerifyPanel').style.display = 'none';
+    document.getElementById('wizardStep1Footer').style.display = '';
+    document.getElementById('wizardEmailWrap').style.display = '';
+    document.getElementById('wizardVerifyError').textContent = '';
+    ['otp0','otp1','otp2','otp3'].forEach(id => { document.getElementById(id).value = ''; document.getElementById(id).classList.remove('otp-error'); });
+    _wizardPendingEmail = '';
     wizardGoTo(1);
     document.getElementById('wizardBackdrop').classList.add('open');
     setTimeout(() => document.getElementById('wizardNameInput').focus(), 80);
 
-    // Wire buttons now that elements exist
-    document.getElementById('wizardNext1').onclick = () => {
-      const inp = document.getElementById('wizardNameInput');
-      if (!inp.value.trim()) { inp.focus(); inp.style.borderColor = 'var(--red)'; return; }
-      inp.style.borderColor = '';
-      wizardGoTo(2);
-    };
+    // ── Wire step-1 buttons ───────────────────────────────────────────────
+    // "Send code →"
+    document.getElementById('wizardNext1').onclick = () => _wizardSendCode();
     document.getElementById('wizardNameInput').oninput = () => {
       document.getElementById('wizardNameInput').style.borderColor = '';
     };
-    document.getElementById('wizardBack2').onclick  = () => wizardGoTo(1);
-    document.getElementById('wizardNext2').onclick  = () => wizardGoTo(3);
-    document.getElementById('wizardSkip2').onclick  = () => {
-      document.getElementById('wizardTenantSelect').value = '';
-      document.getElementById('wizardApiKeyInput').value  = '';
+    document.getElementById('wizardEmailLocal')?.addEventListener('input', () => {
+      document.getElementById('wizardEmailLocal').style.borderColor = '';
+    });
+
+    // OTP digit boxes — auto-advance and handle paste
+    ['otp0','otp1','otp2','otp3'].forEach((id, i) => {
+      const box = document.getElementById(id);
+      box.oninput = (e) => {
+        const val = e.target.value.replace(/\D/g,'');
+        e.target.value = val ? val[val.length-1] : '';
+        box.classList.remove('otp-error');
+        document.getElementById('wizardVerifyError').textContent = '';
+        if (val && i < 3) document.getElementById('otp'+(i+1)).focus();
+        if (i === 3 && val) _wizardVerifyCode();
+      };
+      box.onfocus = (e) => { e.target.select(); };
+      box.onclick = (e) => { e.target.select(); };
+      box.onkeydown = (e) => {
+        if (e.key === 'Backspace' && !e.target.value && i > 0) {
+          document.getElementById('otp'+(i-1)).focus();
+        }
+      };
+      box.onpaste = (e) => {
+        e.preventDefault();
+        const digits = (e.clipboardData.getData('text') || '').replace(/\D/g,'').slice(0,4);
+        if (!digits) return;
+        [...digits].forEach((d, j) => {
+          const b = document.getElementById('otp'+j);
+          if (b) b.value = d;
+        });
+        const last = Math.min(digits.length - 1, 3);
+        document.getElementById('otp'+last).focus();
+        if (digits.length === 4) _wizardVerifyCode();
+      };
+    });
+
+    document.getElementById('wizardVerifyBtn').onclick  = () => _wizardVerifyCode();
+    document.getElementById('wizardResendBtn').onclick  = () => _wizardSendCode(true);
+    document.getElementById('wizardVerifyBack').onclick = () => {
+      document.getElementById('wizardVerifyPanel').style.display = 'none';
+      document.getElementById('wizardStep1Footer').style.display = '';
+      document.getElementById('wizardEmailWrap').style.display = '';
+      ['otp0','otp1','otp2','otp3'].forEach(id => { document.getElementById(id).value = ''; });
+      document.getElementById('wizardVerifyError').textContent = '';
+    };
+    document.getElementById('wizardBack2').onclick = () => wizardGoTo(1);
+    document.getElementById('wizardNext2').onclick = () => {
+      const region = document.getElementById('wizardTenantSelect').value;
+      const apiKey = document.getElementById('wizardApiKeyInput').value.trim();
+      const errEl  = document.getElementById('wizardStep2Error');
+      if (!region && !apiKey) {
+        errEl.textContent = 'Please select a Prompt Security region and enter your API key.';
+        document.getElementById('wizardTenantSelect').style.borderColor = 'var(--red)';
+        return;
+      }
+      if (!region) {
+        errEl.textContent = 'Please select a Prompt Security region.';
+        document.getElementById('wizardTenantSelect').style.borderColor = 'var(--red)';
+        return;
+      }
+      if (!apiKey) {
+        errEl.textContent = 'Please enter your Deployment API Key.';
+        document.getElementById('wizardApiKeyInput').style.borderColor = 'var(--red)';
+        document.getElementById('wizardApiKeyInput').focus();
+        return;
+      }
+      errEl.textContent = '';
+      document.getElementById('wizardTenantSelect').style.borderColor = '';
+      document.getElementById('wizardApiKeyInput').style.borderColor = '';
       wizardGoTo(3);
     };
+    document.getElementById('wizardTenantSelect').addEventListener('change', () => {
+      document.getElementById('wizardTenantSelect').style.borderColor = '';
+      document.getElementById('wizardStep2Error').textContent = '';
+    });
+    document.getElementById('wizardApiKeyInput').addEventListener('input', () => {
+      document.getElementById('wizardApiKeyInput').style.borderColor = '';
+      document.getElementById('wizardStep2Error').textContent = '';
+    });
     document.getElementById('wizardBack3').onclick  = () => wizardGoTo(2);
     document.getElementById('wizardFinishBtn').onclick = wizardFinish;
   }
@@ -5591,6 +5833,16 @@ if (evt.type === 'done') {
 
   async function wizardFinish() {
     const name = document.getElementById('wizardNameInput').value.trim();
+    // Construct email
+    let email = '';
+    if (_wizardAllowedDomains.length) {
+      const local  = document.getElementById('wizardEmailLocal').value.trim();
+      const domain = document.getElementById('wizardEmailDomain').value;
+      if (local && domain) email = `${local}@${domain}`;
+    } else {
+      email = document.getElementById('wizardEmailFree').value.trim();
+    }
+    if (email) localStorage.setItem('hgapp_guest_email', email);
     const tenantId = parseInt(document.getElementById('wizardTenantSelect').value) || null;
     const apiKey = document.getElementById('wizardApiKeyInput').value.trim();
     const days = document.getElementById('wizardRetentionSelect').value;
@@ -5635,7 +5887,18 @@ if (evt.type === 'done') {
     // 6. Suppress help modal auto-open
     localStorage.setItem('hgapp_hide_tips', '1');
 
-    // 7. Close wizard
+    // 7. Write setup token — used to detect if stored values are edited manually
+    localStorage.setItem(SETUP_TOKEN_KEY, _computeSetupToken(
+      name, email, String(tenantId || '')
+    ));
+
+    // 8. Log registration event
+    const regTenant = (_psTenants || []).find(t => String(t.id) === String(tenantId));
+    logGuestEvent('guest_registered',
+      `name=${name}; email=${email}; region=${regTenant?.name || 'none'}`
+    );
+
+    // 9. Close wizard
     document.getElementById('wizardBackdrop').classList.remove('open');
   }
 
@@ -5661,22 +5924,59 @@ if (evt.type === 'done') {
 
     <!-- Step 1: Welcome & Name -->
     <div id="wizardStep1">
-      <h3 style="font-size:17px;font-weight:700;margin-bottom:8px">Welcome to AI Chat Demo 👋</h3>
+      <h3 style="font-size:17px;font-weight:700;margin-bottom:8px">Welcome to HGA Prompt Demo 👋</h3>
       <p style="font-size:13px;color:var(--text-muted);line-height:1.6;margin-bottom:20px">This tool lets you explore how Prompt Security protects AI apps in real time. Let's get you set up in a few quick steps.</p>
-      <div style="margin-bottom:6px">
+      <div style="margin-bottom:16px">
         <label class="wiz-field-label" for="wizardNameInput">Your name</label>
         <input class="wiz-input" type="text" id="wizardNameInput" placeholder="e.g. Alex Smith" maxlength="60" autocomplete="off">
         <div style="font-size:11px;color:var(--text-muted);margin-top:6px">This name appears in the admin activity log so sessions can be attributed to you.</div>
       </div>
-      <div class="wiz-footer" style="margin-top:20px;justify-content:flex-end">
-        <button class="btn btn-primary" id="wizardNext1" style="min-width:100px">Next →</button>
+      <!-- Email — split (local@domain) when allowed domains are set, plain when not -->
+      <div style="margin-bottom:6px" id="wizardEmailWrap">
+        <label class="wiz-field-label">Your email</label>
+        <!-- Split input (shown when allowed domains configured) -->
+        <div id="wizardEmailSplit" style="display:none;align-items:center;gap:6px">
+          <input class="wiz-input" type="text" id="wizardEmailLocal" placeholder="firstname.lastname" maxlength="80" autocomplete="off" style="flex:1;margin-bottom:0">
+          <span style="font-size:14px;color:var(--text-muted);font-weight:600">@</span>
+          <select class="wiz-input" id="wizardEmailDomain" style="margin-bottom:0;flex:1"></select>
+        </div>
+        <!-- Free-text input (shown when no domain restrictions) -->
+        <input class="wiz-input" type="email" id="wizardEmailFree" placeholder="you@company.com" maxlength="120" autocomplete="off" style="display:none">
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px">Used for identification in audit logs.</div>
+      </div>
+
+      <!-- Verification panel — shown after code is sent -->
+      <div id="wizardVerifyPanel" style="display:none;margin-top:16px">
+        <div style="background:rgba(108,99,255,0.07);border:1px solid rgba(108,99,255,0.22);border-radius:10px;padding:18px 20px;text-align:center">
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">Check your inbox</div>
+          <div id="wizardVerifySentTo" style="font-size:12px;color:var(--text-muted);margin-bottom:2px"></div>
+          <div style="font-size:11px;color:var(--text-muted)">Enter the 4-digit code to continue. Code expires in 10 minutes.</div>
+          <div class="otp-row">
+            <input class="otp-box" id="otp0" type="text" inputmode="numeric" maxlength="1" autocomplete="off">
+            <input class="otp-box" id="otp1" type="text" inputmode="numeric" maxlength="1" autocomplete="off">
+            <input class="otp-box" id="otp2" type="text" inputmode="numeric" maxlength="1" autocomplete="off">
+            <input class="otp-box" id="otp3" type="text" inputmode="numeric" maxlength="1" autocomplete="off">
+          </div>
+          <div id="wizardVerifyError" style="font-size:12px;color:var(--red);min-height:18px;margin-bottom:6px"></div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-top:4px">
+            <button class="btn btn-outline btn-sm" id="wizardVerifyBack" style="font-size:12px">← Edit email</button>
+            <button class="btn btn-primary" id="wizardVerifyBtn" style="min-width:120px">Verify →</button>
+          </div>
+          <div style="margin-top:12px">
+            <button id="wizardResendBtn" style="background:none;border:none;color:var(--accent);font-size:11px;cursor:pointer;text-decoration:underline">Resend code</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="wiz-footer" style="margin-top:20px;justify-content:flex-end" id="wizardStep1Footer">
+        <button class="btn btn-primary" id="wizardNext1" style="min-width:130px">Send code →</button>
       </div>
     </div>
 
     <!-- Step 2: PS Setup -->
     <div id="wizardStep2" style="display:none">
       <h3 style="font-size:17px;font-weight:700;margin-bottom:8px">Connect Prompt Security</h3>
-      <p style="font-size:12px;color:var(--text-muted);margin-bottom:20px">Optional — you can skip and set this up later from the user menu → Prompt Settings</p>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:20px">Select your Prompt Security region and enter your Deployment API Key to continue.</p>
       <div class="wiz-callout" style="margin-bottom:14px">
         <strong>Setup instructions:</strong>
         <div style="margin-top:8px;margin-bottom:2px;color:var(--text-muted)">You need to create your own Homegrown Application in the PS portal. Do not use the default connector.</div>
@@ -5701,12 +6001,10 @@ if (evt.type === 'done') {
         <label class="wiz-field-label" for="wizardApiKeyInput">Deployment API Key</label>
         <input class="wiz-input" type="password" id="wizardApiKeyInput" placeholder="Paste your API key here" autocomplete="off" data-1p-ignore data-lpignore="true" data-form-type="other">
       </div>
-      <div class="wiz-footer" style="margin-top:20px">
+      <div id="wizardStep2Error" style="font-size:12px;color:var(--red);min-height:16px;margin-top:8px"></div>
+      <div class="wiz-footer" style="margin-top:12px">
         <button class="btn btn-outline" id="wizardBack2">← Back</button>
-        <div style="display:flex;align-items:center;gap:14px">
-          <button class="wiz-skip" id="wizardSkip2">Skip</button>
-          <button class="btn btn-primary" id="wizardNext2" style="min-width:100px">Next →</button>
-        </div>
+        <button class="btn btn-primary" id="wizardNext2" style="min-width:100px">Next →</button>
       </div>
     </div>
 
