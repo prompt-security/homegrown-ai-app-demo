@@ -62,8 +62,16 @@
   </form>
 </div>
 <script>
-  const _next = new URLSearchParams(window.location.search).get('next') || '/';
-  if (localStorage.getItem('hgapp_token')) window.location.replace(_next);
+  const _nextParam = new URLSearchParams(window.location.search).get('next');
+  const _next = _nextParam || '/';
+  // If the server redirected us here (next= present), our stored token was rejected —
+  // clear it so we don't loop straight back to the protected page.
+  if (_nextParam) {
+    localStorage.removeItem('hgapp_token');
+    localStorage.removeItem('hgapp_user');
+  } else if (localStorage.getItem('hgapp_token')) {
+    window.location.replace('/');
+  }
 
   document.getElementById('loginForm').addEventListener('submit', async e => {
     e.preventDefault();
