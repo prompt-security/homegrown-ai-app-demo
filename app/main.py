@@ -2112,7 +2112,10 @@ def _parse_app_settings(s: dict) -> dict:
 async def get_app_settings(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(AppSetting))
     s = {row.key: row.value for row in result.scalars().all()}
-    return _parse_app_settings(s)
+    parsed = _parse_app_settings(s)
+    # True if SMTP will actually work — DB value takes precedence, env var is fallback
+    parsed["smtp_configured"] = bool(parsed.get("smtp_host") or SMTP_HOST)
+    return parsed
 
 
 @app.patch("/admin/app-settings")

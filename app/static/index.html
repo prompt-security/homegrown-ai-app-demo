@@ -2327,6 +2327,15 @@ reply = await client.chat.completions.create(
     }
   }
 
+  function showSmtpBlockScreen() {
+    // Close wizard and help if open
+    document.getElementById('wizardBackdrop')?.classList.remove('open');
+    document.getElementById('helpBackdrop')?.classList.remove('open');
+    // Show blocking overlay
+    const el = document.getElementById('smtpBlockOverlay');
+    if (el) { el.style.display = 'flex'; }
+  }
+
   async function init() {
     try {
       const sr = await fetch('/app/settings');
@@ -2337,6 +2346,8 @@ reply = await client.chat.completions.create(
         if (OPEN_MODE) {
           const hint = document.getElementById('psSettingsHint');
           if (hint) hint.textContent = 'Select your Prompt Security region and enter your App ID. Your settings are stored locally in your browser — nothing is sent to the server.';
+          // Block open-mode entirely if SMTP isn't set up — guests can't register without email verification
+          if (!s.smtp_configured) { showSmtpBlockScreen(); return; }
         }
       }
     } catch {}
@@ -5903,6 +5914,21 @@ if (evt.type === 'done') {
   }
 
 </script>
+
+<!-- ── SMTP Block Screen ── -->
+<div id="smtpBlockOverlay" style="display:none;position:fixed;inset:0;background:rgba(15,17,23,0.98);z-index:500;align-items:center;justify-content:center">
+  <div style="text-align:center;max-width:420px;padding:48px 36px;background:var(--surface);border:1px solid var(--border);border-radius:20px;box-shadow:0 24px 64px rgba(0,0,0,0.5)">
+    <div style="font-size:48px;margin-bottom:20px">⚙️</div>
+    <h2 style="color:var(--text);font-size:20px;font-weight:700;margin-bottom:12px">Admin Setup Required</h2>
+    <p style="color:var(--text-muted);font-size:14px;line-height:1.65;margin-bottom:28px">
+      Email service is not configured. An administrator must set up SMTP settings before guests can register and use this application.
+    </p>
+    <a href="/admin" style="display:inline-block;background:var(--accent);color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:11px 28px;border-radius:8px;letter-spacing:0.2px;transition:background 0.2s"
+       onmouseover="this.style.background='var(--accent-hover)'" onmouseout="this.style.background='var(--accent)'">
+      Open Admin Settings →
+    </a>
+  </div>
+</div>
 
 <!-- ── Startup Wizard ── -->
 <div class="backdrop" id="wizardBackdrop" style="z-index:300">
