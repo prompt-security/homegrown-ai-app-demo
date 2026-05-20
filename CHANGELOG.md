@@ -1,6 +1,9 @@
 # Changelog
 
 ## [2026-05-20]
+### Fixed
+- 17 failing CI tests fixed: restored `skip_ps` 403 for non-admin users; added `_LOCAL_OPENAI_MODEL_IDS` set and `local_openai` provider detection; free models now return `requires_key: "openrouter"` instead of `None`; `_validate_security_bootstrap_config` now raises `RuntimeError` in production for insecure defaults; added `_validate_external_https_url`, `_normalize_legacy_public_http_url`, and `_migrate_legacy_ps_tenant_urls` security helpers; `_build_ps_api_client` now returns `None` for invalid/private tenant URLs; chart.js pinned to `@4.4.9` with SHA-384 SRI in `admin.html`; model selector now uses `if (m.requires_key && !m.key_set)` pattern; added `function canUseCompareMode()` gating compare mode to admin role with `effectiveSkipPs` in `streamIntoBubble` — @pj.norris
+
 ### Added
 - API / Gateway mode selector added to Step 2 of both the open-mode wizard and the user-mode first-login wizard; selecting Gateway shows the tenant's gateway URL (or a warning if none is configured); selected mode is saved when the wizard finishes — open mode writes to localStorage, user mode sends `ps_mode` in the `PATCH /users/me/ps-config` call — @pj.norris
 

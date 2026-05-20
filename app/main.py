@@ -180,13 +180,16 @@ _PROVIDER_URLS = {
 }
 
 
-_OLLAMA_MODEL_IDS = {s.strip() for s in os.getenv("OLLAMA_MODEL_IDS", "").split(",") if s.strip()}
-OLLAMA_BASE_URL   = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+_OLLAMA_MODEL_IDS      = {s.strip() for s in os.getenv("OLLAMA_MODEL_IDS", "").split(",") if s.strip()}
+_LOCAL_OPENAI_MODEL_IDS: set[str] = set()
+OLLAMA_BASE_URL        = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
 
 
 def _detect_provider(model_id: str) -> str:
     if model_id in _OLLAMA_MODEL_IDS:
         return "ollama"
+    if model_id in _LOCAL_OPENAI_MODEL_IDS:
+        return "local_openai"
     m = model_id.lower()
     if m.startswith(("gpt-", "o1", "o3", "o4")):
         return "openai"
@@ -204,11 +207,13 @@ def _model_meta(model_id: str) -> dict:
     provider = _detect_provider(model_id)
     if provider == "ollama":
         return {"category": "local", "provider": "Ollama", "requires_key": None}
+    if provider == "local_openai":
+        return {"category": "local", "provider": "Local OpenAI", "requires_key": None}
     is_free = model_id.lower().endswith(":free")
     return {
         "category": "free" if is_free else "paid",
         "provider": {"openai": "OpenAI", "anthropic": "Anthropic", "google": "Google", "perplexity": "Perplexity", "openrouter": "OpenRouter"}[provider],
-        "requires_key": None if is_free else provider,
+        "requires_key": "openrouter" if is_free else provider,
     }
 
 
@@ -277,29 +282,25 @@ async def refresh_model_cache() -> list[dict]:
 
 
 def _validate_security_bootstrap_config() -> None:
-    """Log warnings for secrets that are missing from env vars.
-
-    These are no longer hard failures — all secrets can be configured via the
-    admin Setup Wizard and persisted in the database / override files, so the
-    .env file is entirely optional.  The lifespan will hot-swap any env-based
-    defaults with DB-stored values immediately after startup.
-    """
+    """Raise RuntimeError in production if insecure default secrets are detected."""
     if APP_ENV in {"dev", "development", "test", "local"}:
         return
 
-    _insecure_keys = {"dev_secret_change_me", "change_me", "changeme", "test-secret-key-for-unit-tests"}
-    secret_key = os.getenv("SECRET_KEY", "")
-    if not secret_key or secret_key in _insecure_keys:
-        logger.warning(
-            "SECRET_KEY not set in environment — using ephemeral key. "
-            "Sessions will be invalidated on restart until a key is saved via the Setup Wizard."
-        )
+    _insecure_secret_keys = {"dev_secret_change_me", "change_me", "changeme", "test-secret-key-for-unit-tests"}
+    _insecure_admin_passwords = {"admin", "change_me", "changeme", "password", "ChangeMe!"}
 
+    secret_key = os.getenv("SECRET_KEY", "")
     admin_password = os.getenv("ADMIN_PASSWORD", "")
-    if not admin_password or admin_password in {"admin", "change_me", "changeme", "password"}:
-        logger.warning(
-            "ADMIN_PASSWORD not set in environment — using default 'ChangeMe!'. "
-            "Set a strong password via the Setup Wizard."
+
+    if not secret_key or secret_key in _insecure_secret_keys:
+        raise RuntimeError(
+            "SECRET_KEY is not set or uses an insecure default. "
+            "Set a strong SECRET_KEY environment variable before running in production."
+        )
+    if not admin_password or admin_password in _insecure_admin_passwords:
+        raise RuntimeError(
+            "ADMIN_PASSWORD is not set or uses an insecure default. "
+            "Set a strong ADMIN_PASSWORD environment variable before running in production."
         )
 
 
@@ -1693,7 +1694,8 @@ async def chat_stream(
             except Exception as e:
                 logger.warning("Could not init PS client for %s: %s", current_user.email, e)
 
-    # skip_ps allowed for all authenticated users (compare mode uses it for the right panel)
+    if request.skip_ps and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="skip_ps is restricted to admin users")
 
     # ── Store user message in DB ──────────────────────────────────────────────
     user_db_msg = Message(
@@ -3309,8 +3311,61 @@ def _ensure_public_api_enabled():
         )
 
 
+_PRIVATE_IP_PREFIXES = (
+    "10.", "172.16.", "172.17.", "172.18.", "172.19.", "172.20.", "172.21.",
+    "172.22.", "172.23.", "172.24.", "172.25.", "172.26.", "172.27.", "172.28.",
+    "172.29.", "172.30.", "172.31.", "192.168.", "127.", "169.254.",
+)
+_UNSAFE_HOSTNAMES = {"localhost", ""}
+
+
+def _is_unsafe_host(hostname: str) -> bool:
+    if hostname in _UNSAFE_HOSTNAMES:
+        return True
+    if hostname.endswith(".local"):
+        return True
+    return any(hostname.startswith(pfx) for pfx in _PRIVATE_IP_PREFIXES)
+
+
+def _validate_external_https_url(url: str, field_name: str) -> str:
+    """Validate that a URL is HTTPS and targets a public hostname. Raises HTTPException if not."""
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        raise HTTPException(status_code=422, detail=f"{field_name}: URL must use HTTPS")
+    if _is_unsafe_host(parsed.hostname or ""):
+        raise HTTPException(status_code=422, detail=f"{field_name}: URL must target a public hostname")
+    return url
+
+
+def _normalize_legacy_public_http_url(url: str) -> Optional[str]:
+    """Upgrade http:// to https:// only for public hostnames. Returns None for private/localhost."""
+    parsed = urlparse(url)
+    if parsed.scheme != "http":
+        return url
+    if _is_unsafe_host(parsed.hostname or ""):
+        return None
+    return urlunparse(parsed._replace(scheme="https"))
+
+
+async def _migrate_legacy_ps_tenant_urls(db: AsyncSession) -> None:
+    """Disable ps_enabled for users whose PS tenant has an invalid (non-HTTPS/private) base_url."""
+    result = await db.execute(
+        select(User).where(User.ps_enabled.is_(True)).options(selectinload(User.ps_tenant))
+    )
+    users = result.scalars().all()
+    for user in users:
+        if user.ps_tenant and _is_unsafe_host(urlparse(user.ps_tenant.base_url).hostname or ""):
+            user.ps_enabled = False
+            logger.warning("Disabled PS for user %s — invalid tenant base_url: %s", user.email, user.ps_tenant.base_url)
+    await db.commit()
+
+
 def _build_ps_api_client(user: User) -> Optional[PromptSecurityClient]:
     if not (user.ps_enabled and user.ps_tenant and user.ps_api_key_enc):
+        return None
+    parsed = urlparse(user.ps_tenant.base_url)
+    if parsed.scheme != "https" or _is_unsafe_host(parsed.hostname or ""):
+        logger.warning("PS tenant base_url is invalid for %s: %s", user.email, user.ps_tenant.base_url)
         return None
     try:
         ps_app_id = decrypt(user.ps_api_key_enc)
