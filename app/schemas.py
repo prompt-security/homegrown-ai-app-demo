@@ -61,6 +61,7 @@ class UserCreate(BaseModel):
     daily_message_limit: Optional[int] = None
     allowed_models: Optional[list[str]] = None
     ps_tenant_id: Optional[int] = None
+    must_change_password: bool = True
 
 class UserUpdate(BaseModel):
     email: Optional[str] = None
@@ -71,6 +72,7 @@ class UserUpdate(BaseModel):
     allowed_models: Optional[list[str]] = None
     ps_tenant_id: Optional[int] = None
     ps_enabled: Optional[bool] = None
+    must_change_password: Optional[bool] = None
 
 class UserOut(BaseModel):
     id: int
@@ -86,6 +88,7 @@ class UserOut(BaseModel):
     ps_enabled: bool = True
     llm_key_settings_visible: bool = False
     llm_keys_configured: list[str] = []  # list of providers with keys set, e.g. ["openai","openrouter"]
+    must_change_password: bool = False
     created_at: datetime
     model_config = {"from_attributes": True}
 

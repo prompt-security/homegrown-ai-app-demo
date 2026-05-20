@@ -1,5 +1,112 @@
 # Changelog
 
+## [2026-05-20]
+### Added
+- API / Gateway mode selector added to Step 2 of both the open-mode wizard and the user-mode first-login wizard; selecting Gateway shows the tenant's gateway URL (or a warning if none is configured); selected mode is saved when the wizard finishes — open mode writes to localStorage, user mode sends `ps_mode` in the `PATCH /users/me/ps-config` call — @pj.norris
+
+
+### Changed
+- User-mode first-login wizard now enforces Prompt Security setup: Skip button removed from Step 2, both region and API key are required before Next is enabled, Next is disabled entirely when no regions are configured (user must contact admin), and error messages clarify that PS is mandatory — @pj.norris
+
+
+### Added
+- "Require password reset on next login" checkbox on the New User / Edit User modal; checked by default for new users (preserving previous behaviour), reflects current value when editing; `must_change_password` added to `UserCreate` and `UserUpdate` schemas and handled in both `POST /admin/users` and `PATCH /admin/users/{id}` endpoints — @pj.norris
+
+
+### Fixed
+- In user mode with PS disabled and compare mode not active, prompts returned no response: removed artificial `max_tokens=150` cap that was applied when `ps_client=None` (it could cause empty streams on some models); added `try/except` around the assistant message DB log so a DB error never silently swallows the `done` SSE event; `updatePsStatus()` now calls `exitCompare()` when PS is disabled so compare mode is properly exited and the regular chat is shown — @pj.norris
+
+## [2026-05-19]
+### Changed
+- Demo scenario seed data moved from hardcoded Python list in `main.py` to `app/data/scenarios.json`; on startup the seed function reads from that file, so the built-in scenarios can be updated by editing or overwriting the JSON without touching Python code — @pj.norris
+
+### Added
+- "💾 Save to Master" button on the admin Demo Scenarios page writes the current database scenarios back to `app/data/scenarios.json` via `POST /admin/demo-scenarios/save-master`; any new database will then be seeded from the updated file; action is confirmed before saving and logged to the audit trail — @pj.norris
+
+
+### Added
+- Recent Messages section on the user detail overview now renders with the same ga-bubble/ga-chip format as the chat history modal — PS scanned/action chips, model chip, token chip, full message content; stats endpoint extended to return full content, ps_scanned, and token fields — @pj.norris
+- Clicking a user row on the admin Users page in user management mode now opens the same chat history modal used for open-mode guests, showing all sessions and messages with date/PS filters; added `GET /admin/users/{user_id}/chat-history` backend endpoint returning the identical schema as `/admin/guest-activity` — @pj.norris
+- Demo scenario changes (create, update, delete, duplicate) in user management mode are now recorded in the activity monitor; added `POST /users/log-event` endpoint for authenticated users and a unified `logActivity()` frontend helper that routes to the guest or auth endpoint depending on mode — @pj.norris
+
+
+### Fixed
+- `se` role users in user management mode received a 403 Forbidden error when sending any chat message; compare mode sends `skip_ps: true` for the right-side panel regardless of role, which the backend was rejecting — removed the restriction so all authenticated users can use `skip_ps` — @pj.norris
+
+### Changed
+- User management first-login wizard expanded from 2 to 3 steps to match the open-mode wizard content: Step 2 (Connect Prompt Security) now includes the full setup callout with numbered instructions and the HGA creation video; Step 3 (Your Preferences) added with history retention selector, SE Coaching Notes toggle, and Explanation Notes toggle; Skip on Step 2 now advances to preferences rather than finishing — @pj.norris
+
+
+### Added
+- New users created via the admin panel now have `must_change_password=True` set automatically; on first login they are shown the existing password-change panel on the login page with live complexity validation — @pj.norris
+
+### Changed
+- Admin button in the user menu is now always visible to all users in all modes; clicking it opens the password-protected admin auth modal regardless of the user's role or access mode — @pj.norris
+
+### Added
+- Setup wizard now includes a Prompt Security Regions step (both modes): add regions with name, base URL (validated), and optional gateway URL; regions are listed with a remove button; step requires at least one region to advance; pre-marked complete if regions already exist; Import button accepts a JSON backup and skips duplicates — @pj.norris
+- In user management mode, exiting the admin panel when no users have been created shows a warning dialog offering to go to the Users tab to add one before leaving — @pj.norris
+- New User modal now shows a live complexity panel and confirm password field with match indicator; Edit User modal keeps the "leave blank to keep" behaviour with no confirm field — @pj.norris
+- Removed PS tenant assignment from user creation/edit modal and users table; admins no longer manually assign users to Prompt Security regions — @pj.norris
+- First-login setup wizard for user management mode: shown once per user (localStorage flag) after initial login; Step 1 is a welcome screen, Step 2 offers Prompt Security API key entry (pre-filled with the admin-assigned region, skippable); no name, email, or verification fields — @pj.norris
+
+### Fixed
+- Navigating to admin after authenticating via the chat-page Admin modal prompted for the password a second time; admin page now reuses the token from localStorage and only shows the overlay if the token is absent or expired — @pj.norris
+
+### Fixed
+- Wizard "Admin Password" step: Save & Continue was silently failing because the save handler still referenced `wzAdminEmail` (removed in a prior fix), causing the email validation to block every submission; removed email field references and the unnecessary re-login attempt from the handler — @pj.norris
+
+
+### Changed
+- Setup Wizard now uses an explicit `wizard_completed` flag (stored in `app_settings`) instead of inferring completion from individual required items; the wizard opens on every admin page load until the user clicks "Go to Dashboard" on the final step, at which point the flag is saved and the wizard stops auto-opening — @pj.norris
+
+### Added
+- `GET /setup/status` — unauthenticated endpoint that returns `{ needs_setup: bool }` based on whether the admin password has been set via the wizard (checks for `admin_password_hash` in `app_settings`) — @pj.norris
+- `POST /setup/bootstrap-token` — unauthenticated endpoint that issues a 2-hour admin JWT so the Setup Wizard can make authenticated API calls on first run; returns 403 once initial setup is complete, preventing reuse — @pj.norris
+- First-run detection on admin page load: checks `/setup/status` before showing the login overlay; if setup is needed, automatically obtains a bootstrap token and opens the Setup Wizard without requiring a password — @pj.norris
+
+### Changed
+- `auth.py` no longer raises `RuntimeError` when `SECRET_KEY` is absent from the environment in production — the app starts with an ephemeral JWT key that the lifespan immediately replaces with the DB-stored secret; the `.env` entry is optional — @pj.norris
+- `_validate_security_bootstrap_config()` in `main.py` downgrades from hard failures to log warnings for missing `SECRET_KEY` / `ADMIN_PASSWORD` env vars; all these secrets are now managed via the Setup Wizard and persisted in the database, making `.env` entirely optional (only `DATABASE_URL` is still needed at container start) — @pj.norris
+- Setup Wizard Welcome, Encryption Key, JWT Secret, and Admin Password steps updated to explicitly explain which `.env` variable each step replaces — @pj.norris
+- Removed all references to env var names (`SECRET_KEY`, `ENCRYPTION_KEY`, `ADMIN_PASSWORD`, `.env`) from the admin UI; wizard and confirm dialogs now describe each secret in plain terms without referencing the environment — @pj.norris
+- Access Mode wizard step now shows the Next button like all other steps (previously hid it, forcing card-click-only navigation) — @pj.norris
+
+### Fixed
+- Setup Wizard Email step: username and from-address inputs were not pre-populated because the wizard used wrong field names (`smtp_username`, `smtp_from`) that don't match the API response keys (`email_username`, `from_email`); also fixed the save call which was POSTing to a non-existent `/admin/email-settings` endpoint instead of `/admin/app-settings` with correct field names; password placeholder now shows "(saved — leave blank to keep)" when a password is already stored — @pj.norris
+- Setup Wizard App Settings step: was calling the generic `/admin/app-settings` PATCH (which stores raw strings and does not update in-memory globals) instead of the typed `/admin/application-settings` endpoint; `daily_limit: 0` now sent as integer 0 (unlimited) rather than `null`, which previously caused a `"none"` string in the DB and a ValueError on read-back — @pj.norris
+- Setup Wizard: App Settings and DB Password steps now pre-marked as completed on wizard open (App Settings always has sensible defaults; DB Password when `db_password_set` is true) so they show "Next →" instead of "Save & Continue →" — @pj.norris
+
+### Added
+- Setup Wizard: full-screen multi-step overlay (`id="wizardOverlay"`) accessible via a new "🛠 Setup Wizard" button in the admin topbar; guides admins through 12 steps (Welcome → Encryption Key → JWT Secret → Admin Password → Access Mode → Email Server → Allowed Domains → LLM Provider Keys → LiteLLM Key → App Settings → DB Password → Complete); left sidebar shows numbered step list with green checkmarks for completed steps and greyed-out entries for mode-skipped steps; wizard auto-opens on first page load when fewer than 4 of 7 config items are passing (once per session via sessionStorage); all saves use the existing `api()` function and established endpoints — @pj.norris
+
+### Changed
+- Email Settings and Allowed Email Domains panels consolidated inside the Access Mode section; both are hidden in User Management mode and shown in Open Mode — @pj.norris; it is hidden when User Management mode is active and shown when Open Mode is selected, with an info banner explaining that magic link authentication requires an email server — @pj.norris
+- Config Status checklist now only includes the Email group (and counts it against the total) when Open Mode is active; switching to User Management mode removes the Email entry and recalculates the badge — @pj.norris
+
+## [2026-05-18]
+### Fixed
+- JWT Secret, Fernet Encryption Key, and LiteLLM Master Key fields in Admin → Settings → Security each have a red Clear button; clicking it shows a confirmation modal, then calls a new `DELETE` endpoint (`/admin/jwt-secret`, `/admin/encryption-key`, `/admin/litellm-key`) which removes the stored value from the DB (or override file), reverts the in-memory state to the env-var default, hides the "Saved" chip, and refreshes the Config Status checklist — @pj.norris
+- Fix Model toggle now requires a model to be selected before the setting is persisted as enabled; Config Status checklist gains a "Fix Model" entry under Application whenever the toggle is on — green with the model ID if a model is selected, red warning if none is selected; the entry (and its contribution to the pass/fail count) is hidden when Fix Model is off — @pj.norris
+- Fix Model toggle now requires a model to be selected before the setting is persisted as enabled; toggling on shows the picker and an inline error "A model must be selected to enable Fix Model" — the backend is not updated to `enabled=true` until a valid model is chosen from the dropdown — @pj.norris
+- "Exit Admin" nav link is disabled (greyed out, unclickable) when any Config Status checklist item is incomplete; a tooltip explains how many items remain; the link re-enables automatically once all 7 items pass — @pj.norris
+- Config Status sidebar checklist now treats LLM Provider Keys as a single pass/fail item: the group passes (and counts as 1 of 7) if at least one provider key is set, rather than counting each of the 5 providers separately — @pj.norris
+
+### Changed
+- First-login forced password change: bootstrap admin is created with `must_change_password=True`; `POST /auth/login` returns this flag in the user payload; `login.html` intercepts it, hides the login form, and shows a mandatory change-password panel that cannot be skipped; `POST /auth/change-password` verifies the current password, enforces min-8-char and no-reuse rules, clears the flag, then re-issues a fresh login — @pj.norris
+- Default admin credentials changed to `admin@sentinelone.com` / `ChangeMe!`; Admin → Settings → Access Mode now shows an info box with these credentials and a note about the first-login prompt when User Management mode is active — @pj.norris
+- LLM Provider Keys panel added to Admin → Settings: admins can store encrypted API keys for OpenAI, Anthropic, Google, Perplexity, and OpenRouter; keys are persisted in `app_settings` (Fernet-encrypted), loaded into `_SHARED_LLM_KEYS` at startup, and injected into every LiteLLM request via `extra_body` — no container restart needed; per-provider Set/Update/Clear actions with masked key preview — @pj.norris
+- Application Settings panel added to Admin → Settings: Daily Message Limit (0 = unlimited), Max File Size (MB), Ollama Base URL, and Ollama Model IDs are now configurable at runtime via `PATCH /admin/application-settings`; values are persisted in `app_settings` and hot-swapped in-process on save (Ollama Base URL requires a LiteLLM restart to propagate) — @pj.norris
+- LiteLLM container no longer requires a `LITELLM_MASTER_KEY` env var; removed `master_key` from `litellm/config.yaml` so the proxy runs without auth on the internal Docker network. The app still manages a LiteLLM key in the admin Security panel and sends it as a Bearer token (silently accepted). No `.env` entry needed — @pj.norris
+- Admin access is now password-only — no email required. `POST /auth/admin-login` accepts a password, checks it against the hashed value in `app_settings` (falling back to `ADMIN_PASSWORD` env var), and issues a JWT for the admin user — @pj.norris
+- `admin.html` no longer redirects to `/login` when unauthenticated; instead shows an in-page password overlay. Logout also returns to the overlay. Footer shows "Administrator" instead of the admin email — @pj.norris
+- Admin modal in `index.html` (both open mode and user mode) is now password-only; both the open-mode button and the user-mode Admin menu item open the same modal — @pj.norris
+
+### Added
+- Admin Password field in Admin → Settings → Security: same live complexity rules and confirm-tick as Postgres Password; saves a bcrypt hash to `app_settings` via `POST /admin/admin-password` — @pj.norris
+- Database settings panel in Admin → Settings: Postgres Password field with confirmation input, match validation, and encrypted storage via `db_password_enc` in `app_settings`; `POST /admin/db-password` issues `ALTER USER` on the live connection, writes a `db_config_override.json` file in a persistent Docker volume (`app_data:/app/data`), and hot-swaps the SQLAlchemy engine in-process so the new credentials take effect immediately without a restart — @pj.norris
+- `database.py` now checks for an override file at startup (`app/data/db_config_override.json`) and uses its `database_url` if present, so password changes survive container restarts — @pj.norris
+
 ## [2026-05-15] — v2.2.0
 ### Added
 - Email Settings panel in Admin → Settings: SMTP host, port, username, encrypted password (Fernet via `email_password_enc`), and from address are now configurable from the UI and stored in the `app_settings` table; env vars (`SMTP_HOST`, `SMTP_PORT`, `EMAIL_USERNAME`, `EMAIL_PASSWORD`, `FROM_EMAIL`) remain as fallback for existing deployments — @pj.norris
