@@ -6,3 +6,6 @@ __pycache__/
 pgdata/
 *.egg-info/
 .venv/
+docker-compose.yml
+docker-compose.yml
+.claude/worktrees/agent-a94f546398ae2890a/

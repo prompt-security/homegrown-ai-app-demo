@@ -19,15 +19,30 @@ from models import APIKey, User
 APP_ENV = os.getenv("APP_ENV", os.getenv("ENV", "development")).lower()
 _SECRET_FROM_ENV = os.getenv("SECRET_KEY", "")
 
-if APP_ENV in {"dev", "development", "test", "local"}:
-    SECRET_KEY = _SECRET_FROM_ENV or "dev_secret_change_me"
-else:
-    if not _SECRET_FROM_ENV or _SECRET_FROM_ENV in {"dev_secret_change_me", "change_me", "changeme", "test-secret-key-for-unit-tests"}:
-        raise RuntimeError("SECRET_KEY must be explicitly set to a strong value")
+# Use env var if provided; otherwise start with an ephemeral key.
+# The lifespan in main.py will hot-swap this with the DB-stored secret so
+# the app works fully without SECRET_KEY in the environment.
+_INSECURE = {"dev_secret_change_me", "change_me", "changeme", "test-secret-key-for-unit-tests"}
+if _SECRET_FROM_ENV and _SECRET_FROM_ENV not in _INSECURE:
     SECRET_KEY = _SECRET_FROM_ENV
+else:
+    import secrets as _secrets
+    SECRET_KEY = _secrets.token_hex(32)  # ephemeral; replaced from DB at startup
 
 ALGORITHM   = "HS256"
 TOKEN_TTL_H = int(os.getenv("TOKEN_TTL_H", "24"))
+
+
+def set_secret_key(key: str) -> None:
+    """Hot-swap the JWT signing key in-process. Invalidates all existing tokens."""
+    global SECRET_KEY
+    SECRET_KEY = key
+
+
+def reset_secret_key() -> None:
+    """Restore the JWT signing key to the original env-var value (or dev fallback)."""
+    global SECRET_KEY
+    SECRET_KEY = _SECRET_FROM_ENV or "dev_secret_change_me"
 
 pwd_ctx  = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer   = HTTPBearer(auto_error=False)
