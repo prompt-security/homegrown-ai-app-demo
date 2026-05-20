@@ -2,6 +2,9 @@
 
 ## [2026-05-20]
 ### Fixed
+- Guest activity not logged after DB password change via Setup Wizard: `_persist_guest` used a stale `AsyncSessionLocal` reference (copied at import time) instead of the module-level reference updated by `rebuild_engine`; fixed to use `_db_module.AsyncSessionLocal()` so it always reflects the live engine — @pj.norris
+
+### Fixed
 - 17 failing CI tests fixed: restored `skip_ps` 403 for non-admin users; added `_LOCAL_OPENAI_MODEL_IDS` set and `local_openai` provider detection; free models now return `requires_key: "openrouter"` instead of `None`; `_validate_security_bootstrap_config` now raises `RuntimeError` in production for insecure defaults; added `_validate_external_https_url`, `_normalize_legacy_public_http_url`, and `_migrate_legacy_ps_tenant_urls` security helpers; `_build_ps_api_client` now returns `None` for invalid/private tenant URLs; chart.js pinned to `@4.4.9` with SHA-384 SRI in `admin.html`; model selector now uses `if (m.requires_key && !m.key_set)` pattern; added `function canUseCompareMode()` gating compare mode to admin role with `effectiveSkipPs` in `streamIntoBubble` — @pj.norris
 
 ### Added

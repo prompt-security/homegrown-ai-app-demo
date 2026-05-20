@@ -3103,7 +3103,7 @@ async def guest_chat_stream(
         try:
             ps_tag = f" [PS:{action}]" if scanned else ""
             detail = f"{model}{ps_tag} [{ip_label}] — {last_user_msg[:80]}"
-            async with AsyncSessionLocal() as log_db:
+            async with _db_module.AsyncSessionLocal() as log_db:
                 log_db.add(Message(
                     session_id=session_id, user_id=None, guest_id=guest_id,
                     role="assistant", content=content, model=model,
