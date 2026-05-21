@@ -6,49 +6,33 @@ A multi-user AI chat application with deep [Prompt Security](https://www.prompt.
 
 ## Features
 
-- **Multi-user chat** — streaming responses, session history, per-user daily message limits
-- **Prompt Security integration** — two modes:
-  - **API mode** — explicit prompt/response scanning with violation details shown on click
-  - **Gateway mode** — route all LLM traffic through the PS proxy
-- **LiteLLM proxy** — unified gateway to OpenAI, Anthropic, Google, and OpenRouter (free models included)
-- **Hidden per-user LLM API key support** — provider key overrides remain available in code and can be re-enabled if needed
-- **App-issued API keys** — users can create scoped bearer keys for the public test endpoint
-- **Public test API** — optional `POST /v1/responses` endpoint for SaaS scanners and external prompt testing
-- **Admin dashboard** — overview stats, charts, PS tenant management, user management, activity log with config change events
-- **Audit log** — all config changes (PS settings, LLM keys, user/tenant CRUD) appear in the activity log alongside chat messages
+### Core Chat
+- **Multi-user streaming chat** — real-time SSE responses with full session history
+- **Per-user daily message limits** — configurable caps to control usage
+- **Multiple LLM providers** — OpenAI, Anthropic, Google, Perplexity, and OpenRouter (including free models) via LiteLLM
 
-### Demo & Education Features
+### Prompt Security Integration
+- **API mode** — explicit prompt and response scanning before and after each LLM call; violations shown as clickable detail cards with full PS response JSON
+- **Gateway mode** — all LLM traffic routed through the PS proxy URL; no explicit scan calls, PS intercepts at the network layer
+- **PS API inspector** — collapsible panel beneath each violation card shows raw PS request/response JSON, syntax-highlighted
+- **File sanitization** — dedicated File Scan tab in the Demo panel; drag-and-drop a PDF, DOCX, XLSX, or TXT file through the PS `/api/sanitizeFile` endpoint
 
-- **Interactive walkthrough** — step-by-step tour (in the Intro modal) showing the exact Python code running at each stage of a request: user input → PS prompt scan → LLM call → PS response scan → display
-- **API Flow diagram** — custom 3-column diagram (User → Homegrown App + PS Engine → LLM Providers) with bidirectional arrows; no external dependencies
-- **Side-by-side compare mode** — toggle in the header splits the main chat into two live columns: left streams with PS active, right streams raw LLM output, so the impact of PS is immediately visible
-- **PS API inspector** — collapsible panel beneath each PS violation card shows the raw PS request and response JSON, syntax-highlighted
-- **File sanitization demo** — dedicated "File Scan" tab in the Demo panel; drag-and-drop a PDF, DOCX, XLSX, or TXT file to run it through the PS `/api/sanitizeFile` endpoint and inspect the result
-- **Demo scenarios** — pre-built prompts for PII detection, topic policy, token DoS, and prompt injection with per-scenario "Load" and "Compare" buttons
+### Demo & Education
+- **Interactive walkthrough** — step-by-step tour showing the exact Python code running at each stage: user input → PS prompt scan → LLM call → PS response scan → display
+- **Side-by-side compare mode** — splits the chat into two live columns: left with PS active, right with raw LLM output, so the impact of PS is immediately visible
+- **Pre-built demo scenarios** — ready-to-load prompts for PII detection, topic policy, token DoS, and prompt injection, each with Load and Compare buttons
+- **API Flow diagram** — custom diagram showing the full request path (User → App + PS Engine → LLM Providers) with bidirectional arrows
 
----
+### Admin & Audit
+- **Admin dashboard** — message volume charts, model distribution, PS action breakdown, top users, per-user detail views
+- **User management** — create, edit, and delete users; set per-user daily message limits and model restrictions
+- **PS tenant management** — create and manage multiple Prompt Security tenants with separate App IDs and URLs
+- **Audit log** — all config changes (PS settings, user/tenant CRUD) appear in the activity log alongside chat messages
 
-## Architecture
-
-```
-Browser
-  │
-  ├── GET /        → index.html   (chat UI)
-  ├── GET /admin   → admin.html   (admin dashboard)
-  └── API calls
-        │
-        ▼
-   FastAPI app  (port 9000)
-        │
-        ├── PostgreSQL  (chat sessions, messages, users, PS tenants, audit events)
-        │
-        └── LiteLLM proxy  (port 4000)
-                │
-                ├── OpenRouter  (free: llama-3.1, mistral-7b, nemotron-9b)
-                ├── OpenAI      (gpt-4o, gpt-4o-mini)
-                ├── Anthropic   (claude-sonnet-4-5)
-                └── Google      (gemini-2.0-flash, gemini-1.5-pro)
-```
+### Optional: Public Test API
+- **Narrow public endpoint** — `POST /v1/responses` for external scanners or SaaS tools, authenticated by app-issued bearer keys
+- **App-issued API keys** — users can create scoped `hg_live_...` keys from the settings menu; shown once at creation
+- **Safety by default** — disabled unless explicitly enabled; does not expose admin routes
 
 ---
 
@@ -56,167 +40,133 @@ Browser
 
 ### Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/) & Docker Compose
+- [Docker](https://docs.docker.com/get-docker/) and Docker Compose
 
-### 1. Clone and configure
+### 1. Clone the repo
 
 ```bash
 git clone https://github.com/prompt-security/homegrown-ai-app-demo.git
 cd homegrown-ai-app-demo
-
-cp .env.example .env
 ```
 
-Edit `.env` and fill in the required values (see [Configuration](#configuration) below).
-
-### 2. Start all services
+### 2. Build and Start all services
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
 > **Note:** On first run, LiteLLM applies ~110 database migrations. This takes 3–5 minutes. Subsequent starts are instant. Check progress with:
 >
 > ```bash
-> docker logs -f homegrown-ai-app-demo-litellm-1
+> docker compose logs -f
 > ```
 
-### 3. Open the app
+### 3. Complete the Setup Wizard
 
+Open [http://localhost:9100](http://localhost:9100). On first run you'll be prompted through the Setup Wizard, which:
 
-| URL                                                        | Description            |
-| ---------------------------------------------------------- | ---------------------- |
-| [http://localhost:9000](http://localhost:9000)             | Chat UI                |
-| [http://localhost:9000/admin](http://localhost:9000/admin) | Admin dashboard        |
-| [http://localhost:4000](http://localhost:4000)             | LiteLLM proxy (direct) |
+- Generates and stores the encryption key and JWT secret
+- Sets the initial admin email and password
+- Configures app-level settings
 
+Once complete, the app is fully operational.
 
-Default admin credentials (set in `.env`):
+### 4. Open Mode vs User Mode
 
-```
-Email:    admin@example.com
-Password: admin
-```
+The app supports two ways to use the chat interface:
+
+| | Open Mode (Guest) | User Mode |
+| --- | --- | --- |
+| **Login required** | No | Yes |
+| **Who uses it** | Walk-up visitors, demo audiences | Named accounts created by admin |
+| **Identity** | Optional name + email (or anonymous by IP) | Email + password |
+| **PS config** | Supplied per-request in the UI | Saved in user profile |
+| **Session history** | Stored by guest ID for that session | Persistent across sessions |
+| **Activity logging** | Logged in admin as guest events | Logged in admin under user account |
+| **Daily limits** | Not enforced | Enforced per-user if set |
+
+**Open Mode** is ideal for demos and live events, or a hosted instance of this application — visitors can start chatting immediately without creating an account. Prompt Security can still be configured and tested in real time.
+
+**User Mode** is for recurring users who need persistent history, saved PS settings, and usage tracking. Admin creates accounts from the dashboard. This is ideal for local installations that isn't hosted.
+
+Both modes can be active simultaneously — the chat UI shows a identification option while still allowing guest access.
+
+### 5. Available URLs
+
+| URL | Description |
+| --- | ----------- |
+| [http://localhost:9100](http://localhost:9100) | Chat UI |
+| [http://localhost:9100/admin](http://localhost:9100/admin) | Admin dashboard |
+| [http://localhost:4000](http://localhost:4000) | LiteLLM proxy (direct) |
 
 ---
 
-## Configuration
+## LiteLLM Models
 
-Copy `.env.example` to `.env` and set the following:
+Models are configured in `litellm/config.yaml`. The following are enabled by default:
+
+| Model | Provider | Notes |
+| ----- | -------- | ----- |
+| `gpt-4o` / `gpt-4o-mini` / `gpt-5-nano` | OpenAI | Requires `OPENAI_API_KEY` |
+| `claude-sonnet-4-5-20250929` | Anthropic | Requires `ANTHROPIC_API_KEY` |
+| `gemini-2.0-flash` / `gemini-1.5-pro` | Google via OpenRouter | Requires `OPENROUTER_API_KEY` |
+| `sonar` | Perplexity | Requires `PERPLEXITY_API_KEY` |
+| `meta-llama/llama-3.3-70b-instruct:free` | OpenRouter | **Free** |
+| `meta-llama/llama-3.1-8b-instruct:free` | OpenRouter | **Free** |
+| `deepseek/deepseek-r1:free` | OpenRouter | **Free** |
+| `qwen/qwen-2.5-72b-instruct:free` | OpenRouter | **Free** |
+| `mistralai/mistral-7b-instruct:free` | OpenRouter | **Free** |
+| `nvidia/nemotron-nano-9b-v2:free` | OpenRouter | **Free** |
+| + more | OpenRouter | **Free** |
+| `gemma3:270m` | Ollama (local) | See [Ollama](#ollama-local-models) |
+| `huggingface/Qwen3VL-8B-Instruct-F16` | Local OpenAI-compatible | See [Local endpoint](#local-openai-compatible-endpoint) |
+
+To add or remove models, edit `litellm/config.yaml` and restart the `litellm` service:
 
 ```bash
-# ── Database ──────────────────────────────────────────────────────────────────
-POSTGRES_PASSWORD=your_secure_password
-DATABASE_URL=postgresql+asyncpg://hgapp:your_secure_password@db:5432/hgapp
-
-# ── Security ──────────────────────────────────────────────────────────────────
-# Generate with: openssl rand -hex 32
-SECRET_KEY=your_jwt_secret_here
-
-# Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-ENCRYPTION_KEY=your_fernet_key_here
-
-# ── Admin bootstrap ───────────────────────────────────────────────────────────
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=your_admin_password
-
-# ── LiteLLM proxy ─────────────────────────────────────────────────────────────
-LITELLM_BASE_URL=http://litellm:4000
-LITELLM_HOST_PORT=4000
-# Generate with: python -c "import secrets; print(secrets.token_hex(32))"
-LITELLM_MASTER_KEY=your_litellm_master_key
-
-# ── Optional public test API ──────────────────────────────────────────────────
-# Enables POST /v1/responses for app-issued bearer API keys
-PUBLIC_API_ENABLED=false
-PUBLIC_API_MAX_PROMPT_TOKENS=4000
-PUBLIC_API_MAX_OUTPUT_TOKENS=600
-PUBLIC_API_ALLOW_SYSTEM_PROMPT=false
-
-# ── Optional advanced UI toggles ──────────────────────────────────────────────
-# Keeps per-user LLM override support in code, but hides it from the UI by default
-SHOW_LLM_KEY_SETTINGS=false
-
-# ── LLM provider keys ─────────────────────────────────────────────────────────
-# At least one is required; OpenRouter covers free models with a single key.
-OPENROUTER_API_KEY=sk-or-v1-...
-OPENAI_API_KEY=
-ANTHROPIC_API_KEY=
-GOOGLE_API_KEY=
-```
-
-### Generating secrets
-
-```bash
-# JWT secret
-openssl rand -hex 32
-
-# Fernet encryption key
-python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-
-# LiteLLM master key
-python3 -c "import secrets; print(secrets.token_hex(32))"
+docker compose restart litellm
 ```
 
 ---
 
-## LiteLLM
+## Prompt Security
 
-Models are configured in `litellm/config.yaml`. By default the following are enabled:
+### Setup
 
+1. Log in as admin and go to **PS Tenants** in the admin dashboard.
+2. Create a tenant with your PS `base_url` (API mode) and optionally a `gateway_url` (Gateway mode). Both URLs must be public HTTPS hostnames — localhost, `.local`, private IPs, and reserved networks are rejected.
+3. In ⚙ **Settings → Prompt Security**, select the tenant, enter your PS App ID, and choose API or Gateway mode.
 
-| Model                                                      | Provider   | Notes                                    |
-| ---------------------------------------------------------- | ---------- | ---------------------------------------- |
-| `gpt-4o` / `gpt-4o-mini`                                   | OpenAI     | Requires `OPENAI_API_KEY`                |
-| `claude-sonnet-4-5-20250929`                                | Anthropic  | Requires `ANTHROPIC_API_KEY`             |
-| `gemini-2.0-flash` / `gemini-1.5-pro`                      | Google     | Requires `GOOGLE_API_KEY`                |
-| `meta-llama/llama-3.1-8b-instruct:free`                    | OpenRouter | **Free** — requires `OPENROUTER_API_KEY` |
-| `nvidia/nemotron-nano-9b-v2:free`                          | OpenRouter | **Free** — requires `OPENROUTER_API_KEY` |
-| `mistralai/mistral-7b-instruct:free`                       | OpenRouter | **Free** — requires `OPENROUTER_API_KEY` |
-| `huggingface/Qwen3VL-8B-Instruct-F16`                      | Local OpenAI-compatible | Uses `LOCAL_OPENAI_BASE_URL` |
+### Modes
 
+| Mode | How it works |
+| ---- | ------------ |
+| **API mode** | The app calls the PS API explicitly before and after each LLM call. Violations are shown as clickable detail cards. |
+| **Gateway mode** | All LLM traffic is routed through the PS proxy URL. No explicit scan calls — PS intercepts at the network layer. |
 
-Get a free OpenRouter key at [openrouter.ai](https://openrouter.ai).
-
-> **Note:** Per-user LLM override settings are hidden from the UI by default. If you need them later, set `SHOW_LLM_KEY_SETTINGS=true` and rebuild the app.
-
-If another service already uses host port `4000`, set `LITELLM_HOST_PORT=4001`
-in `.env`. The app still talks to LiteLLM through Docker at
-`LITELLM_BASE_URL=http://litellm:4000`.
+> **Important:** Each PS tenant has its own App ID. If you switch tenants, you must re-enter the App ID for the new tenant. The previous App ID is automatically cleared on tenant change.
 
 ---
 
-## Ollama (local & remote models)
+## Ollama (local models)
 
-Ollama lets you run open-weight models locally or on any server you control — no cloud API key needed.
+Ollama lets you run open-weight models locally — no cloud API key needed.
 
 ### Prerequisites
 
-- [Ollama](https://ollama.com) installed and running (separate from Docker)
+- [Ollama](https://ollama.com) installed and running on the host
 - The model pulled: `ollama pull gemma3:270m`
 
-> **Note:** Ollama is **not** a Docker Compose service in this project. It runs as a standalone process on the host or a remote machine. Docker containers reach the host via `host.docker.internal:11434` (the default).
+> Ollama is **not** a Docker Compose service in this project. It runs as a standalone process. Docker containers reach the host via `host.docker.internal:11434`.
 
 ### Configuration
 
-Add the following to your `.env`:
+Add to the `litellm` service `environment` block in `docker-compose.yml`:
 
-```bash
-# URL of the Ollama instance, as seen from inside Docker
-OLLAMA_BASE_URL=http://host.docker.internal:11434   # host machine (default)
-# OLLAMA_BASE_URL=https://ollama.example.com        # remote server (HTTPS, no port)
-
-# Comma-separated model IDs — must match model_name values in litellm/config.yaml
-OLLAMA_MODEL_IDS=gemma3:270m
+```yaml
+OLLAMA_BASE_URL: "http://host.docker.internal:11434"   # local host (default)
+# OLLAMA_BASE_URL: "https://ollama.example.com"        # remote server
 ```
-
-### Remote Ollama
-
-Remote Ollama should be placed behind a reverse proxy (nginx, Caddy, etc.) that terminates TLS. The app then connects over standard HTTPS with no custom port:
-
-1. Deploy Ollama behind a reverse proxy at `https://ollama.example.com`
-2. Set `OLLAMA_BASE_URL=https://ollama.example.com` in `.env`
-3. Rebuild: `docker compose up -d --build app litellm`
 
 ### Adding more Ollama models
 
@@ -228,93 +178,57 @@ Remote Ollama should be placed behind a reverse proxy (nginx, Caddy, etc.) that 
        model: ollama/<model>
        api_base: os.environ/OLLAMA_BASE_URL
    ```
-3. Add the model name to `OLLAMA_MODEL_IDS` in `.env` (comma-separated)
-4. Rebuild: `docker compose up -d --build app litellm`
+3. Restart: `docker compose restart litellm`
 
 ---
 
 ## Local OpenAI-compatible endpoint
 
-For local servers that expose OpenAI-style `/v1/models` and `/v1/chat/completions`
-endpoints, add these values to `.env`:
+For local servers that expose OpenAI-style `/v1/chat/completions` endpoints, add to the `litellm` service `environment` block in `docker-compose.yml`:
 
-```bash
-LOCAL_OPENAI_BASE_URL=http://host.docker.internal:8081/v1
-LOCAL_OPENAI_API_KEY=local-dev-key
-LOCAL_OPENAI_MODEL_IDS=huggingface/Qwen3VL-8B-Instruct-F16
+```yaml
+LOCAL_OPENAI_BASE_URL: "http://host.docker.internal:8081/v1"
+LOCAL_OPENAI_API_KEY: "local-dev-key"
 ```
 
-The default `litellm/config.yaml` includes that model ID. For a different local
-model, update both `model_name` / `litellm_params.model` in `litellm/config.yaml`
-and `LOCAL_OPENAI_MODEL_IDS` in `.env`, then rebuild `app` and `litellm`.
-
----
-
-## Prompt Security
-
-### Setup
-
-1. Log in as admin and go to **PS Tenants** in the admin dashboard.
-2. Create a tenant with your PS `base_url` (API mode) and optionally a `gateway_url` (Gateway mode). Both URLs must use `https://` and a public hostname; localhost, `.local`, private IPs, and reserved networks are rejected to remediate CodeQL alert 12 (`py/full-ssrf`) where tenant-controlled URLs were used by server-side Prompt Security requests.
-3. In ⚙ **Settings → Prompt Security**, select the tenant, enter your PS App ID, and choose API or Gateway mode.
-
-### Modes
-
-
-| Mode             | How it works                                                                                                        |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------- |
-| **API mode**     | The app calls the PS API explicitly before and after each LLM call. Violations are shown as clickable detail cards. |
-| **Gateway mode** | All LLM traffic is routed through the PS proxy URL. No explicit scan calls — PS intercepts at the network layer.    |
-
-
-> **Important:** Each PS tenant has its own App ID. If you switch tenants, you must re-enter the App ID for the new tenant. The previous App ID is automatically cleared on tenant change.
-
-> **Upgrade note:** Existing instances that already contain Prompt Security tenants with `http://`, localhost, `.local`, private-IP, or reserved-network URLs must update or recreate those tenants with public HTTPS URLs. These legacy values are intentionally no longer supported as part of the CodeQL alert 12 (`py/full-ssrf`) remediation.
+The default `litellm/config.yaml` includes the `huggingface/Qwen3VL-8B-Instruct-F16` model pointing to this endpoint.
 
 ---
 
 ## Public Test API
 
-This app can optionally expose a narrow public endpoint for external scanners, SaaS tools, or simple prompt testing without exposing the full app surface.
-
-### What it exposes
-
-- `POST /v1/responses`
-- Bearer auth using app-issued keys
-- One prompt in, one text response out
-- Existing user model restrictions and daily limits still apply
-- Prompt Security still runs if configured for that user
+This app can optionally expose a narrow public endpoint for external scanners, SaaS tools, or simple prompt testing.
 
 ### How to enable it
 
-Set the following in `.env`:
+Add to the `app` service `environment` block in `docker-compose.yml`:
 
-```bash
-PUBLIC_API_ENABLED=true
-PUBLIC_API_MAX_PROMPT_TOKENS=4000
-PUBLIC_API_MAX_OUTPUT_TOKENS=600
-PUBLIC_API_ALLOW_SYSTEM_PROMPT=false
+```yaml
+app:
+  environment:
+    PUBLIC_API_ENABLED: "true"
+    PUBLIC_API_MAX_PROMPT_TOKENS: "4000"
+    PUBLIC_API_MAX_OUTPUT_TOKENS: "600"
+    PUBLIC_API_ALLOW_SYSTEM_PROMPT: "false"
 ```
 
-Then rebuild the app:
+Then rebuild:
 
 ```bash
 docker compose up -d --build app
 ```
 
-### How to create an app API key
+### How to create an API key
 
-1. Open the chat UI.
-2. Click the user menu in the top right.
-3. Open **PS Settings**.
-4. Go to **App API Keys**.
-5. Create a key such as `saas-test`.
-6. Copy the plaintext `hg_live_...` key immediately. It is shown only once.
+1. Open the chat UI and click the user menu (top right).
+2. Open **Settings → App API Keys**.
+3. Create a key (e.g. `saas-test`).
+4. Copy the `hg_live_...` key immediately — it is shown only once.
 
 ### Example request
 
 ```bash
-curl http://localhost:9000/v1/responses \
+curl http://localhost:9100/v1/responses \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_APP_API_KEY" \
   -d '{
@@ -323,155 +237,20 @@ curl http://localhost:9000/v1/responses \
   }'
 ```
 
-### ngrok example
-
-```bash
-curl https://YOUR-NGROK-URL.ngrok-free.app/v1/responses \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_APP_API_KEY" \
-  -d '{
-    "model": "meta-llama/llama-3.1-8b-instruct:free",
-    "input": "Hello from ngrok"
-  }'
-```
-
-### Safety notes
-
-- The endpoint is disabled by default.
-- It does not expose admin routes.
-- It is intended for temporary, low-risk external testing.
-- Prefer using a dedicated low-privilege user, free models, and low daily limits.
-
 ---
 
 ## Admin Dashboard
 
-Located at `/admin` (admin role required).
+Located at `/admin` (admin password required).
 
-
-| Tab                 | Description                                                                                         |
-| ------------------- | --------------------------------------------------------------------------------------------------- |
-| **Overview**        | Message volume chart, model distribution, PS action breakdown, top users                            |
-| **Prompt Security** | PS mode stats, per-mode toggle cards                                                                |
-| **Users**           | User list with per-user stats, inline edit, user detail view with charts                            |
-| **PS Tenants**      | Create / edit / delete PS tenants                                                                   |
-| **Activity Log**    | Combined view of all chat messages and config change events (PS config, LLM keys, user/tenant CRUD) |
-
-
----
-
-## API Reference
-
-### Auth
-
-
-| Method | Path          | Description       |
-| ------ | ------------- | ----------------- |
-| `POST` | `/auth/login` | Get JWT token     |
-| `GET`  | `/auth/me`    | Current user info |
-
-
-### Chat
-
-
-| Method | Path                      | Description                 |
-| ------ | ------------------------- | --------------------------- |
-| `POST` | `/chat/stream`            | SSE streaming chat endpoint |
-| `GET`  | `/models`                 | Available models            |
-| `GET`  | `/sessions`               | User's chat sessions        |
-| `GET`  | `/sessions/{id}/messages` | Messages in a session       |
-
-
-### User Settings
-
-
-| Method   | Path                      | Description                    |
-| -------- | ------------------------- | ------------------------------ |
-| `PATCH`  | `/users/me/ps-config`     | Update PS tenant, App ID, mode |
-| `PATCH`  | `/users/me/llm-keys`      | Update per-user LLM API keys   |
-| `GET`    | `/users/me/api-keys`      | List app-issued API keys       |
-| `POST`   | `/users/me/api-keys`      | Create an app-issued API key   |
-| `DELETE` | `/users/me/api-keys/{id}` | Delete an app-issued API key   |
-| `GET`    | `/users/me/stats`         | Personal usage stats           |
-
-
-### File Sanitization
-
-
-| Method | Path               | Description                                                                                         |
-| ------ | ------------------ | --------------------------------------------------------------------------------------------------- |
-| `POST` | `/upload/sanitize` | Upload a file (PDF/DOCX/XLSX/TXT) to PS for sanitization; returns action, violations, and scan time |
-
-
-### Public Test API
-
-
-| Method | Path            | Description                                                |
-| ------ | --------------- | ---------------------------------------------------------- |
-| `POST` | `/v1/responses` | Narrow public prompt endpoint authenticated by app API key |
-
-
-### Admin
-
-
-| Method                  | Path                      | Description                     |
-| ----------------------- | ------------------------- | ------------------------------- |
-| `GET`                   | `/admin/stats`            | Aggregate stats for dashboard   |
-| `GET/POST/PATCH/DELETE` | `/admin/users/`*          | User management                 |
-| `GET/POST/PATCH/DELETE` | `/admin/ps-tenants/`*     | PS tenant management            |
-| `GET`                   | `/admin/activity`         | Combined chat + audit event log |
-| `GET`                   | `/admin/users/{id}/stats` | Per-user detailed stats         |
-
-
----
-
-## Development
-
-To run locally without Docker:
-
-```bash
-# Start Postgres
-docker compose up -d db
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Set env vars (or use a local .env)
-export DATABASE_URL=postgresql+asyncpg://hgapp:change_me@localhost:5432/hgapp
-export SECRET_KEY=dev_secret
-export ENCRYPTION_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
-
-# Run
-cd app
-uvicorn main:app --reload --port 8000
-```
-
----
-
-## Project Structure
-
-```
-.
-├── app/
-│   ├── main.py             # FastAPI app, all routes
-│   ├── models.py           # SQLAlchemy ORM models
-│   ├── schemas.py          # Pydantic request/response schemas
-│   ├── auth.py             # JWT auth, API key auth, password hashing
-│   ├── crypto.py           # Fernet encryption for stored API keys
-│   ├── database.py         # Async SQLAlchemy engine + session
-│   ├── prompt_security.py  # PS API client (protect_prompt / protect_response / sanitize_file)
-│   ├── token_counter.py    # Token estimation helpers via LiteLLM
-│   └── static/
-│       ├── index.html      # Chat UI
-│       ├── admin.html      # Admin dashboard
-│       └── login.html      # Login page
-├── litellm/
-│   └── config.yaml         # LiteLLM model list and settings
-├── docker-compose.yml
-├── Dockerfile
-├── requirements.txt
-└── .env.example
-```
+| Tab | Description |
+| --- | ----------- |
+| **Overview** | Message volume chart, model distribution, PS action breakdown, top users |
+| **Prompt Security** | PS mode stats, per-mode toggle cards |
+| **Users** | User list with per-user stats, inline edit, detail view with charts |
+| **PS Tenants** | Create / edit / delete PS tenants |
+| **Activity Log** | Combined view of all chat messages and config change audit events |
+| **Settings** | Setting up the Web Application |
 
 ---
 
