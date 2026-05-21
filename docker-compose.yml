@@ -2,12 +2,11 @@ services:
   app:
     build: .
     ports:
-      - "9000:8000"
-    env_file: .env
-    environment:
-      LOCAL_OPENAI_BASE_URL: ${LOCAL_OPENAI_BASE_URL:-http://host.docker.internal:8081/v1}
-      LOCAL_OPENAI_API_KEY: ${LOCAL_OPENAI_API_KEY:-local-dev-key}
-      LOCAL_OPENAI_MODEL_IDS: ${LOCAL_OPENAI_MODEL_IDS:-huggingface/Qwen3VL-8B-Instruct-F16}
+      - "9100:8000"
+    volumes:
+      - ./app:/app
+      - app_data:/app/data
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     depends_on:
       db:
         condition: service_healthy
@@ -17,6 +16,8 @@ services:
 
   db:
     image: postgres:16-alpine
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_DB: hgapp
       POSTGRES_USER: hgapp
@@ -34,17 +35,15 @@ services:
   litellm:
     image: ghcr.io/berriai/litellm:main-stable
     ports:
-      - "${LITELLM_HOST_PORT:-4000}:4000"
+      - "4000:4000"
     volumes:
       - ./litellm/config.yaml:/app/config.yaml
-    env_file: .env
     environment:
       DATABASE_URL: "postgresql://hgapp:${POSTGRES_PASSWORD:-hgapp_dev}@db:5432/litellm"
       PYTHONHTTPSVERIFY: "0"
-      LOCAL_OPENAI_BASE_URL: ${LOCAL_OPENAI_BASE_URL:-http://host.docker.internal:8081/v1}
-      LOCAL_OPENAI_API_KEY: ${LOCAL_OPENAI_API_KEY:-local-dev-key}
     command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "1"]
     restart: unless-stopped
 
 volumes:
   pgdata:
+  app_data:
