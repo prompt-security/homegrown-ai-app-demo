@@ -2,6 +2,7 @@
 
 ## [2026-05-26]
 ### Fixed
+- Ollama Start button no longer fails with "network not found" on fresh installs or after `docker compose down -v`; when an existing container has a stale network reference it is automatically removed and recreated — @pj.norris
 - Ollama container created via the admin Start button was not joined to the Compose project network (`homegrown-ai-app-demo_default`), causing `http://ollama:11434` to be unreachable from the app container; added `network=network_name` to the Docker SDK `containers.run()` call — @pj.norris
 
 ### Changed

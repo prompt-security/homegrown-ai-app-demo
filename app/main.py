@@ -2758,10 +2758,24 @@ async def start_ollama_service(admin: User = Depends(require_admin)):
         if c is not None:
             c.reload()
             if c.status != "running":
-                c.start()
-                c.reload()
-            return {"ok": True, "action": "started", "container": c.name, "status": c.status}
-        # Container doesn't exist — create it fresh
+                try:
+                    c.start()
+                    c.reload()
+                except Exception as start_exc:
+                    # Stale network reference (e.g. after docker compose down -v).
+                    # Remove the broken container and fall through to recreate it.
+                    if "network" in str(start_exc).lower():
+                        logger.warning("Ollama container has stale network — removing and recreating: %s", start_exc)
+                        try:
+                            c.remove(force=True)
+                        except Exception:
+                            pass
+                        c = None
+                    else:
+                        raise
+            if c is not None:
+                return {"ok": True, "action": "started", "container": c.name, "status": c.status}
+        # Container doesn't exist (or was just removed due to stale network) — create it fresh
         volume_name = f"{COMPOSE_PROJECT_NAME}_ollama_data"
         try:
             client.volumes.get(volume_name)
