@@ -2767,18 +2767,56 @@ async def start_ollama_service(admin: User = Depends(require_admin)):
             client.volumes.get(volume_name)
         except Exception:
             client.volumes.create(volume_name)
+
+        # Find the host project root by inspecting the app container's /app bind mount,
+        # then look for certs/corporate-ca.pem so we can inject it into Ollama.
+        ollama_volumes = {volume_name: {"bind": "/root/.ollama", "mode": "rw"}}
+        ollama_env = {"OLLAMA_INSECURE": "true"}
+        try:
+            app_cs = client.containers.list(filters={"label": [
+                "com.docker.compose.service=app",
+                f"com.docker.compose.project={COMPOSE_PROJECT_NAME}",
+            ]})
+            if app_cs:
+                for m in app_cs[0].attrs.get("Mounts", []):
+                    if m.get("Type") == "bind" and m.get("Destination") == "/app":
+                        host_project_root = os.path.dirname(m["Source"])
+                        cert_host_path = os.path.join(host_project_root, "certs", "corporate-ca.pem")
+                        ollama_volumes[cert_host_path] = {"bind": "/certs/corporate-ca.pem", "mode": "ro"}
+                        ollama_env["SSL_CERT_FILE"] = "/certs/corporate-ca.pem"
+                        break
+        except Exception:
+            pass
+
         c = client.containers.run(
             "ollama/ollama:latest",
             name=f"{COMPOSE_PROJECT_NAME}-ollama-1",
             detach=True,
             ports={"11434/tcp": 11434},
-            volumes={volume_name: {"bind": "/root/.ollama", "mode": "rw"}},
+            volumes=ollama_volumes,
+            environment=ollama_env,
             labels={
                 "com.docker.compose.service": "ollama",
                 "com.docker.compose.project": COMPOSE_PROJECT_NAME,
             },
             restart_policy={"Name": "unless-stopped"},
         )
+        # Attach to the Compose project network so other services can reach
+        # it via the "ollama" hostname. Find the network by inspecting the
+        # app container — that's guaranteed to be on the right network.
+        try:
+            app_containers = client.containers.list(
+                filters={"label": [
+                    "com.docker.compose.service=app",
+                    f"com.docker.compose.project={COMPOSE_PROJECT_NAME}",
+                ]}
+            )
+            if app_containers:
+                app_net_names = list(app_containers[0].attrs["NetworkSettings"]["Networks"].keys())
+                if app_net_names:
+                    client.networks.get(app_net_names[0]).connect(c, aliases=["ollama"])
+        except Exception:
+            pass  # non-fatal: container is running, just may not be on compose network
         return {"ok": True, "action": "created", "container": c.name, "status": c.status}
     except HTTPException:
         raise
@@ -2823,11 +2861,14 @@ async def pull_ollama_model(
                 async with client.stream(
                     "POST",
                     f"{base_url}/api/pull",
-                    json={"name": model, "stream": True},
+                    json={"model": model, "name": model, "stream": True},
                 ) as resp:
+                    logger.info("Ollama pull %s → HTTP %s", model, resp.status_code)
                     async for line in resp.aiter_lines():
                         if line:
+                            logger.debug("Ollama pull line: %s", line[:120])
                             yield f"data: {line}\n\n"
+                    logger.info("Ollama pull stream ended for %s", model)
         except httpx.ConnectError:
             yield 'data: {"status":"error","error":"Cannot connect to Ollama — is the service running?"}\n\n'
         except Exception as exc:

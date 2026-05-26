@@ -1,6 +1,9 @@
 # Changelog
 
 ## [2026-05-26]
+### Fixed
+- Ollama container created via the admin Start button was not joined to the Compose project network (`homegrown-ai-app-demo_default`), causing `http://ollama:11434` to be unreachable from the app container; added `network=network_name` to the Docker SDK `containers.run()` call — @pj.norris
+
 ### Changed
 - Ollama Settings: "Detect Models" and "Pull a Model" controls (input, Pull button, Browse Models button) are now disabled — and a warning banner is shown — when the Ollama toggle has been turned on but not yet saved; once saved (which auto-starts the service), the controls unlock; `_savedOllamaEnabled` tracks the persisted DB state separately from the in-flight toggle — @pj.norris
 - Ollama Settings: Active Model row is now hidden until the service is confirmed running; model detection runs automatically whenever service status resolves to "running" (covers both the manual Start button and the ↺ refresh button), so the model picker populates without needing a manual Detect click — @pj.norris

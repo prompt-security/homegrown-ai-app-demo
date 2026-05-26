@@ -4110,7 +4110,8 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
       const reader = resp.body.getReader();
       const dec = new TextDecoder();
       let buf = '';
-      while (true) {
+      let hasError = false;
+      outer: while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buf += dec.decode(value, { stream: true });
@@ -4125,7 +4126,8 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
             if (evt.status === 'error') {
               txt.textContent = '⚠ ' + (evt.error || 'Pull failed');
               txt.style.color = 'var(--red)';
-              break;
+              hasError = true;
+              break outer;   // exit both loops immediately on error
             }
             let pct = 0;
             if (evt.total && evt.completed) {
@@ -4144,11 +4146,13 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
           } catch (_) { /* ignore parse errors */ }
         }
       }
-      txt.textContent = '✓ Pull complete!';
-      txt.style.color = 'var(--green)';
-      bar.style.width = '100%';
-      input.value = '';
-      setTimeout(() => detectOllamaModels(), 500);
+      if (!hasError) {
+        txt.textContent = '✓ Pull complete!';
+        txt.style.color = 'var(--green)';
+        bar.style.width = '100%';
+        input.value = '';
+        setTimeout(() => detectOllamaModels(), 500);
+      }
     } catch (e) {
       txt.textContent = '⚠ ' + e.message;
       txt.style.color = 'var(--red)';
