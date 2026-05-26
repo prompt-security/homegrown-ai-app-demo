@@ -3,6 +3,7 @@ services:
     build: .
     ports:
       - "9100:8000"
+    user: "0"   # entrypoint needs root to fix docker socket group, then drops to appuser via gosu
     volumes:
       - ./app:/app
       - app_data:/app/data
