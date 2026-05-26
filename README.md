@@ -42,6 +42,19 @@ A multi-user AI chat application with deep [Prompt Security](https://www.prompt.
 
 - [Docker](https://docs.docker.com/get-docker/) and Docker Compose
 
+### IMPORTANT — Upgrading from a previous version?
+
+Due to backend changes, remove old containers, volumes, and images before starting fresh:
+
+```bash
+docker compose down -v --rmi all
+```
+
+This stops all containers, deletes the named volumes (database, app data, Ollama models), and removes locally-built images. Your `docker-compose.yml` and config files are not touched.
+
+> **Note:** This will erase all chat history, users, and settings stored in the database. Export anything you need first.
+
+
 ### 1. Clone the repo
 
 ```bash
@@ -61,15 +74,9 @@ docker compose up -d --build
 > docker compose logs -f
 > ```
 
-### 3. Complete the Setup Wizard
+### 3. Complete initial setup
 
-Open [http://localhost:9100](http://localhost:9100). On first run you'll be prompted through the Setup Wizard, which:
-
-- Generates and stores the encryption key and JWT secret
-- Sets the initial admin email and password
-- Configures app-level settings
-
-Once complete, the app is fully operational.
+Open [http://localhost:9100/admin](http://localhost:9100/admin). On first run the admin panel opens directly on the **Settings** page. Work through each section — Security (encryption key, JWT secret, admin password), then any other sections flagged with a red dot — until the nav is clear.
 
 ### 4. Open Mode vs User Mode
 
@@ -96,7 +103,7 @@ Both modes can be active simultaneously — the chat UI shows a identification o
 | URL | Description |
 | --- | ----------- |
 | [http://localhost:9100](http://localhost:9100) | Chat UI |
-| [http://localhost:9100/admin](http://localhost:9100/admin) | Admin dashboard |
+| [http://localhost:9100/admin](http://localhost:9100/admin) | Admin dashboard (requires password) |
 | [http://localhost:4000](http://localhost:4000) | LiteLLM proxy (direct) |
 
 ---
@@ -133,9 +140,9 @@ docker compose restart litellm
 
 ### Setup
 
-1. Log in as admin and go to **PS Tenants** in the admin dashboard.
-2. Create a tenant with your PS `base_url` (API mode) and optionally a `gateway_url` (Gateway mode). Both URLs must be public HTTPS hostnames — localhost, `.local`, private IPs, and reserved networks are rejected.
-3. In ⚙ **Settings → Prompt Security**, select the tenant, enter your PS App ID, and choose API or Gateway mode.
+1. Log in as admin and go to **Settings → PS Regions**.
+2. Create a region with your PS `base_url` (API mode) and optionally a `gateway_url` (Gateway mode). Both URLs must be public HTTPS hostnames — localhost, `.local`, private IPs, and reserved networks are rejected.
+3. In **Settings → Security**, select the region, enter your PS App ID, and choose API or Gateway mode.
 
 ### Modes
 
@@ -168,52 +175,72 @@ Ollama lets you run open-weight models locally — no cloud API key needed.
 | 13B | 16 GB |
 | 70B | 48 GB |
 
-### Option A — Via Docker Compose (recommended)
+### Option A — Admin UI (recommended)
 
-Ollama is included in `docker-compose.yml` as an **optional service** using a Docker Compose profile. It does not start with the rest of the stack unless you explicitly enable it.
+The easiest way to run Ollama is entirely through the admin panel — no CLI needed.
+
+1. Go to **Admin → Settings → Ollama** and toggle **Enable Ollama** on.
+2. Click **Save** — the app starts the Ollama container automatically and joins it to the correct Docker network.
+3. Once the service shows **● Running**, the **Active Model** and **Pull a Model** sections appear.
+4. Use **Pull a Model** (or **Browse Models** for a searchable library) to download a model.
+5. Click **Detect Models** to populate the picker, select a model, and **Save**.
+
+> **Note:** The Docker socket must be mounted in the app container (it is by default in `docker-compose.yml`) for the UI to be able to start/stop the Ollama container.
+
+### Option B — Via Docker Compose CLI
+
+Ollama is included in `docker-compose.yml` as an **optional service** using a Docker Compose profile.
 
 **Start Ollama:**
 ```bash
 docker compose --profile ollama up -d ollama
 ```
 
-**Pull a model into the container:**
+**Pull a model:**
 ```bash
 docker exec homegrown-ai-app-demo-ollama-1 ollama pull gemma3:270m
 ```
-
-**Tell LiteLLM where Ollama is** — add to the `litellm` service `environment` block in `docker-compose.yml`:
-```yaml
-OLLAMA_BASE_URL: "http://ollama:11434"
-```
-Then restart LiteLLM: `docker compose restart litellm`
 
 **Stop Ollama when not needed:**
 ```bash
 docker compose --profile ollama stop ollama
 ```
 
-Models are stored in the `ollama_data` Docker volume and persist across container restarts.
+Models are stored in the `ollama_data` Docker volume and persist across restarts.
 
-### Option B — Ollama on the host machine
+### Option C — Ollama on the host machine
 
-Install [Ollama](https://ollama.com) directly on the host and pull models with `ollama pull <model>`. Docker containers reach the host at `host.docker.internal`:
+Install [Ollama](https://ollama.com) directly on the host and pull models with `ollama pull <model>`. Update the Base URL in **Admin → Settings → Ollama**:
 
-```yaml
-OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+```
+http://host.docker.internal:11434
 ```
 
-### Option C — Remote Ollama server
+### Option D — Remote Ollama server
 
-Point to any Ollama instance reachable over the network:
+Point the Base URL in **Admin → Settings → Ollama** to any Ollama instance reachable over the network:
 
-```yaml
-OLLAMA_BASE_URL: "http://<remote-host>:11434"
 ```
+http://<remote-host>:11434
+```
+
+### Corporate / SSL-inspecting networks
+
+If your network uses SSL inspection (common in enterprise environments), Ollama's registry connections will fail with a certificate error. Fix it by trusting your corporate CA:
+
+1. Export your corporate root CA certificate as PEM:
+   ```bash
+   security find-certificate -a -p /Library/Keychains/System.keychain > certs/corporate-ca.pem
+   ```
+2. Place `corporate-ca.pem` in a `certs/` folder at the repo root (created if it doesn't exist).
+3. The app automatically mounts this cert into the Ollama container and sets `SSL_CERT_FILE` when creating it via the admin UI. The `docker-compose.yml` Ollama service also mounts it for profile-based starts.
 
 ### Adding more Ollama models
 
-1. Pull the model: `ollama pull <model>` (or via `docker exec` if using Option A)
+1. Pull the model via **Admin → Settings → Ollama → Pull a Model**, or via CLI:
+   ```bash
+   docker exec homegrown-ai-app-demo-ollama-1 ollama pull <model>
+   ```
 2. Add an entry to `litellm/config.yaml`:
    ```yaml
    - model_name: <model>
@@ -221,7 +248,7 @@ OLLAMA_BASE_URL: "http://<remote-host>:11434"
        model: ollama/<model>
        api_base: os.environ/OLLAMA_BASE_URL
    ```
-3. In Admin → App Settings, use **Test Connection** to auto-detect and register the new model.
+3. Click **Detect Models** in the Ollama settings pane to refresh the picker.
 4. Restart LiteLLM: `docker compose restart litellm`
 
 ---
@@ -292,12 +319,16 @@ Located at `/admin` (admin password required).
 | **Overview** | Message volume chart, model distribution, PS action breakdown, top users |
 | **Prompt Security** | PS mode stats, per-mode toggle cards |
 | **Users** | User list with per-user stats, inline edit, detail view with charts |
-| **PS Tenants** | Create / edit / delete PS tenants |
 | **Activity Log** | Combined view of all chat messages and config change audit events |
-| **Settings** | Setting up the Web Application |
+| **Settings** | All configuration — General, Application, Security, Email, PS Regions, Ollama, LLM Keys; red nav dots flag anything misconfigured |
 
 ---
 
 ## License
 
 MIT
+
+## Credits
+* Original webapp by Carlos Payes
+* Contributions by Ori Tabac
+* Overhaul, UI enhancements and features by PJ Norris
