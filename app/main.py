@@ -11,6 +11,7 @@ import secrets
 import smtplib
 import time
 import uuid
+from pathlib import Path
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -42,7 +43,7 @@ from crypto import (
     set_encryption_key, validate_fernet_key, write_encryption_key_override,
 )
 import database as _db_module
-from database import AsyncSessionLocal, Base, engine, get_db, rebuild_engine, write_db_override
+from database import AsyncSessionLocal, Base, engine, get_db
 from models import APIKey, AppSetting, AuditEvent, ChatSession, DemoScenario, Message, PSTenant, User
 from prompt_security import PromptSecurityClient
 from schemas import (
@@ -53,6 +54,13 @@ from schemas import (
     SessionOut, TokenEstimateResponse, TokenResponse, UserCreate, UserOut, UserStats, UserUpdate,
 )
 from token_counter import estimate_message_tokens, estimate_text_tokens
+
+try:
+    import docker as _docker_sdk
+    from docker.errors import DockerException as _DockerException, NotFound as _DockerNotFound, APIError as _DockerAPIError
+    _DOCKER_SDK_AVAILABLE = True
+except ImportError:
+    _DOCKER_SDK_AVAILABLE = False
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-8s %(name)s  %(message)s")
 logger = logging.getLogger("main")
@@ -182,7 +190,8 @@ _PROVIDER_URLS = {
 
 _OLLAMA_MODEL_IDS      = {s.strip() for s in os.getenv("OLLAMA_MODEL_IDS", "").split(",") if s.strip()}
 _LOCAL_OPENAI_MODEL_IDS: set[str] = set()
-OLLAMA_BASE_URL        = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+OLLAMA_BASE_URL        = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
+COMPOSE_PROJECT_NAME   = os.getenv("COMPOSE_PROJECT_NAME", "homegrown-ai-app-demo")
 
 
 def _detect_provider(model_id: str) -> str:
@@ -678,6 +687,26 @@ async def health():
         "litellm_url": LITELLM_BASE_URL,
         "models_loaded": len(_model_cache),
     }
+
+
+_APP_VERSION: str = "unknown"
+
+def _load_app_version() -> str:
+    """Read VERSION file from repo root (one level above app/)."""
+    for candidate in [
+        Path(__file__).parent.parent / "VERSION",  # repo root when running in container
+        Path(__file__).parent / "VERSION",          # fallback if copied alongside app
+    ]:
+        if candidate.exists():
+            return candidate.read_text().strip()
+    return "unknown"
+
+_APP_VERSION = _load_app_version()
+
+
+@app.get("/version")
+async def version():
+    return {"version": _APP_VERSION}
 
 @app.get("/models")
 async def models(current_user: User = Depends(get_current_user)):
@@ -2284,7 +2313,6 @@ def _parse_app_settings(s: dict) -> dict:
         "email_username": s.get("email_username", ""),
         "email_password_set": bool(s.get("email_password_enc")),
         "from_email": s.get("from_email", ""),
-        "db_password_set": bool(s.get("db_password_enc")),
         "jwt_secret_set": bool(s.get("jwt_secret_enc")),
         "admin_password_set": bool(s.get("admin_password_hash")),
         "litellm_key_set": bool(s.get("litellm_key_enc")),
@@ -2343,54 +2371,6 @@ async def update_app_settings(
     result = await db.execute(select(AppSetting))
     s = {row.key: row.value for row in result.scalars().all()}
     return _parse_app_settings(s)
-
-
-class DbPasswordUpdate(BaseModel):
-    password: str
-    confirm: str
-
-
-@app.post("/admin/db-password")
-async def update_db_password(
-    body: DbPasswordUpdate,
-    admin: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-):
-    """Change the Postgres user password, persist the new DATABASE_URL, and hot-swap the engine."""
-    if not body.password:
-        raise HTTPException(status_code=422, detail="Password cannot be empty")
-    if body.password != body.confirm:
-        raise HTTPException(status_code=422, detail="Passwords do not match")
-
-    # Build new DATABASE_URL by substituting the password into the current URL
-    parsed = urlparse(_db_module.DATABASE_URL)
-    host_port = f"{parsed.hostname}:{parsed.port}" if parsed.port else parsed.hostname
-    new_netloc = f"{parsed.username}:{body.password}@{host_port}"
-    new_url = urlunparse(parsed._replace(netloc=new_netloc))
-
-    # Issue ALTER USER on the live connection before swapping the engine
-    safe_pwd = body.password.replace("'", "''")
-    await db.execute(text(f"ALTER USER {parsed.username} WITH PASSWORD '{safe_pwd}'"))
-
-    # Store encrypted in AppSetting so admin can see it's been set
-    enc_pwd = encrypt(body.password)
-    existing = await db.get(AppSetting, "db_password_enc")
-    if existing:
-        existing.value = enc_pwd
-    else:
-        db.add(AppSetting(key="db_password_enc", value=enc_pwd))
-
-    await db.commit()
-    await _log_audit(db, admin.id, admin.email, "db_password_changed", "Postgres password updated via admin UI")
-    await db.commit()
-
-    # Persist new URL to override file (survives container restart)
-    write_db_override(new_url)
-
-    # Hot-swap engine in-process (no restart needed)
-    await rebuild_engine(new_url)
-
-    return {"ok": True}
 
 
 class JwtSecretUpdate(BaseModel):
@@ -2610,15 +2590,277 @@ async def update_application_settings(
         await _upsert("ollama_base_url", url)
         OLLAMA_BASE_URL = url
 
+    litellm_restarting = False
     if body.ollama_model_ids is not None:
         ids = body.ollama_model_ids.strip()
         await _upsert("ollama_model_ids", ids)
         _OLLAMA_MODEL_IDS = {s.strip() for s in ids.split(",") if s.strip()}
+        model_id_list = [s.strip() for s in ids.split(",") if s.strip()]
+        if model_id_list:
+            try:
+                _update_litellm_ollama_models(model_id_list)
+                asyncio.create_task(_restart_litellm_and_refresh())
+                litellm_restarting = True
+            except Exception as exc:
+                logger.warning("Could not update LiteLLM config: %s", exc)
 
     await db.commit()
     await _log_audit(db, admin.id, admin.email, "application_settings_changed", "Application settings updated via admin UI")
     await db.commit()
-    return {"ok": True}
+    return {"ok": True, "litellm_restarting": litellm_restarting}
+
+
+# ── LiteLLM config + restart helpers ─────────────────────────────────────────
+
+LITELLM_CONFIG_PATH = Path(os.getenv("LITELLM_CONFIG_PATH", "/app/litellm/config.yaml"))
+
+
+def _update_litellm_ollama_models(model_ids: list[str]) -> None:
+    """Rewrite the ollama/ entries in litellm/config.yaml, preserving all other models."""
+    import yaml  # pyyaml — available at runtime inside the container
+
+    if not LITELLM_CONFIG_PATH.exists():
+        logger.warning("LiteLLM config not found at %s — skipping YAML update", LITELLM_CONFIG_PATH)
+        return
+
+    cfg = yaml.safe_load(LITELLM_CONFIG_PATH.read_text()) or {}
+    model_list = cfg.get("model_list", [])
+
+    # Drop all existing ollama/* entries (we'll re-add the full set)
+    model_list = [
+        m for m in model_list
+        if not str(m.get("litellm_params", {}).get("model", "")).startswith("ollama/")
+    ]
+
+    # Append fresh entries for every selected model
+    for mid in model_ids:
+        model_list.append({
+            "model_name": mid,
+            "litellm_params": {
+                "model": f"ollama/{mid}",
+                "api_base": "os.environ/OLLAMA_BASE_URL",
+            },
+        })
+
+    cfg["model_list"] = model_list
+    LITELLM_CONFIG_PATH.write_text(
+        yaml.dump(cfg, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    )
+    logger.info("Updated litellm/config.yaml with Ollama models: %s", model_ids)
+
+
+async def _restart_litellm_and_refresh() -> None:
+    """Restart the LiteLLM container so it picks up the updated config, then rebuild the model cache."""
+    if not _DOCKER_SDK_AVAILABLE:
+        logger.warning("Docker SDK unavailable — cannot restart LiteLLM")
+        return
+    try:
+        client = _docker_sdk.from_env()
+        containers = client.containers.list(filters={
+            "label": [
+                "com.docker.compose.service=litellm",
+                f"com.docker.compose.project={COMPOSE_PROJECT_NAME}",
+            ]
+        })
+        if not containers:
+            logger.warning("LiteLLM container not found — skipping restart")
+            return
+        containers[0].restart()
+        logger.info("LiteLLM container restarted to pick up new Ollama model config")
+        await asyncio.sleep(8)          # wait for LiteLLM to come back up
+        await refresh_model_cache()
+        logger.info("Model cache refreshed after LiteLLM restart")
+    except Exception as exc:
+        logger.warning("Failed to restart LiteLLM container: %s", exc)
+
+
+@app.post("/admin/ollama/test")
+async def test_ollama_connection(
+    body: dict,
+    admin: User = Depends(require_admin),
+):
+    """Probe an Ollama instance and return its available model names."""
+    url = (body.get("url") or OLLAMA_BASE_URL).strip().rstrip("/")
+    if not url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=422, detail="URL must start with http:// or https://")
+    try:
+        async with httpx.AsyncClient(timeout=8.0, verify=False) as client:
+            resp = await client.get(f"{url}/api/tags")
+        if resp.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"Ollama returned HTTP {resp.status_code}")
+        data = resp.json()
+        models = [m["name"] for m in data.get("models", [])]
+        return {"ok": True, "models": models, "url": url}
+    except httpx.ConnectError:
+        raise HTTPException(status_code=502, detail="Could not connect — is Ollama running?")
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Connection timed out")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+def _get_docker_client():
+    """Connect to Docker daemon via socket. Raises HTTP 503 if unavailable."""
+    if not _DOCKER_SDK_AVAILABLE:
+        raise HTTPException(status_code=503, detail="docker Python SDK not installed")
+    try:
+        return _docker_sdk.from_env()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Docker socket unavailable: {exc}")
+
+
+def _find_ollama_container(client):
+    """Find the Ollama container for this compose project. Returns None if not found."""
+    try:
+        containers = client.containers.list(
+            all=True,
+            filters={"label": [
+                "com.docker.compose.service=ollama",
+                f"com.docker.compose.project={COMPOSE_PROJECT_NAME}",
+            ]},
+        )
+        if containers:
+            return containers[0]
+        # Fallback: any container whose name contains "ollama"
+        for c in client.containers.list(all=True):
+            if "ollama" in c.name.lower():
+                return c
+    except Exception:
+        pass
+    return None
+
+
+@app.get("/admin/ollama/service")
+async def get_ollama_service_status(admin: User = Depends(require_admin)):
+    """Return the status of the Ollama Docker container."""
+    if not _DOCKER_SDK_AVAILABLE:
+        return {"status": "docker_unavailable", "detail": "docker SDK not installed"}
+    try:
+        client = _get_docker_client()
+    except HTTPException:
+        return {"status": "docker_unavailable", "detail": "Docker socket not mounted"}
+    try:
+        c = _find_ollama_container(client)
+        if c is None:
+            return {"status": "not_found", "container_name": None}
+        c.reload()
+        return {"status": c.status, "container_name": c.name, "id": c.short_id}
+    except Exception as exc:
+        return {"status": "error", "detail": str(exc)}
+
+
+@app.post("/admin/ollama/service/start")
+async def start_ollama_service(admin: User = Depends(require_admin)):
+    """Start (or create) the Ollama Docker container."""
+    client = _get_docker_client()
+    try:
+        c = _find_ollama_container(client)
+        if c is not None:
+            c.reload()
+            if c.status != "running":
+                c.start()
+                c.reload()
+            return {"ok": True, "action": "started", "container": c.name, "status": c.status}
+        # Container doesn't exist — create it fresh
+        volume_name = f"{COMPOSE_PROJECT_NAME}_ollama_data"
+        try:
+            client.volumes.get(volume_name)
+        except Exception:
+            client.volumes.create(volume_name)
+        c = client.containers.run(
+            "ollama/ollama:latest",
+            name=f"{COMPOSE_PROJECT_NAME}-ollama-1",
+            detach=True,
+            ports={"11434/tcp": 11434},
+            volumes={volume_name: {"bind": "/root/.ollama", "mode": "rw"}},
+            labels={
+                "com.docker.compose.service": "ollama",
+                "com.docker.compose.project": COMPOSE_PROJECT_NAME,
+            },
+            restart_policy={"Name": "unless-stopped"},
+        )
+        return {"ok": True, "action": "created", "container": c.name, "status": c.status}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/admin/ollama/service/stop")
+async def stop_ollama_service(admin: User = Depends(require_admin)):
+    """Stop the Ollama Docker container."""
+    client = _get_docker_client()
+    try:
+        c = _find_ollama_container(client)
+        if c is None:
+            raise HTTPException(status_code=404, detail="Ollama container not found")
+        c.stop(timeout=10)
+        return {"ok": True, "action": "stopped"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/admin/ollama/pull")
+async def pull_ollama_model(
+    body: dict,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stream model pull progress from the Ollama API."""
+    model = (body.get("model") or "").strip()
+    if not model:
+        raise HTTPException(status_code=422, detail="Model name required")
+    row = await db.get(AppSetting, "ollama_base_url")
+    base_url = (row.value if row else OLLAMA_BASE_URL).rstrip("/")
+
+    async def _stream():
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(600.0, connect=10.0), verify=False
+            ) as client:
+                async with client.stream(
+                    "POST",
+                    f"{base_url}/api/pull",
+                    json={"name": model, "stream": True},
+                ) as resp:
+                    async for line in resp.aiter_lines():
+                        if line:
+                            yield f"data: {line}\n\n"
+        except httpx.ConnectError:
+            yield 'data: {"status":"error","error":"Cannot connect to Ollama — is the service running?"}\n\n'
+        except Exception as exc:
+            yield f'data: {{"status":"error","error":"{str(exc)}"}}\n\n'
+        yield 'data: {"status":"done"}\n\n'
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
+@app.delete("/admin/ollama/model")
+async def delete_ollama_model(
+    body: dict,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a local Ollama model."""
+    model = (body.get("model") or "").strip()
+    if not model:
+        raise HTTPException(status_code=422, detail="Model name required")
+    row = await db.get(AppSetting, "ollama_base_url")
+    base_url = (row.value if row else OLLAMA_BASE_URL).rstrip("/")
+    try:
+        async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+            resp = await client.request(
+                "DELETE",
+                f"{base_url}/api/delete",
+                json={"name": model},
+            )
+        if resp.status_code not in (200, 204):
+            raise HTTPException(status_code=resp.status_code, detail=f"Ollama returned {resp.status_code}")
+    except httpx.ConnectError:
+        raise HTTPException(status_code=503, detail="Cannot connect to Ollama — is the service running?")
+    return {"deleted": model}
 
 
 # ── LLM Provider Key management ──────────────────────────────────────────────

@@ -154,23 +154,66 @@ Ollama lets you run open-weight models locally — no cloud API key needed.
 
 ### Prerequisites
 
-- [Ollama](https://ollama.com) installed and running on the host
-- The model pulled: `ollama pull gemma3:270m`
+**Hardware:**
+- **Apple Silicon (M1/M2/M3/M4):** Works out of the box via Metal. 8 GB RAM minimum; 16 GB+ recommended for 7B+ models.
+- **NVIDIA GPU:** Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) installed on the host. The Ollama container will use the GPU automatically.
+- **CPU only:** Works but is slow. Stick to small models (1B–3B).
 
-> Ollama is **not** a Docker Compose service in this project. It runs as a standalone process. Docker containers reach the host via `host.docker.internal:11434`.
+**Model size guide:**
 
-### Configuration
+| Model size | Min RAM/VRAM |
+| ---------- | ------------ |
+| 1B–3B | 4 GB |
+| 7B–8B | 8 GB |
+| 13B | 16 GB |
+| 70B | 48 GB |
 
-Add to the `litellm` service `environment` block in `docker-compose.yml`:
+### Option A — Via Docker Compose (recommended)
+
+Ollama is included in `docker-compose.yml` as an **optional service** using a Docker Compose profile. It does not start with the rest of the stack unless you explicitly enable it.
+
+**Start Ollama:**
+```bash
+docker compose --profile ollama up -d ollama
+```
+
+**Pull a model into the container:**
+```bash
+docker exec homegrown-ai-app-demo-ollama-1 ollama pull gemma3:270m
+```
+
+**Tell LiteLLM where Ollama is** — add to the `litellm` service `environment` block in `docker-compose.yml`:
+```yaml
+OLLAMA_BASE_URL: "http://ollama:11434"
+```
+Then restart LiteLLM: `docker compose restart litellm`
+
+**Stop Ollama when not needed:**
+```bash
+docker compose --profile ollama stop ollama
+```
+
+Models are stored in the `ollama_data` Docker volume and persist across container restarts.
+
+### Option B — Ollama on the host machine
+
+Install [Ollama](https://ollama.com) directly on the host and pull models with `ollama pull <model>`. Docker containers reach the host at `host.docker.internal`:
 
 ```yaml
-OLLAMA_BASE_URL: "http://host.docker.internal:11434"   # local host (default)
-# OLLAMA_BASE_URL: "https://ollama.example.com"        # remote server
+OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+```
+
+### Option C — Remote Ollama server
+
+Point to any Ollama instance reachable over the network:
+
+```yaml
+OLLAMA_BASE_URL: "http://<remote-host>:11434"
 ```
 
 ### Adding more Ollama models
 
-1. Pull the model: `ollama pull <model>`
+1. Pull the model: `ollama pull <model>` (or via `docker exec` if using Option A)
 2. Add an entry to `litellm/config.yaml`:
    ```yaml
    - model_name: <model>
@@ -178,7 +221,8 @@ OLLAMA_BASE_URL: "http://host.docker.internal:11434"   # local host (default)
        model: ollama/<model>
        api_base: os.environ/OLLAMA_BASE_URL
    ```
-3. Restart: `docker compose restart litellm`
+3. In Admin → App Settings, use **Test Connection** to auto-detect and register the new model.
+4. Restart LiteLLM: `docker compose restart litellm`
 
 ---
 

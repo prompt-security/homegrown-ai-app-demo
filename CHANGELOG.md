@@ -1,6 +1,61 @@
 # Changelog
 
+## [2026-05-26]
+### Changed
+- Ollama Settings: "Detect Models" and "Pull a Model" controls (input, Pull button, Browse Models button) are now disabled — and a warning banner is shown — when the Ollama toggle has been turned on but not yet saved; once saved (which auto-starts the service), the controls unlock; `_savedOllamaEnabled` tracks the persisted DB state separately from the in-flight toggle — @pj.norris
+- Ollama Settings: Active Model row is now hidden until the service is confirmed running; model detection runs automatically whenever service status resolves to "running" (covers both the manual Start button and the ↺ refresh button), so the model picker populates without needing a manual Detect click — @pj.norris
+
+### Removed
+- Admin Setup Wizard removed entirely — all configuration now lives directly in the Settings panel; the 🛠 Setup Wizard topbar button, wizard overlay HTML, all `.wz-*` CSS, and ~925 lines of wizard JS (state, step rendering, per-step save logic, navigation functions) are deleted; on first-run (`needs_setup=true`) the admin lands directly on the Settings panel instead of being routed through the wizard — @pj.norris
+
+### Changed
+- Config Status panel now mirrors the Settings sidebar structure exactly — sections are ordered and named General, Application, Security, Email (Open Mode only), PS Regions, Ollama, LLM Keys; each section header is a clickable link that switches directly to the corresponding settings pane; PS Regions count is now fetched and displayed; General shows access mode and fix-model state; nav dots updated to include `sp-general` (fix model fail) and `sp-psregions` (no regions configured) — @pj.norris
+- Admin wizard "Admin" links now call `openAdminAuthModal()` instead of navigating directly to `/admin`, ensuring the password prompt always appears; `adminAuthBackdrop` z-index raised to 400 so it renders above wizard modals (z-index 300) — @pj.norris
+
+## [2026-05-25]
+### Added
+- Ollama Model Browser modal in Admin → Settings: a "Browse Models" button next to the Pull input opens a searchable, filterable grid of 120+ models from ollama.com/library with capability badges (Tools, Vision, Thinking, Embedding), size chips, pull counts, and a one-click Pull button per card that streams progress inline — @pj.norris
+- Model Browser size chips are now clickable: selecting a size tag (e.g. `7b`, `1.5b`) pre-fills the pull command with that variant, updates the Pull button label to `Pull :size`, and displays a colour-coded size warning (blue info → orange caution → red danger) based on estimated download size; clicking the chip again deselects it — @pj.norris
+- Model Browser chips now show two visual states: green border + dot (●) marks the `latest` (default) tag for each model; green shaded background + ✓ icon marks already-downloaded variants (matched against the detected Ollama model list, including `:latest` alias resolution); chips update live after a pull completes — @pj.norris
+- Hovering a downloaded chip reveals a red ✕ delete button; clicking it calls `DELETE /admin/ollama/model` to remove the model from Ollama, then refreshes the chip states immediately; success/error feedback appears in the pull status bar — @pj.norris
+- A ✕ Cancel button appears in the pull status bar during an active download and aborts the stream via `AbortController`; cancellation shows a brief "⊘ Download cancelled" message then dismisses the bar — @pj.norris
+
+### Changed
+- Moved Prompt Security Regions out of the main sidebar navigation and into the Settings page as a new "PS Regions" pane (between LLM Keys and Ollama); the standalone nav item is removed, and the pane loads region data automatically when activated via `switchSettingsPane` — @pj.norris
+- Settings pane fields that are not yet configured now get a red border and faint red background highlight via `.field-unset` CSS class, applied automatically by `applyFieldHighlights()` whenever `loadConfigChecklist()` runs; covers Admin Password, JWT Secret, Encryption Key, LiteLLM Key (Security pane), SMTP Host and Allowed Domains (Email pane, Open Mode only), the provider key table (LLM Keys pane when no key is set), the Fix Model selector (Application pane when Fix Model is enabled but blank), and the Active Model row (Ollama pane when no model is selected) — @pj.norris
+- Ollama model picker in Admin → Settings now shows three distinct states: green (✓) = currently active model saved in DB, orange (◎) = selected but not yet saved/pending restart, neutral = not selected — @pj.norris
+- Added an inline orange warning banner below the model picker when a selection hasn't been saved yet, reminding admins to click Save and that the change requires a LiteLLM restart — @pj.norris
+- Chat UI model badge (index.html) now always displays a single admin-selected model badge (no per-user dropdown in Ollama mode); model switching is admin-only via Settings — @pj.norris
+
+## [2026-05-24]
+### Added
+- Ollama service management UI in Admin → Settings: admins can start/stop the Ollama Docker container, view live service status (Running / Stopped / Docker N/A), detect available models with a clickable model picker, and pull new models with a streaming progress bar — @pj.norris
+- New backend endpoints: `GET /admin/ollama/service`, `POST /admin/ollama/service/start`, `POST /admin/ollama/service/stop`, `POST /admin/ollama/pull` (streaming SSE) — @pj.norris
+- Docker socket (`/var/run/docker.sock`) mounted into the `app` container and `docker>=7.0.0` added to `requirements.txt` to enable container management from the API — @pj.norris
+
+### Changed
+- Postgres password hardcoded to `hgapp_dev` in `docker-compose.yml` for both the `db` and `litellm` services; removed `${POSTGRES_PASSWORD:-hgapp_dev}` variable substitution so both services always agree on the password without a `.env` file — @pj.norris
+- Removed DB Password panel from Admin → Settings and the corresponding "DB Password" step from the Setup Wizard; the password is fixed in `docker-compose.yml` so runtime changes were causing LiteLLM authentication failures (Prisma P1000) — @pj.norris
+- Removed `POST /admin/db-password` API endpoint and the `db_password_set` field from `GET /app/settings` response — @pj.norris
+
 ## [2026-05-20]
+### Added
+- Ollama mode: when Ollama is enabled, Fix Model is automatically disabled and hidden in both App Settings and the setup wizard (Ollama controls model selection) — @pj.norris
+- Ollama mode: when Ollama is enabled in App Settings, the model selector is hidden and replaced with a toolbar badge showing the active Ollama model; model defaults to the first available local model — @pj.norris
+- Ollama service added to `docker-compose.yml` as an opt-in profile (`--profile ollama`) with a persistent `ollama_data` volume; does not start with the main stack — @pj.norris
+- Ollama: "Test Connection" button in Admin → App Settings next to the Base URL field; calls new `POST /admin/ollama/test` backend endpoint which probes the Ollama instance's `/api/tags` API, reports reachable models, and auto-populates the Model IDs field on success — @pj.norris
+
+### Changed
+- Compare mode now automatically exits to single view when the user turns off Prompt Security via the toolbar toggle, for both open mode and authenticated mode — @pj.norris
+
+### Fixed
+- Ollama mode: compare and chat bubbles showed wrong model (e.g. `gpt-5-nano`) because all send paths read `modelSelect.value` directly — if a cloud model was saved in localStorage it would win over the Ollama override; replaced all four model-read sites with `getActiveModel()` which returns the Ollama badge text when `OLLAMA_ENABLED`, bypassing the selector entirely — @pj.norris
+- Compare mode: PS insights (ALLOWED chip, violation cards, "No Prompt Security" badge) were rendered using the raw `skipPs` argument instead of the gated `effectiveSkipPs` variable — causing both panels to show identical PS output even when the right panel had PS skipped. Fixed `streamIntoBubble` at the three `evt.type === 'done'`, `'blocked'`, and `'revoke'` render branches to use `effectiveSkipPs` — @pj.norris
+
+### Added
+- Dynamic build version: `VERSION` file at repo root, `GET /version` endpoint, version displayed near the logo in the chat UI; GitHub Actions workflow (`version-bump.yml`) writes `build.<run_number>` to `VERSION` and commits it back on every merge to `main` — @pj.norris
+
+
 ### Fixed
 - Guest activity not logged after DB password change via Setup Wizard: `_persist_guest` used a stale `AsyncSessionLocal` reference (copied at import time) instead of the module-level reference updated by `rebuild_engine`; fixed to use `_db_module.AsyncSessionLocal()` so it always reflects the live engine — @pj.norris
 

@@ -670,7 +670,7 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
   <div id="sidebar-header">
     <div style="padding:4px 2px 6px;position:relative">
       <img src="/static/prompt-security-logo.png" alt="Prompt Security">
-      <span style="position:absolute;bottom:8px;right:2px;font-size:9px;color:var(--text-muted);opacity:0.5;letter-spacing:0.3px">v2.1.0</span>
+      <span id="appVersion" style="position:absolute;bottom:8px;right:2px;font-size:9px;color:var(--text-muted);opacity:0.5;letter-spacing:0.3px"></span>
     </div>
     <button class="sidebar-btn" id="newChatBtn">✏️ New Chat</button>
   </div>
@@ -691,6 +691,7 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
     </div>
     <div class="spacer"></div>
     <select id="modelSelect"><option disabled selected>Loading…</option></select>
+    <span id="ollamaModelBadge" style="display:none;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:4px 10px;border-radius:8px;border:1px solid rgba(108,99,255,0.4);background:rgba(108,99,255,0.12);color:var(--accent);white-space:nowrap">🦙 <span id="ollamaModelName"></span></span>
     <button class="icon-btn" id="sysPromptBtn" title="System prompt">⚙️</button>
     <button id="introBtn" title="Architecture & Integration Guide">Intro</button>
     <button id="demoBtn" title="Demo Scenarios">Demo</button>
@@ -1070,7 +1071,7 @@ reply = await client.chat.completions.create(
 </div>
 
 <!-- ── Admin Auth Modal (open mode) ── -->
-<div class="backdrop" id="adminAuthBackdrop">
+<div class="backdrop" id="adminAuthBackdrop" style="z-index:400">
   <div class="modal" style="max-width:360px">
     <h3>Admin Sign In</h3>
     <div class="field"><label>Password</label><input type="password" id="adminAuthPassword" placeholder="••••••••" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore="true"></div>
@@ -2189,6 +2190,8 @@ reply = await client.chat.completions.create(
   let AUTH_USER = JSON.parse(localStorage.getItem('hgapp_user') || 'null');
   let OPEN_MODE = false;
   let FIXED_MODEL = null;
+  let OLLAMA_ENABLED = false;
+  let OLLAMA_MODEL_IDS_ORDERED = []; // admin-configured order, first = active/default
 
   // ── Client-side AES-GCM encryption for Open Mode PS App ID ───────────────
   let _encCryptoKey = null;
@@ -2318,13 +2321,13 @@ reply = await client.chat.completions.create(
 
   // ── Init ──────────────────────────────────────────────────────────────────
   function applyFixedModel() {
-    const wrap = document.getElementById('modelSelect')?.parentElement;
     if (FIXED_MODEL) {
       modelSelect.innerHTML = `<option value="${FIXED_MODEL}">${FIXED_MODEL}</option>`;
       modelSelect.value = FIXED_MODEL;
       modelSelect.disabled = true;
       modelSelect.style.display = 'none';
-    } else {
+    } else if (!OLLAMA_ENABLED) {
+      // Only restore visibility if Ollama mode hasn't hidden the selector
       modelSelect.disabled = false;
       modelSelect.style.display = '';
     }
@@ -2348,6 +2351,12 @@ reply = await client.chat.completions.create(
     if (el) el.style.display = 'flex';
   }
 
+  // Load and display build version near logo
+  fetch('/version').then(r => r.ok ? r.json() : null).then(d => {
+    const el = document.getElementById('appVersion');
+    if (el && d?.version) el.textContent = d.version;
+  }).catch(() => {});
+
   async function init() {
     try {
       const sr = await fetch('/app/settings');
@@ -2355,6 +2364,10 @@ reply = await client.chat.completions.create(
         const s = await sr.json();
         OPEN_MODE = s.user_mgmt_enabled === false;
         if (s.fixed_model_enabled && s.fixed_model_id) FIXED_MODEL = s.fixed_model_id;
+        OLLAMA_ENABLED = s.ollama_enabled === true;
+        if (OLLAMA_ENABLED && s.ollama_model_ids) {
+          OLLAMA_MODEL_IDS_ORDERED = s.ollama_model_ids.split(',').map(x => x.trim()).filter(Boolean);
+        }
         if (OPEN_MODE) {
           const hint = document.getElementById('psSettingsHint');
           if (hint) hint.textContent = 'Select your Prompt Security region and enter your App ID. Your settings are stored locally in your browser — nothing is sent to the server.';
@@ -2386,7 +2399,7 @@ reply = await client.chat.completions.create(
       document.getElementById('adminPsLink').style.display = 'inline';
     }
     updatePsStatus();
-    if (AUTH_USER?.ps_configured) enterCompareMode();
+    if (canUseCompareMode()) enterCompareMode();
     await Promise.all([loadModels(), loadSessions(), loadStats()]);
     pruneOldSessions();
     applyFixedModel();
@@ -2448,7 +2461,6 @@ reply = await client.chat.completions.create(
       chatEl.classList.add('ps-inactive'); chatEl.classList.remove('ps-active');
     }
     if (AUTH_USER?.ps_configured && AUTH_USER?.ps_enabled && !compareModeActive) enterCompareMode();
-    if (!(AUTH_USER?.ps_configured && AUTH_USER?.ps_enabled) && compareModeActive) exitCompare();
   }
 
   async function quickTogglePs() {
@@ -2457,6 +2469,7 @@ reply = await client.chat.completions.create(
       if (!cfg.base_url || !cfg.app_id_enc) { openPsSettings('ps'); return; }
       cfg.enabled = !cfg.enabled;
       localStorage.setItem('hgapp_open_ps_config', JSON.stringify(cfg));
+      if (!cfg.enabled && compareModeActive) exitCompare();
       updatePsStatus(); return;
     }
     if (!AUTH_USER?.ps_configured) { openPsSettings('ps'); return; }
@@ -2467,6 +2480,7 @@ reply = await client.chat.completions.create(
     if (res.ok) {
       AUTH_USER = await res.json();
       localStorage.setItem('hgapp_user', JSON.stringify(AUTH_USER));
+      if (!AUTH_USER.ps_enabled && compareModeActive) exitCompare();
       updatePsStatus();
     }
   }
@@ -2519,7 +2533,7 @@ reply = await client.chat.completions.create(
       modelSelect.appendChild(grp);
     }
 
-    addGroup('Local Models (Ollama)', local);
+    if (OLLAMA_ENABLED) addGroup('Local Models (Ollama)', local);
     addGroup('Free Models', free);
     addGroup('Paid Models', paid);
 
@@ -2527,9 +2541,27 @@ reply = await client.chat.completions.create(
     const savedModel = AUTH_USER ? localStorage.getItem(MODEL_KEY(AUTH_USER.id)) : null;
     if (savedModel) {
       const opt = modelSelect.querySelector(`option[value="${CSS.escape(savedModel)}"]`);
-      if (opt && !opt.disabled) { opt.selected = true; return; }
+      if (opt && !opt.disabled) { opt.selected = true; }
+    } else if (firstSelectable) {
+      firstSelectable.selected = true;
     }
-    if (firstSelectable) firstSelectable.selected = true;
+
+    // ── Ollama mode: badge shows admin-selected model, no in-chat switcher ──
+    // Model switching is done in Admin → Settings. The badge just shows what's active.
+    const badge     = document.getElementById('ollamaModelBadge');
+    const badgeName = document.getElementById('ollamaModelName');
+    if (OLLAMA_ENABLED && local.length) {
+      // Pick the active model: first match from admin's ordered list, else first available local
+      const activeId = OLLAMA_MODEL_IDS_ORDERED.find(id => local.some(m => m.id === id))
+                       || local[0].id;
+      modelSelect.value = activeId;
+      modelSelect.style.display = 'none';
+      badgeName.textContent = activeId;
+      badge.style.display = 'flex';
+    } else {
+      modelSelect.style.display = '';
+      badge.style.display = 'none';
+    }
   }
 
   async function loadSessions() {
@@ -3034,7 +3066,18 @@ reply = await client.chat.completions.create(
   modelSelect.addEventListener('change', scheduleTokenEstimate);
   modelSelect.addEventListener('change', () => {
     if (AUTH_USER) localStorage.setItem(MODEL_KEY(AUTH_USER.id), modelSelect.value);
+    // Keep badge name in sync when in Ollama multi-model mode
+    const badgeName = document.getElementById('ollamaModelName');
+    if (OLLAMA_ENABLED && badgeName) badgeName.textContent = modelSelect.value;
   });
+
+  function getActiveModel() {
+    // In Ollama mode the selector is hidden; active model comes from the badge set by admin.
+    if (OLLAMA_ENABLED && modelSelect.style.display === 'none') {
+      return document.getElementById('ollamaModelName')?.textContent || undefined;
+    }
+    return modelSelect.value || undefined;
+  }
 
   document.getElementById('psSaveBtn').addEventListener('click', async () => {
     if (_settingsTab === 'ps') {
@@ -3398,7 +3441,7 @@ reply = await client.chat.completions.create(
         method: 'POST',
         body: JSON.stringify({
           messages: [...messages, draft],
-          model: modelSelect.value || undefined,
+          model: getActiveModel(),
           system_prompt: localStorage.getItem(SYS_KEY) || undefined,
           session_id: currentSessionId || undefined,
         }),
@@ -3851,6 +3894,7 @@ reply = await client.chat.completions.create(
     await Promise.all([loadModels(), loadSessions(), loadStats()]);
     pruneOldSessions();
     applyFixedModel();
+    enterCompareMode();
   }
 
   async function openModeSend(text) {
@@ -3891,7 +3935,7 @@ reply = await client.chat.completions.create(
     typingBub.innerHTML = '<span></span><span></span><span></span>';
     typingIn.appendChild(typingBub); typingWrap.append(typingAv, typingIn); chatEl.appendChild(typingWrap); scrollToBottom();
 
-    const model = modelSelect.value || undefined;
+    const model = getActiveModel();
     const sys = localStorage.getItem(SYS_KEY) || undefined;
     const _psAppId = cfg.app_id_enc ? await _psDecrypt(cfg.app_id_enc) : null;
     const psEnabled = cfg.enabled !== false && !!_psAppId && !!(cfg.base_url);
@@ -4052,7 +4096,7 @@ reply = await client.chat.completions.create(
     typingBub.innerHTML = '<span></span><span></span><span></span>';
     typingIn.appendChild(typingBub); typingWrap.append(typingAv, typingIn); chatEl.appendChild(typingWrap); scrollToBottom();
 
-    const model = modelSelect.value || undefined;
+    const model = getActiveModel();
     const sys   = localStorage.getItem(SYS_KEY) || undefined;
 
     // 10-second timeout for initial response
@@ -4769,7 +4813,7 @@ if (evt.type === 'done') {
   // ── Compare Mode ──────────────────────────────────────────────────────────
 
   async function streamIntoBubble(bubble, footer, msgs, skipPs, sessionId, onComplete, signal) {
-    const model = document.getElementById('modelSelect').value || undefined;
+    const model = getActiveModel();
     const sys = localStorage.getItem(SYS_KEY) || undefined;
     const scrollContainer = bubble.closest('.cmp-messages') || bubble.closest('.compare-bubble')?.parentElement;
     const scrollBub = () => { if (scrollContainer) scrollContainer.scrollTop = scrollContainer.scrollHeight; };
@@ -4838,7 +4882,7 @@ if (evt.type === 'done') {
               const cp = document.createElement('button'); cp.className = 'copy-btn'; cp.textContent = 'Copy';
               cp.addEventListener('click', () => { navigator.clipboard.writeText(bubble.innerText); cp.className = 'copy-btn copied'; cp.textContent = 'Copied!'; setTimeout(() => { cp.className = 'copy-btn'; cp.textContent = 'Copy'; }, 1500); });
               footer.appendChild(cp);
-              if (!skipPs) {
+              if (!effectiveSkipPs) {
                 if (evt.ps_scanned && (evt.ps_action || 'pass') === 'pass') {
                   const aChip = document.createElement('span'); aChip.className = 'msg-status-chip allowed'; aChip.textContent = 'ALLOWED';
                   inner.insertBefore(aChip, bubble);
@@ -4861,7 +4905,7 @@ if (evt.type === 'done') {
               const cp = document.createElement('button'); cp.className = 'copy-btn'; cp.textContent = 'Copy';
               cp.addEventListener('click', () => { navigator.clipboard.writeText(bubble.innerText); cp.className = 'copy-btn copied'; cp.textContent = 'Copied!'; setTimeout(() => { cp.className = 'copy-btn'; cp.textContent = 'Copy'; }, 1500); });
               footer.appendChild(cp);
-              if (!skipPs) renderPsInsight(bubble.parentElement, true, 'block', evt.violations || [], evt.ps_raw || null);
+              if (!effectiveSkipPs) renderPsInsight(bubble.parentElement, true, 'block', evt.violations || [], evt.ps_raw || null);
             }
             done = true;
           }
@@ -4874,7 +4918,7 @@ if (evt.type === 'done') {
               const cp = document.createElement('button'); cp.className = 'copy-btn'; cp.textContent = 'Copy';
               cp.addEventListener('click', () => { navigator.clipboard.writeText(bubble.innerText); cp.className = 'copy-btn copied'; cp.textContent = 'Copied!'; setTimeout(() => { cp.className = 'copy-btn'; cp.textContent = 'Copy'; }, 1500); });
               footer.appendChild(cp);
-              if (!skipPs) renderPsInsight(bubble.parentElement, true, 'block', evt.violations || [], evt.ps_raw || null);
+              if (!effectiveSkipPs) renderPsInsight(bubble.parentElement, true, 'block', evt.violations || [], evt.ps_raw || null);
             }
             done = true;
           }
@@ -6174,7 +6218,7 @@ if (evt.type === 'done') {
       </div>
 
       <div class="wiz-footer" style="margin-top:20px;justify-content:space-between;align-items:center" id="wizardStep1Footer">
-        <a href="/admin" style="font-size:12px;color:var(--text-muted);text-decoration:none;display:flex;align-items:center;gap:5px" title="Admin sign-in">
+        <a href="#" onclick="openAdminAuthModal();return false;" style="font-size:12px;color:var(--text-muted);text-decoration:none;display:flex;align-items:center;gap:5px" title="Admin sign-in">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           Admin
         </a>
@@ -6328,7 +6372,7 @@ if (evt.type === 'done') {
         </ul>
       </div>
       <div class="wiz-footer" style="margin-top:24px;justify-content:space-between;align-items:center">
-        <a href="/admin" style="font-size:12px;color:var(--text-muted);text-decoration:none;display:flex;align-items:center;gap:5px;transition:color 0.2s" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+        <a href="#" onclick="openAdminAuthModal();return false;" style="font-size:12px;color:var(--text-muted);text-decoration:none;display:flex;align-items:center;gap:5px;transition:color 0.2s" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           Admin
         </a>
