@@ -2553,7 +2553,7 @@ reply = await client.chat.completions.create(
     let firstSelectable = null;
 
     function addGroup(label, list) {
-      const available = list.filter(m => !(m.requires_key && !m.key_set));
+      const available = list.filter(m => { if (m.requires_key && !m.key_set) return false; return true; });
       if (!available.length) return;
       const grp = document.createElement('optgroup');
       grp.label = label;
@@ -3655,7 +3655,7 @@ reply = await client.chat.completions.create(
 
   // ── Compare Mode ─────────────────────────────────────────────────────────
   function canUseCompareMode() {
-    return OPEN_MODE || !!(AUTH_USER?.ps_configured && AUTH_USER?.ps_enabled);
+    return OPEN_MODE || (AUTH_USER?.role === 'admin' && !!(AUTH_USER?.ps_configured && AUTH_USER?.ps_enabled));
   }
 
   let compareModeActive = false;

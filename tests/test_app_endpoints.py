@@ -95,13 +95,11 @@ async def test_upload_sanitize_rejects_unsupported_type_before_forward(
     test_user.ps_api_key_enc = encrypt("app-id")
     await db.commit()
 
-    submit_mock = AsyncMock()
-    poll_mock = AsyncMock()
+    sanitize_mock = AsyncMock()
 
     class _FakePSClient:
         def __init__(self, *args, **kwargs):
-            self.sanitize_file_submit = submit_mock
-            self.sanitize_file_poll = poll_mock
+            self.sanitize_file = sanitize_mock
 
     monkeypatch.setattr(main, "PromptSecurityClient", _FakePSClient)
 
@@ -112,8 +110,7 @@ async def test_upload_sanitize_rejects_unsupported_type_before_forward(
     )
 
     assert response.status_code == 415
-    submit_mock.assert_not_awaited()
-    poll_mock.assert_not_awaited()
+    sanitize_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -131,13 +128,11 @@ async def test_upload_sanitize_rejects_oversized_file_before_forward(
     test_user.ps_api_key_enc = encrypt("app-id")
     await db.commit()
 
-    submit_mock = AsyncMock()
-    poll_mock = AsyncMock()
+    sanitize_mock = AsyncMock()
 
     class _FakePSClient:
         def __init__(self, *args, **kwargs):
-            self.sanitize_file_submit = submit_mock
-            self.sanitize_file_poll = poll_mock
+            self.sanitize_file = sanitize_mock
 
     monkeypatch.setattr(main, "PromptSecurityClient", _FakePSClient)
 
@@ -149,8 +144,7 @@ async def test_upload_sanitize_rejects_oversized_file_before_forward(
     )
 
     assert response.status_code == 413
-    submit_mock.assert_not_awaited()
-    poll_mock.assert_not_awaited()
+    sanitize_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -170,8 +164,7 @@ async def test_upload_sanitize_rejects_when_concurrency_limit_reached(
 
     class _FakePSClient:
         def __init__(self, *args, **kwargs):
-            self.sanitize_file_submit = AsyncMock()
-            self.sanitize_file_poll = AsyncMock()
+            self.sanitize_file = AsyncMock()
 
     monkeypatch.setattr(main, "PromptSecurityClient", _FakePSClient)
     monkeypatch.setitem(main._sanitize_user_active, test_user.id, main.SANITIZE_MAX_CONCURRENT_PER_USER)
@@ -203,8 +196,7 @@ async def test_upload_sanitize_rejects_when_rate_limit_reached(
 
     class _FakePSClient:
         def __init__(self, *args, **kwargs):
-            self.sanitize_file_submit = AsyncMock()
-            self.sanitize_file_poll = AsyncMock()
+            self.sanitize_file = AsyncMock()
 
     monkeypatch.setattr(main, "PromptSecurityClient", _FakePSClient)
     monkeypatch.setattr(main, "SANITIZE_MAX_PER_MINUTE", 1)
@@ -236,13 +228,11 @@ async def test_upload_sanitize_unsupported_does_not_consume_rate_limit(
     test_user.ps_api_key_enc = encrypt("app-id")
     await db.commit()
 
-    submit_mock = AsyncMock(return_value="job-1")
-    poll_mock = AsyncMock(return_value={"action": "pass", "violations": []})
+    sanitize_mock = AsyncMock(return_value=({"jobId": "job-1", "status": "done", "metadata": {"action": "pass", "violations": []}}, {}))
 
     class _FakePSClient:
         def __init__(self, *args, **kwargs):
-            self.sanitize_file_submit = submit_mock
-            self.sanitize_file_poll = poll_mock
+            self.sanitize_file = sanitize_mock
 
     monkeypatch.setattr(main, "PromptSecurityClient", _FakePSClient)
     monkeypatch.setattr(main, "SANITIZE_MAX_PER_MINUTE", 1)
@@ -262,7 +252,7 @@ async def test_upload_sanitize_unsupported_does_not_consume_rate_limit(
         headers={"Authorization": f"Bearer {auth_token}"},
     )
     assert ok_response.status_code == 200
-    submit_mock.assert_awaited_once()
+    sanitize_mock.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -280,13 +270,11 @@ async def test_upload_sanitize_oversized_does_not_consume_rate_limit(
     test_user.ps_api_key_enc = encrypt("app-id")
     await db.commit()
 
-    submit_mock = AsyncMock(return_value="job-1")
-    poll_mock = AsyncMock(return_value={"action": "pass", "violations": []})
+    sanitize_mock = AsyncMock(return_value=({"jobId": "job-1", "status": "done", "metadata": {"action": "pass", "violations": []}}, {}))
 
     class _FakePSClient:
         def __init__(self, *args, **kwargs):
-            self.sanitize_file_submit = submit_mock
-            self.sanitize_file_poll = poll_mock
+            self.sanitize_file = sanitize_mock
 
     monkeypatch.setattr(main, "PromptSecurityClient", _FakePSClient)
     monkeypatch.setattr(main, "SANITIZE_MAX_PER_MINUTE", 1)
@@ -307,7 +295,7 @@ async def test_upload_sanitize_oversized_does_not_consume_rate_limit(
         headers={"Authorization": f"Bearer {auth_token}"},
     )
     assert ok_response.status_code == 200
-    submit_mock.assert_awaited_once()
+    sanitize_mock.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -325,13 +313,11 @@ async def test_upload_sanitize_successful_request_consumes_rate_limit(
     test_user.ps_api_key_enc = encrypt("app-id")
     await db.commit()
 
-    submit_mock = AsyncMock(return_value="job-1")
-    poll_mock = AsyncMock(return_value={"action": "pass", "violations": []})
+    sanitize_mock = AsyncMock(return_value=({"jobId": "job-1", "status": "done", "metadata": {"action": "pass", "violations": []}}, {}))
 
     class _FakePSClient:
         def __init__(self, *args, **kwargs):
-            self.sanitize_file_submit = submit_mock
-            self.sanitize_file_poll = poll_mock
+            self.sanitize_file = sanitize_mock
 
     monkeypatch.setattr(main, "PromptSecurityClient", _FakePSClient)
     monkeypatch.setattr(main, "SANITIZE_MAX_PER_MINUTE", 1)

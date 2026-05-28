@@ -1784,7 +1784,9 @@ async def chat_stream(
             except Exception as e:
                 logger.warning("Could not init PS client for %s: %s", current_user.email, e)
 
-    # skip_ps is allowed for any authenticated user (used by compare mode right pane)
+    # skip_ps is restricted to admins (used by compare mode right pane)
+    if request.skip_ps and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="skip_ps is restricted to admin users")
 
     # ── Store user message in DB ──────────────────────────────────────────────
     user_db_msg = Message(
