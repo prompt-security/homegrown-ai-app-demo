@@ -338,7 +338,7 @@ async def test_upload_sanitize_successful_request_consumes_rate_limit(
     )
     assert second_response.status_code == 429
     assert "rate limit" in second_response.json()["detail"].lower()
-    assert submit_mock.await_count == 1
+    assert sanitize_mock.await_count == 1
 
 
 @pytest.mark.asyncio
