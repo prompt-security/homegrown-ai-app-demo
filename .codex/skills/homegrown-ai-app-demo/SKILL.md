@@ -17,10 +17,10 @@ Use this skill for project-specific app operations in the HomeGrown AI App Demo 
   - Chat UI: `http://localhost:9000`
   - Admin UI: `http://localhost:9000/admin`
   - LiteLLM proxy: `http://localhost:4000`
-- If host port `4000` is occupied, set `LITELLM_HOST_PORT=4001` in `.env`; keep `LITELLM_BASE_URL=http://litellm:4000` for app-to-proxy traffic inside Docker.
-- Default admin bootstrap is read from `.env`; current defaults are `admin@example.com` / `admin`.
-- Local secrets and provider keys belong in `.env`, which is gitignored.
+- **There is no `.env` file and there never will be.** All configuration goes in the `environment:` sections of `docker-compose.yml`, or through the Admin → Settings panel at runtime.
+- Default admin credentials and all secrets (encryption key, API keys, etc.) are set directly in `docker-compose.yml`.
 - Repo-level LiteLLM model routing lives in `litellm/config.yaml`.
+- Provider API keys (OpenAI, Anthropic, Google, Perplexity, OpenRouter) can be set as env vars in `docker-compose.yml` or saved at runtime via **Admin → Settings → LLM API Keys** — runtime-saved keys take precedence and trigger automatic model discovery.
 
 ## Helper Script
 
@@ -41,11 +41,10 @@ Run the helper from anywhere inside the repo. If the repo cannot be discovered f
 ### Start or Restart
 
 1. Check for dirty work before edits: `git status --short`.
-2. Ensure `.env` exists. If missing, create it from `.env.example` with generated development secrets; do not commit `.env`.
-3. Run `docker compose up -d --build`.
-4. Wait for LiteLLM to finish first-run migrations if needed.
-5. Refresh the app model cache with `POST /admin/refresh-models`.
-6. Verify with `docker compose ps`, `GET /health`, `GET /`, `GET /admin`, and authenticated `GET /models`.
+2. Run `docker compose up -d --build`.
+3. Wait for LiteLLM to finish first-run migrations if needed (~3–5 min on first run).
+4. Refresh the app model cache with `POST /admin/refresh-models`.
+5. Verify with `docker compose ps`, `GET /health`, `GET /`, `GET /admin`, and authenticated `GET /models`.
 
 ### Stop
 
@@ -53,14 +52,13 @@ Run `docker compose stop`, then verify `docker compose ps` shows no project cont
 
 ### Configure Inference
 
-Ask for the missing details before wiring a custom endpoint:
+There are two ways to add models:
 
-- Base URL
-- Auth method and API key/header
-- Model ID exposed by the endpoint
-- Whether the endpoint is OpenAI-compatible
+**1. LiteLLM config (static)** — add a model entry to `litellm/config.yaml` and set any required API key in the `environment:` section of `docker-compose.yml`. Restart `litellm` and `app`, then refresh the model cache.
 
-For OpenAI-compatible endpoints, prefer adding environment variables to `.env` and a model entry to `litellm/config.yaml`; never hardcode API keys in repo files. After changing LiteLLM config, restart `litellm` and `app`, refresh models, then test a minimal chat request if a key is available.
+**2. Direct provider routing (dynamic)** — save an API key for OpenAI, Anthropic, Google, Perplexity, or OpenRouter in **Admin → Settings → LLM API Keys**. The app queries the provider's `/models` endpoint and adds all available models to the picker automatically as `provider/model-id` (e.g. `openai/gpt-4.1`). These bypass LiteLLM entirely.
+
+For custom OpenAI-compatible endpoints, add the base URL and model ID via `litellm/config.yaml`. Never hardcode API keys in repo files — use `docker-compose.yml` environment sections or the admin Settings panel.
 
 For the project’s local OpenAI-compatible test server, use:
 
@@ -76,7 +74,7 @@ For the project’s local OpenAI-compatible test server, use:
 - DB logs: `docker compose logs --no-color --tail=120 db`
 - Health: `curl -sS http://localhost:9000/health | python3 -m json.tool`
 - LiteLLM models:
-  `curl -sS http://localhost:4000/v1/models -H "Authorization: Bearer $(grep '^LITELLM_MASTER_KEY=' .env | cut -d= -f2-)"`
+  `curl -sS http://localhost:4000/v1/models -H "Authorization: Bearer $(docker compose exec app printenv LITELLM_MASTER_KEY)"`
 
 ## Verification Rule
 

@@ -42,7 +42,7 @@ Tests use SQLite in-memory via `conftest.py` — no running Postgres or LiteLLM 
 
 ## Architecture
 
-**Single-file FastAPI backend** (`app/main.py`, ~1800 lines) with all routes. No separate router files — everything is in `main.py`. Supporting modules are thin:
+**Single-file FastAPI backend** (`app/main.py`, ~4200 lines) with all routes. No separate router files — everything is in `main.py`. Supporting modules are thin:
 
 - `models.py` — SQLAlchemy ORM (async): `PSTenant`, `User`, `ChatSession`, `Message`, `APIKey`, `AuditEvent`
 - `schemas.py` — Pydantic v2 request/response types
@@ -55,17 +55,22 @@ Tests use SQLite in-memory via `conftest.py` — no running Postgres or LiteLLM 
 
 **LiteLLM** runs as a separate Docker service on port 4000, configured via `litellm/config.yaml`. The FastAPI app talks to it over the OpenAI-compatible API using `AsyncOpenAI(base_url=LITELLM_BASE_URL)`.
 
+**Direct provider routing** — when a shared API key is saved for OpenAI, Anthropic, Google, Perplexity, or OpenRouter in the admin Settings panel, the app queries that provider's `/models` endpoint and adds all available models to the picker as `provider/model-id` IDs (e.g. `openai/gpt-4.1`). These calls bypass LiteLLM entirely via `_user_llm_client()` / `_guest_llm_client()`. Discovered models are persisted in the `AppSetting` table.
+
 ### Key data flows
 
-**Chat (streaming):** `POST /chat/stream` → PS prompt scan (API mode) or pass-through (gateway mode) → LiteLLM SSE → PS response scan → SSE to browser. Gateway mode routes the LiteLLM call through the PS proxy URL instead of calling PS explicitly.
+**Chat (streaming):** `POST /chat/stream` → PS prompt scan (API mode) or pass-through (gateway mode) → LLM call (LiteLLM proxy for config-file models, or direct provider API for `provider/`-prefixed models) → PS response scan → SSE to browser. Gateway mode routes through the PS proxy URL instead of calling PS explicitly.
+
+**File scan:** `POST /upload/sanitize` or `POST /guest/upload/sanitize` → PS two-step async API: `POST /api/sanitizeFile` (returns `jobId`) → `GET /api/sanitizeFile?jobId=X` (poll until `status=done`) → findings rendered with per-category chips and entity detail rows. Result fields live under `metadata.findings` in the PS response.
 
 **Stored secrets:** User LLM API keys and PS App IDs are Fernet-encrypted before DB storage (`crypto.py`). The `ENCRYPTION_KEY` env var must be a valid Fernet key.
 
 **Audit log:** Config changes (PS settings, LLM keys, user/tenant CRUD) write `AuditEvent` rows alongside chat `Message` rows; both appear in the admin activity log.
 
 ### Environment variables that change runtime behavior
-- `PUBLIC_API_ENABLED` — enables `POST /v1/responses` (disabled by default)
 - `SHOW_LLM_KEY_SETTINGS` — shows per-user LLM key fields in the UI
 - `APP_ENV` / `ENV` — used for environment detection
 - `DEFAULT_DAILY_LIMIT` — per-user message cap (null = unlimited)
 - `MAX_FILE_SIZE_MB` — upload size limit (default 10 MB)
+- `SANITIZE_MAX_PER_MINUTE` — rate limit for file scans per user (default 5)
+- `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` / `PERPLEXITY_API_KEY` / `OPENROUTER_API_KEY` — shared provider keys (can also be set via Admin → Settings)

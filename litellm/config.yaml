@@ -96,9 +96,9 @@ model_list:
     model: openai/huggingface/Qwen3VL-8B-Instruct-F16
     api_base: os.environ/LOCAL_OPENAI_BASE_URL
     api_key: os.environ/LOCAL_OPENAI_API_KEY
-- model_name: gemma3:270m
+- model_name: ollama/*
   litellm_params:
-    model: ollama/gemma3:270m
+    model: ollama/*
     api_base: os.environ/OLLAMA_BASE_URL
 litellm_settings:
   drop_params: true

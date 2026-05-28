@@ -15,7 +15,7 @@ A multi-user AI chat application with deep [Prompt Security](https://www.prompt.
 - **API mode** — explicit prompt and response scanning before and after each LLM call; violations shown as clickable detail cards with full PS response JSON
 - **Gateway mode** — all LLM traffic routed through the PS proxy URL; no explicit scan calls, PS intercepts at the network layer
 - **PS API inspector** — collapsible panel beneath each violation card shows raw PS request/response JSON, syntax-highlighted
-- **File sanitization** — dedicated File Scan tab in the Demo panel; drag-and-drop a PDF, DOCX, XLSX, or TXT file through the PS `/api/sanitizeFile` endpoint
+- **File sanitization** — dedicated **🛡️ File Scan** button in the toolbar opens a full-width modal; drag-and-drop or load a built-in example file (PII test PDF) and submit it through the PS `/api/sanitizeFile` two-step async API; results show an action badge, per-category finding chips (e.g. Sensitive Data, Language Detector), and a detailed entity table with type, original value, confidence score, and redacted token for each finding
 
 ### Demo & Education
 - **Interactive walkthrough** — step-by-step tour showing the exact Python code running at each stage: user input → PS prompt scan → LLM call → PS response scan → display
@@ -28,11 +28,6 @@ A multi-user AI chat application with deep [Prompt Security](https://www.prompt.
 - **User management** — create, edit, and delete users; set per-user daily message limits and model restrictions
 - **PS tenant management** — create and manage multiple Prompt Security tenants with separate App IDs and URLs
 - **Audit log** — all config changes (PS settings, user/tenant CRUD) appear in the activity log alongside chat messages
-
-### Optional: Public Test API
-- **Narrow public endpoint** — `POST /v1/responses` for external scanners or SaaS tools, authenticated by app-issued bearer keys
-- **App-issued API keys** — users can create scoped `hg_live_...` keys from the settings menu; shown once at creation
-- **Safety by default** — disabled unless explicitly enabled; does not expose admin routes
 
 ---
 
@@ -108,24 +103,37 @@ Both modes can be active simultaneously — the chat UI shows a identification o
 
 ---
 
-## LiteLLM Models
+## LLM Providers & Models
 
-Models are configured in `litellm/config.yaml`. The following are enabled by default:
+The app supports two routing paths for LLM calls:
+
+### LiteLLM (proxy)
+
+A LiteLLM proxy runs as a separate Docker service on port 4000. Models listed in `litellm/config.yaml` are served through it. The following are enabled by default:
 
 | Model | Provider | Notes |
 | ----- | -------- | ----- |
 | `gpt-4o` / `gpt-4o-mini` / `gpt-5-nano` | OpenAI | Requires `OPENAI_API_KEY` |
 | `claude-sonnet-4-5-20250929` | Anthropic | Requires `ANTHROPIC_API_KEY` |
-| `gemini-2.0-flash` / `gemini-1.5-pro` | Google via OpenRouter | Requires `OPENROUTER_API_KEY` |
 | `sonar` | Perplexity | Requires `PERPLEXITY_API_KEY` |
+| `gemini-2.0-flash` / `gemini-1.5-pro` | Google via OpenRouter | Requires `OPENROUTER_API_KEY` |
 | `meta-llama/llama-3.3-70b-instruct:free` | OpenRouter | **Free** |
 | `meta-llama/llama-3.1-8b-instruct:free` | OpenRouter | **Free** |
 | `deepseek/deepseek-r1:free` | OpenRouter | **Free** |
 | `qwen/qwen-2.5-72b-instruct:free` | OpenRouter | **Free** |
+| `qwen/qwen3-next-80b-a3b-instruct:free` | OpenRouter | **Free** |
+| `qwen/qwen3-coder:free` | OpenRouter | **Free** |
 | `mistralai/mistral-7b-instruct:free` | OpenRouter | **Free** |
+| `microsoft/phi-3-mini-128k-instruct:free` | OpenRouter | **Free** |
 | `nvidia/nemotron-nano-9b-v2:free` | OpenRouter | **Free** |
-| + more | OpenRouter | **Free** |
-| `gemma3:270m` | Ollama (local) | See [Ollama](#ollama-local-models) |
+| `nvidia/nemotron-3-super-120b-a12b:free` | OpenRouter | **Free** |
+| `minimax/minimax-m2.5:free` | OpenRouter | **Free** |
+| `stepfun/step-3.5-flash:free` | OpenRouter | **Free** |
+| `liquid/lfm-2.5-1.2b-thinking:free` | OpenRouter | **Free** |
+| `nousresearch/hermes-3-llama-3.1-405b:free` | OpenRouter | **Free** |
+| `bytedance/seedance-1-5-pro` | OpenRouter | Requires `OPENROUTER_API_KEY` |
+| `sourceful/riverflow-v2-fast-preview` | OpenRouter | Requires `OPENROUTER_API_KEY` |
+| `ollama/*` | Ollama (local) | See [Ollama](#ollama-local-models) |
 | `huggingface/Qwen3VL-8B-Instruct-F16` | Local OpenAI-compatible | See [Local endpoint](#local-openai-compatible-endpoint) |
 
 To add or remove models, edit `litellm/config.yaml` and restart the `litellm` service:
@@ -133,6 +141,26 @@ To add or remove models, edit `litellm/config.yaml` and restart the `litellm` se
 ```bash
 docker compose restart litellm
 ```
+
+### Direct provider routing (model discovery)
+
+When an API key is saved for a supported provider in **Admin → Settings → LLM API Keys**, the app queries that provider's `/models` endpoint and populates the model picker with all available models — no changes to `litellm/config.yaml` needed.
+
+Discovered models use a `provider/model-id` prefix (e.g. `openai/gpt-4.1`, `anthropic/claude-opus-4`) and are called **directly** against the provider's API, bypassing LiteLLM entirely. This means:
+
+- Any model the provider exposes is instantly available in the UI after saving a key
+- The LiteLLM proxy is not involved in these calls
+- Per-user API keys take priority over the shared admin key for that provider
+
+| Provider | Env var / admin key | Discovery source |
+| -------- | ------------------- | ---------------- |
+| OpenAI | `OPENAI_API_KEY` | `GET /v1/models` (filtered to chat models) |
+| Anthropic | `ANTHROPIC_API_KEY` | `GET /v1/models` (falls back to a static known-model list) |
+| Google | `GOOGLE_API_KEY` | `GET /v1beta/openai/models` |
+| Perplexity | `PERPLEXITY_API_KEY` | `GET /v1/models` |
+| OpenRouter | `OPENROUTER_API_KEY` | `GET /v1/models` |
+
+Discovered models are persisted in the database and survive restarts. Re-triggering discovery (by re-saving a key in the admin panel) refreshes the list.
 
 ---
 
@@ -263,50 +291,6 @@ LOCAL_OPENAI_API_KEY: "local-dev-key"
 ```
 
 The default `litellm/config.yaml` includes the `huggingface/Qwen3VL-8B-Instruct-F16` model pointing to this endpoint.
-
----
-
-## Public Test API
-
-This app can optionally expose a narrow public endpoint for external scanners, SaaS tools, or simple prompt testing.
-
-### How to enable it
-
-Add to the `app` service `environment` block in `docker-compose.yml`:
-
-```yaml
-app:
-  environment:
-    PUBLIC_API_ENABLED: "true"
-    PUBLIC_API_MAX_PROMPT_TOKENS: "4000"
-    PUBLIC_API_MAX_OUTPUT_TOKENS: "600"
-    PUBLIC_API_ALLOW_SYSTEM_PROMPT: "false"
-```
-
-Then rebuild:
-
-```bash
-docker compose up -d --build app
-```
-
-### How to create an API key
-
-1. Open the chat UI and click the user menu (top right).
-2. Open **Settings → App API Keys**.
-3. Create a key (e.g. `saas-test`).
-4. Copy the `hg_live_...` key immediately — it is shown only once.
-
-### Example request
-
-```bash
-curl http://localhost:9100/v1/responses \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_APP_API_KEY" \
-  -d '{
-    "model": "meta-llama/llama-3.1-8b-instruct:free",
-    "input": "Hello from the public test API"
-  }'
-```
 
 ---
 

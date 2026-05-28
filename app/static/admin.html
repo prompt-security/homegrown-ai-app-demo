@@ -803,16 +803,12 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
                 <div id="row-ollama-model" class="setting-row" style="flex-direction:column;align-items:flex-start;gap:8px">
                   <div class="setting-label">Active Model</div>
                   <div class="setting-desc">
-                    Click a model to select it, then <strong>Save</strong> to apply.
-                    <span style="color:var(--green,#2ecc71)">●</span> Green = currently active &nbsp;
-                    <span style="color:#f39c12">●</span> Orange = pending save &amp; restart.
+                    Click a model to set it as active — takes effect immediately, no restart required.
+                    <span style="color:var(--green,#2ecc71)">●</span> Green = currently active.
                     Use <strong>Detect</strong> to refresh the list from your Ollama instance.
                   </div>
                   <div id="ollamaModelPicker" style="display:flex;flex-wrap:wrap;gap:6px;min-height:32px;align-items:center">
                     <span style="font-size:12px;color:var(--muted)">Click Detect to load available models.</span>
-                  </div>
-                  <div id="ollamaModelPendingWarning" style="display:none;font-size:12px;padding:6px 10px;border-radius:6px;background:rgba(243,156,18,0.12);border:1px solid rgba(243,156,18,0.4);color:#f39c12">
-                    ⚠ Model change is pending — click <strong>Save</strong> below. The new model won't be active until LiteLLM restarts.
                   </div>
                   <div id="ollamaNoModelWarning" style="display:none;font-size:12px;padding:6px 10px;border-radius:6px;background:rgba(231,76,60,0.1);border:1px solid rgba(231,76,60,0.4);color:var(--red,#e74c3c)">
                     ⚠ No model is selected. Pull a model below, then click <strong>Detect Models</strong> to populate the list.
@@ -1006,7 +1002,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
 </div>
 
 <script>
-  let TOKEN = localStorage.getItem('hgapp_token');
+  let TOKEN = localStorage.getItem('hgapp_admin_token');
 
   function switchSettingsPane(id) {
     document.querySelectorAll('.settings-pane').forEach(p => p.classList.remove('active'));
@@ -1016,7 +1012,10 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     if (id === 'sp-psregions') loadTenants();
   }
 
+  let _overlayShowing = false;
   function showAdminOverlay() {
+    if (_overlayShowing) return; // already showing — don't reset the form or re-focus
+    _overlayShowing = true;
     const el = document.getElementById('adminLoginOverlay');
     el.style.display = 'flex';
     document.getElementById('adminOverlayPassword').value = '';
@@ -1025,6 +1024,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
   }
 
   function hideAdminOverlay() {
+    _overlayShowing = false;
     document.getElementById('adminLoginOverlay').style.display = 'none';
   }
 
@@ -1047,7 +1047,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
       }
       const data = await res.json();
       TOKEN = data.access_token;
-      localStorage.setItem('hgapp_token', TOKEN);
+      localStorage.setItem('hgapp_admin_token', TOKEN);
       hideAdminOverlay();
       init();
     } catch { errEl.textContent = 'Network error. Try again.'; }
@@ -1062,12 +1062,10 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     }).then(r => {
       if (r.status===401 && !_redirectingToOverlay) {
         _redirectingToOverlay = true;
-        localStorage.clear();
+        localStorage.removeItem('hgapp_admin_token');
         TOKEN = null;
-        fetch('/auth/logout', { method: 'POST' }).finally(() => {
-          _redirectingToOverlay = false;
-          showAdminOverlay();
-        });
+        _redirectingToOverlay = false;
+        showAdminOverlay();
       }
       return r;
     });
@@ -1134,11 +1132,13 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
   async function init() {
     const res = await api('/auth/me');
     // 401s are already handled by the api() wrapper — don't show the overlay again here
-    if (!res.ok) { localStorage.clear(); TOKEN = null; return; }
+    if (!res.ok) { localStorage.removeItem('hgapp_admin_token'); TOKEN = null; return; }
     const user = await res.json();
     if (user.role !== 'admin') {
-      // Not an admin — clear session and show the overlay (200 response, api() won't catch this)
-      localStorage.clear(); TOKEN = null; showAdminOverlay(); return;
+      localStorage.removeItem('hgapp_admin_token');
+      TOKEN = null;
+      showAdminOverlay();
+      return;
     }
     document.getElementById('footerAvatar').textContent = 'AD';
     document.getElementById('footerEmail').textContent = 'Administrator';
@@ -1173,8 +1173,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     document.getElementById('settingFixModel').checked = fixEnabled;
     document.getElementById('fixModelPickerWrap').style.display = fixEnabled ? 'block' : 'none';
     if (fixEnabled) await populateFixModelSelect(settings.fixed_model_id);
-    // Hide Fix Model row when Ollama is enabled (Ollama controls the model)
-    document.getElementById('fixModelRow').style.display = settings.ollama_enabled ? 'none' : '';
+    // Fix Model is always available — Ollama and LLM providers coexist in the unified model picker
     _allowedDomains = Array.isArray(settings.allowed_email_domains) ? settings.allowed_email_domains : [];
     renderDomainTags();
     loadEmailSettings(settings);
@@ -1302,6 +1301,9 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     _anyProviderSet = anyProviderSet;  // keep module-level copy for reactive updates
     const ollamaSvcDown  = s.ollama_enabled && (_ollamaServiceStatusValue === 'stopped' || _ollamaServiceStatusValue === 'docker_unavailable');
     const ollamaNoModel  = s.ollama_enabled && (!_savedOllamaModel || !_detectedOllamaModels.includes(_savedOllamaModel));
+    // ollamaReady: service running AND a valid model is selected — satisfies the "at least one LLM source" requirement
+    const ollamaReady = s.ollama_enabled && _ollamaServiceStatusValue === 'running'
+      && !!_savedOllamaModel && _detectedOllamaModels.includes(_savedOllamaModel);
 
     let sections = '';
 
@@ -1367,25 +1369,29 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
 
     // Count unset / misconfigured items across all sections
     const noRegions = tenants.length === 0;
-    const unset = [
-      fixModelFail,                          // General
-                                             // Application — no required fields
-      !s.admin_password_set, !s.jwt_secret_set, !s.encryption_key_set, !s.litellm_key_set, // Security
-      openMode && !s.smtp_configured,        // Email
-      openMode && !domainsSet,               // Email
-      noRegions,                             // PS Regions
-      ollamaSvcDown,                         // Ollama
-      ollamaNoModel,                         // Ollama
-      !s.ollama_enabled && !anyProviderSet,  // LLM Keys
-    ].filter(Boolean).length;
+    // All incomplete security items — used for the badge fraction and Security pane dot.
+    const allSecurityUnset = [
+      !s.admin_password_set               && 'Admin password',
+      !s.jwt_secret_set                   && 'JWT secret',
+      !s.encryption_key_set               && 'Encryption key',
+      !s.litellm_key_set                  && 'LiteLLM master key',
+      (openMode && !s.smtp_configured)    && 'SMTP / email',
+      (openMode && !domainsSet)           && 'Allowed email domains',
+    ].filter(Boolean);
+    const unset = allSecurityUnset.length;
 
-    // Total required checks (fixed model only counted when enabled; email only in open mode)
-    const total = 5                                    // Security × 4 + LiteLLM
-      + (s.fixed_model_enabled ? 1 : 0)               // General: fix model
-      + (openMode ? 2 : 0)                            // Email: smtp + domains
-      + 1                                             // PS Regions
-      + (s.ollama_enabled ? 2 : 0)                   // Ollama: service + model
-      + (!s.ollama_enabled ? 1 : 0);                 // LLM Keys
+    // Subset used for the soft exit warning — only the items that would leave the app
+    // non-functional or insecure *right now*. Encryption key and LiteLLM key use ephemeral
+    // fallbacks so they don't warrant blocking exit.
+    _securityUnsetItems = [
+      !s.admin_password_set               && 'Admin password',
+      !s.jwt_secret_set                   && 'JWT secret',
+      (openMode && !s.smtp_configured)    && 'SMTP / email',
+      (openMode && !domainsSet)           && 'Allowed email domains',
+    ].filter(Boolean);
+
+    // Total = 4 security essentials + 2 email items in open mode (for the badge fraction)
+    const total = 4 + (openMode ? 2 : 0);
 
     const badge = document.getElementById('configStatusBadge');
     if (badge) {
@@ -1394,10 +1400,11 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
       badge.style.color = unset === 0 ? 'var(--green)' : unset > 3 ? 'var(--red)' : 'var(--yellow)';
     }
 
+    // Exit is always clickable — incomplete settings surface as a soft confirm inside exitAdmin().
     const exitLink = document.getElementById('exitAdminLink');
     if (exitLink) {
-      exitLink.classList.toggle('disabled', unset > 0);
-      exitLink.title = unset > 0 ? `${unset} config item${unset > 1 ? 's' : ''} incomplete — resolve before exiting` : '';
+      exitLink.classList.remove('disabled');
+      exitLink.title = unset > 0 ? `${unset} security setting${unset > 1 ? 's' : ''} incomplete — you'll be warned on exit` : '';
     }
 
     const body = document.getElementById('configStatusBody');
@@ -1411,14 +1418,14 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     _setNavDot('sp-security',   !s.admin_password_set || !s.jwt_secret_set || !s.encryption_key_set || !s.litellm_key_set);
     _setNavDot('sp-email',      openMode && (!s.smtp_configured || !domainsSet));
     _setNavDot('sp-psregions',  noRegions);
-    _setNavDot('sp-llmkeys',    !s.ollama_enabled && !anyProviderSet);
+    _setNavDot('sp-llmkeys',    !ollamaReady && !anyProviderSet);
     _setNavDot('sp-application', false);  // application has no required fields
     // Top-level Settings nav dot — derived from all pane error state (kept in sync by _refreshGlobalSettingsDot)
     _refreshGlobalSettingsDot();
-    applyFieldHighlights(s, anyProviderSet, openMode, domainsSet, fixModelFail, ollamaNoModel, noRegions);
+    applyFieldHighlights(s, anyProviderSet, ollamaReady, openMode, domainsSet, fixModelFail, ollamaNoModel, noRegions);
   }
 
-  function applyFieldHighlights(s, anyProviderSet, openMode, domainsSet, fixModelFail, ollamaNoModel, noRegions) {
+  function applyFieldHighlights(s, anyProviderSet, ollamaReady, openMode, domainsSet, fixModelFail, ollamaNoModel, noRegions) {
     const toggle = (id, unset) => {
       const el = document.getElementById(id);
       if (el) el.classList.toggle('field-unset', !!unset);
@@ -1433,8 +1440,8 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     toggle('row-email-domains', openMode && !domainsSet);
     // PS Regions pane — highlight the table when no regions configured
     toggle('tenantTable',       noRegions);
-    // LLM Keys pane — highlight the key table when no provider is set
-    toggle('providerKeyTable',  !s.ollama_enabled && !anyProviderSet);
+    // LLM Keys pane — highlight only when no provider key is set AND Ollama isn't ready with a model
+    toggle('providerKeyTable',  !ollamaReady && !anyProviderSet);
     // Application pane — fixed model row
     toggle('fixModelRow', fixModelFail);
     // Ollama pane — active model row
@@ -1829,19 +1836,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     updateOllamaNavStatus();
     updateOllamaActionButtons();
     _updateLlmKeysNavVisibility();
-    document.getElementById('fixModelRow').style.display = enabled ? 'none' : '';
-    if (enabled) {
-      // Turn off Fix Model if it's currently on — Ollama takes over model selection
-      const fixToggle = document.getElementById('settingFixModel');
-      if (fixToggle?.checked) {
-        fixToggle.checked = false;
-        document.getElementById('fixModelPickerWrap').style.display = 'none';
-        api('/admin/application-settings', {
-          method: 'PATCH',
-          body: JSON.stringify({ fixed_model_enabled: false, fixed_model_id: '' }),
-        });
-      }
-    }
+    // Fix Model remains available regardless of Ollama state
   }
 
   async function testOllamaConnection() {
@@ -1989,17 +1984,6 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
           errEl.style.display = 'block';
         }
         setTimeout(() => { btn.textContent = 'Save'; okEl.style.display = 'none'; }, 3000);
-      } else if (data.litellm_restarting) {
-        // LiteLLM is restarting to pick up new Ollama models — show countdown
-        okEl.textContent = '⟳ Restarting LiteLLM with new models…';
-        okEl.style.display = 'inline';
-        btn.textContent = 'Restarting…';
-        btn.disabled = true;
-        await new Promise(r => setTimeout(r, 9000));
-        btn.disabled = false;
-        btn.textContent = 'Save';
-        okEl.textContent = '✓ Saved — reload the chat page to see updated models';
-        setTimeout(() => { okEl.style.display = 'none'; okEl.textContent = 'Saved'; }, 6000);
       } else {
         okEl.textContent = 'Saved';
         okEl.style.display = 'inline';
@@ -2030,24 +2014,36 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
       <div style="display:grid;grid-template-columns:160px 130px auto;align-items:center;gap:0;padding:6px 18px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">
         <span>Provider</span><span>Status</span><span>Actions</span>
       </div>` +
-      rows.map(r => `
-      <div style="display:grid;grid-template-columns:160px 130px auto;align-items:center;gap:0;padding:9px 18px;border-bottom:1px solid var(--border)">
-        <span style="font-size:13px;font-weight:500">${r.name}</span>
-        <span>
-          ${r.key_set
-            ? `<span style="display:inline-flex;align-items:center;gap:6px">
-                <span style="font-size:12px;color:var(--green);background:rgba(39,174,96,0.12);border:1px solid rgba(39,174,96,0.3);border-radius:12px;padding:2px 9px">Set</span>
-                ${r.key_preview && r.key_preview !== 'set' ? `<span style="font-size:11px;color:var(--text-muted);font-family:monospace">${r.key_preview}</span>` : ''}
-               </span>`
-            : `<span style="font-size:12px;color:var(--text-muted);background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:2px 9px">Not set</span>`
-          }
-        </span>
-        <span style="display:flex;gap:6px">
-          <button class="btn btn-outline btn-sm" onclick="showProviderKeyForm('${r.provider}')">${r.key_set ? 'Update' : 'Set Key'}</button>
-          ${r.key_set ? `<button class="btn btn-danger btn-sm" onclick="clearProviderKey('${r.provider}')">Clear</button>` : ''}
-        </span>
-      </div>
-    `).join('');
+      rows.map(r => {
+        const models = r.discovered_models || [];
+        const CHIP_LIMIT = 8;
+        const visible = models.slice(0, CHIP_LIMIT);
+        const overflow = models.length - visible.length;
+        const chipsHtml = models.length
+          ? `<div style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 18px 10px;border-bottom:1px solid var(--border)">
+               ${visible.map(m => `<span style="font-size:11px;font-family:monospace;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:2px 7px;color:var(--text-muted)">${m}</span>`).join('')}
+               ${overflow > 0 ? `<span style="font-size:11px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:2px 7px;color:var(--text-muted)">+${overflow} more</span>` : ''}
+             </div>`
+          : '';
+        return `
+        <div style="display:grid;grid-template-columns:160px 130px auto;align-items:center;gap:0;padding:9px 18px ${models.length ? '6px' : ''};border-bottom:${models.length ? 'none' : '1px solid var(--border)'}">
+          <span style="font-size:13px;font-weight:500">${r.name}</span>
+          <span>
+            ${r.key_set
+              ? `<span style="display:inline-flex;align-items:center;gap:6px">
+                  <span style="font-size:12px;color:var(--green);background:rgba(39,174,96,0.12);border:1px solid rgba(39,174,96,0.3);border-radius:12px;padding:2px 9px">Set</span>
+                  ${r.key_preview && r.key_preview !== 'set' ? `<span style="font-size:11px;color:var(--text-muted);font-family:monospace">${r.key_preview}</span>` : ''}
+                 </span>`
+              : `<span style="font-size:12px;color:var(--text-muted);background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:2px 9px">Not set</span>`
+            }
+          </span>
+          <span style="display:flex;gap:6px">
+            <button class="btn btn-outline btn-sm" onclick="showProviderKeyForm('${r.provider}')">${r.key_set ? 'Update' : 'Set Key'}</button>
+            ${r.key_set ? `<button class="btn btn-danger btn-sm" onclick="clearProviderKey('${r.provider}')">Clear</button>` : ''}
+          </span>
+        </div>
+        ${chipsHtml}`;
+      }).join('');
   }
 
   function showProviderKeyForm(provider) {
@@ -2086,6 +2082,10 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
       hideProviderKeyForm();
       await loadProviderKeys();
       await loadConfigChecklist();
+      // Trigger a models refresh in the background so new discovered models appear in the chat UI
+      api('/admin/refresh-models', { method: 'POST' }).catch(() => {});
+      // Reload the table after discovery completes to show model chips
+      setTimeout(async () => { await loadProviderKeys(); }, 3500);
     } else {
       const d = await res.json().catch(() => ({}));
       err.textContent = '✗ ' + (d.detail || 'Failed to save');
@@ -2183,6 +2183,13 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     });
     btn.disabled = false;
     if (res.ok) {
+      // The backend hot-swaps the key and returns a fresh token signed with it.
+      // Update our session immediately so subsequent API calls don't 401.
+      const data = await res.json().catch(() => ({}));
+      if (data.token) {
+        TOKEN = data.token;
+        localStorage.setItem('hgapp_admin_token', TOKEN);
+      }
       clearPaneDirty('sp-security');
       document.getElementById('jwtSecretSavedChip').style.display = 'inline';
       btn.textContent = 'Saved ✓';
@@ -3381,16 +3388,32 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
   });
 
   async function logout() {
-    localStorage.clear();
+    localStorage.removeItem('hgapp_admin_token');
     TOKEN = null;
-    try { await fetch('/auth/logout', { method: 'POST' }); } catch {}
     showAdminOverlay();
   }
 
   async function exitAdmin(e) {
     e.preventDefault();
 
-    // Block if Ollama is enabled but misconfigured
+    // Soft gate: warn if security settings are incomplete, but always allow exit.
+    if (_securityUnsetItems.length > 0) {
+      const list = _securityUnsetItems.join(', ');
+      const go = await showConfirm(
+        'Security settings incomplete',
+        `The following settings are not yet configured: ${list}. The app may not work correctly until these are set. Go to Security settings now?`,
+        'Go to Security',
+        'Exit Anyway'
+      );
+      if (go) {
+        document.getElementById('nav-settings')?.click();
+        switchSettingsPane('sp-security');
+        return false;
+      }
+      // "Exit Anyway" — fall through
+    }
+
+    // Soft gate: warn if Ollama is enabled but misconfigured
     if (_ollamaEnabled) {
       const svcDown = _ollamaServiceStatusValue === 'stopped' || _ollamaServiceStatusValue === 'docker_unavailable';
       const noModel = !_savedOllamaModel || !_detectedOllamaModels.includes(_savedOllamaModel);
@@ -3433,10 +3456,11 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
           return false;
         }
       }
-      localStorage.clear();
+      // Admin and chat use separate storage keys (hgapp_admin_token vs hgapp_token).
+      // Just clear the admin token and return to wherever the chat UI left off.
+      localStorage.removeItem('hgapp_admin_token');
       TOKEN = null;
-      try { fetch('/auth/logout', { method: 'POST' }); } catch {}
-      window.location.replace('/login');
+      window.location.replace(localStorage.getItem('hgapp_token') ? '/' : '/login');
       return false;
     }
     // Open mode — just go to the chat UI
@@ -3821,10 +3845,10 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
           if (tr.ok) {
             const { access_token } = await tr.json();
             TOKEN = access_token;
-            localStorage.setItem('hgapp_token', TOKEN);
+            localStorage.setItem('hgapp_admin_token', TOKEN);
           }
           // Fall back to existing session token (e.g. auto-login token from admin-pw step)
-          if (!TOKEN) TOKEN = localStorage.getItem('hgapp_token');
+          if (!TOKEN) TOKEN = localStorage.getItem('hgapp_admin_token');
           if (TOKEN) {
             await init();
             // If init invalidated the token (stale), retry once with a fresh bootstrap
@@ -3832,7 +3856,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
               const tr2 = await fetch('/setup/bootstrap-token', { method: 'POST' });
               if (tr2.ok) {
                 TOKEN = (await tr2.json()).access_token;
-                localStorage.setItem('hgapp_token', TOKEN);
+                localStorage.setItem('hgapp_admin_token', TOKEN);
                 await init();
               }
             }
@@ -3855,6 +3879,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
   let _ollamaServiceStatusValue = 'unknown';
   let _ollamaEnabled = false;
   let _savedOllamaEnabled = false;  // true only after settings have been saved with ollama_enabled=true
+  let _securityUnsetItems = [];     // populated by loadConfigChecklist; used for soft exit warning
   let _detectedOllamaModels = [];
   let _activeOllamaModel  = '';   // currently selected in the picker (may be unsaved)
   let _savedOllamaModel   = '';   // last-saved value (live in the DB / active in chat)
@@ -3863,17 +3888,12 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     const dot = document.getElementById('ollamaNavDot');
     if (!dot) return;
     if (!_ollamaEnabled) { dot.style.display = 'none'; return; }
-    const noModel   = !_savedOllamaModel || !_detectedOllamaModels.includes(_savedOllamaModel);
-    const svcDown   = _ollamaServiceStatusValue === 'stopped' || _ollamaServiceStatusValue === 'docker_unavailable';
-    const pending   = _activeOllamaModel && _activeOllamaModel !== _savedOllamaModel;
+    const noModel = !_savedOllamaModel || !_detectedOllamaModels.includes(_savedOllamaModel);
+    const svcDown = _ollamaServiceStatusValue === 'stopped' || _ollamaServiceStatusValue === 'docker_unavailable';
     if (noModel || svcDown) {
       dot.style.display = 'inline';
       dot.style.color = 'var(--red,#e74c3c)';
       dot.title = noModel ? 'No model selected' : 'Service not running';
-    } else if (pending) {
-      dot.style.display = 'inline';
-      dot.style.color = '#f39c12';
-      dot.title = 'Model change pending save';
     } else {
       dot.style.display = 'none';
       dot.title = '';
@@ -3939,19 +3959,14 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
   }
 
   function _updateLlmKeysNavVisibility() {
-    // LLM Keys nav is only relevant when Ollama is not providing a running model.
-    // Base this on actual service state, not just the toggle position.
-    const ollamaRunning = _ollamaServiceStatusValue === 'running';
+    // LLM Keys and Ollama can both be active at the same time — always show the nav item.
     const llmNavBtn = document.querySelector('.settings-nav-item[data-pane="sp-llmkeys"]');
-    if (llmNavBtn) llmNavBtn.style.display = ollamaRunning ? 'none' : '';
-    // If LLM Keys pane is active and Ollama just started, move to Ollama pane
-    if (ollamaRunning) {
-      const llmPane = document.getElementById('sp-llmkeys');
-      if (llmPane?.classList.contains('active')) switchSettingsPane('sp-ollama');
-    }
-    // Keep the nav dot in sync
+    if (llmNavBtn) llmNavBtn.style.display = '';
+    // Nav dot: only warn if neither Ollama (running+model) nor any LLM key satisfies the requirement.
     if (!_settingsInitializing) {
-      _setNavDot('sp-llmkeys', !ollamaRunning && !_anyProviderSet);
+      const ollamaReady = _ollamaServiceStatusValue === 'running'
+        && !!_savedOllamaModel && _detectedOllamaModels.includes(_savedOllamaModel);
+      _setNavDot('sp-llmkeys', !ollamaReady && !_anyProviderSet);
     }
   }
 
@@ -4019,10 +4034,8 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     const data = await res.json();
     _detectedOllamaModels = data.models || [];
     const hiddenInput = document.getElementById('appOllamaModels');
-    const currentActive = hiddenInput?.value
-      ? hiddenInput.value.split(',').map(s => s.trim()).filter(Boolean)[0]
-      : '';
-    _activeOllamaModel = currentActive || _detectedOllamaModels[0] || '';
+    // Keep the saved model as active; fall back to first detected if none saved
+    _activeOllamaModel = _savedOllamaModel || _detectedOllamaModels[0] || '';
     if (hiddenInput) hiddenInput.value = [_activeOllamaModel, ..._detectedOllamaModels.filter(m => m !== _activeOllamaModel)].join(', ');
     renderOllamaModelPicker();
     if (status) { status.textContent = `${_detectedOllamaModels.length} model${_detectedOllamaModels.length !== 1 ? 's' : ''} found`; }
@@ -4032,26 +4045,19 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
 
   function renderOllamaModelPicker() {
     const picker    = document.getElementById('ollamaModelPicker');
-    const warning   = document.getElementById('ollamaModelPendingWarning');
     const noModelEl = document.getElementById('ollamaNoModelWarning');
     if (!picker) return;
     if (_detectedOllamaModels.length === 0) {
       picker.innerHTML = '<span style="font-size:12px;color:var(--muted)">No models installed. Use Pull below to download one.</span>';
-      if (warning)   warning.style.display   = 'none';
       if (noModelEl) noModelEl.style.display = 'block';
       return;
     }
     picker.innerHTML = _detectedOllamaModels.map(m => {
-      const isSelected = m === _activeOllamaModel;
-      const isSaved    = m === _savedOllamaModel;
-      // Green  = saved & selected (currently active)
-      // Orange = selected but not yet saved (pending)
-      // Default = not selected
+      const isActive = m === _savedOllamaModel;
+      // Green = currently active; default = not selected
       let bg, border, color, prefix;
-      if (isSelected && isSaved) {
+      if (isActive) {
         bg = 'rgba(46,204,113,0.15)'; border = 'rgba(46,204,113,0.5)'; color = 'var(--green,#2ecc71)'; prefix = '✓ ';
-      } else if (isSelected && !isSaved) {
-        bg = 'rgba(243,156,18,0.15)'; border = 'rgba(243,156,18,0.5)'; color = '#f39c12'; prefix = '◎ ';
       } else {
         bg = 'var(--surface2)'; border = 'var(--border)'; color = 'var(--text)'; prefix = '';
       }
@@ -4061,22 +4067,38 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
         ${prefix}<span style="font-family:monospace">${m}</span>
       </span>`;
     }).join('');
-    const noneSelected = !_activeOllamaModel || !_detectedOllamaModels.includes(_activeOllamaModel);
+    const noneSelected = !_savedOllamaModel || !_detectedOllamaModels.includes(_savedOllamaModel);
     if (noModelEl) noModelEl.style.display = noneSelected ? 'block' : 'none';
-    // Show pending warning when the selected model hasn't been saved yet
-    if (warning) {
-      warning.style.display = (!noneSelected && _activeOllamaModel !== _savedOllamaModel) ? 'block' : 'none';
-    }
     updateOllamaNavStatus();
   }
 
-  function selectOllamaModel(modelId) {
+  async function selectOllamaModel(modelId) {
+    if (modelId === _savedOllamaModel) return;   // already active, nothing to do
     _activeOllamaModel = modelId;
-    const others = _detectedOllamaModels.filter(m => m !== modelId);
+    const others  = _detectedOllamaModels.filter(m => m !== modelId);
     const ordered = [modelId, ...others];
     const hiddenInput = document.getElementById('appOllamaModels');
     if (hiddenInput) hiddenInput.value = ordered.join(', ');
+
+    // Auto-save — model switching is per-request, no LiteLLM restart needed
+    const status = document.getElementById('ollamaDetectStatus');
+    if (status) { status.textContent = 'Saving…'; status.style.display = 'inline'; }
+    try {
+      const res = await api('/admin/application-settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ ollama_model_ids: ordered.join(', ') }),
+      });
+      if (res.ok) {
+        _savedOllamaModel = modelId;
+        if (status) { status.textContent = '✓ Active'; setTimeout(() => { status.style.display = 'none'; }, 2000); }
+      } else {
+        if (status) { status.textContent = '✗ Save failed'; setTimeout(() => { status.style.display = 'none'; }, 3000); }
+      }
+    } catch {
+      if (status) { status.textContent = '✗ Save failed'; setTimeout(() => { status.style.display = 'none'; }, 3000); }
+    }
     renderOllamaModelPicker();
+    loadConfigChecklist();
   }
 
   // ── Ollama model pull ─────────────────────────────────────────────────────
@@ -4508,25 +4530,10 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
       await detectOllamaModels();
       renderModelBrowser();
 
-      // If only one model remains, auto-select it and nudge for restart if needed
+      // If only one model remains, auto-select it (takes effect immediately, no restart needed)
       if (_detectedOllamaModels.length === 1) {
         const only = _detectedOllamaModels[0];
-        selectOllamaModel(only);
-        if (only !== _savedOllamaModel) {
-          // Switch the settings sidebar to the Ollama pane so the user sees the context
-          switchSettingsPane('sp-ollama');
-          // Show a persistent warning in the status bar
-          const statusBar  = document.getElementById('mbPullStatus');
-          const statusText = document.getElementById('mbPullStatusText');
-          const bar        = document.getElementById('mbPullBar');
-          if (statusBar) {
-            clearTimeout(statusBar._hideTimer);
-            statusBar.style.display = 'flex';
-            if (bar) bar.style.width = '0%';
-            statusText.style.color  = '#f39c12';
-            statusText.textContent  = `⚠ Only "${only}" remains — save Ollama settings and restart LiteLLM to apply.`;
-          }
-        }
+        await selectOllamaModel(only);
       }
     } catch (e) {
       chip.style.opacity = '';
