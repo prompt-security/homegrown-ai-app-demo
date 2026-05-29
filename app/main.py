@@ -7,10 +7,12 @@ import json
 import logging
 import os
 import random
+import re
 import secrets
 import smtplib
 import time
 import uuid
+from pathlib import Path
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -21,7 +23,7 @@ import httpx
 import openai
 from dotenv import load_dotenv
 from pydantic import BaseModel
-from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from openai import AsyncOpenAI
@@ -42,17 +44,23 @@ from crypto import (
     set_encryption_key, validate_fernet_key, write_encryption_key_override,
 )
 import database as _db_module
-from database import AsyncSessionLocal, Base, engine, get_db, rebuild_engine, write_db_override
+from database import AsyncSessionLocal, Base, engine, get_db
 from models import APIKey, AppSetting, AuditEvent, ChatSession, DemoScenario, Message, PSTenant, User
 from prompt_security import PromptSecurityClient
 from schemas import (
     APIKeyCreateRequest, APIKeyCreateResponse, APIKeyOut,
     ChatMessage, ChatRequest, ChatResponse,
     LLMKeysUpdate, LoginRequest, MessageOut, PSConfigUpdate, PSTenantCreate, PSTenantOut, PSTenantUpdate,
-    PublicResponseOut, PublicResponseOutput, PublicResponseRequest, PublicResponseUsage,
     SessionOut, TokenEstimateResponse, TokenResponse, UserCreate, UserOut, UserStats, UserUpdate,
 )
 from token_counter import estimate_message_tokens, estimate_text_tokens
+
+try:
+    import docker as _docker_sdk
+    from docker.errors import DockerException as _DockerException, NotFound as _DockerNotFound, APIError as _DockerAPIError
+    _DOCKER_SDK_AVAILABLE = True
+except ImportError:
+    _DOCKER_SDK_AVAILABLE = False
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-8s %(name)s  %(message)s")
 logger = logging.getLogger("main")
@@ -63,10 +71,6 @@ LITELLM_MASTER_KEY = os.getenv("LITELLM_MASTER_KEY", "")
 ADMIN_EMAIL        = os.getenv("ADMIN_EMAIL", "admin@sentinelone.com")
 ADMIN_PASSWORD     = os.getenv("ADMIN_PASSWORD", "ChangeMe!")
 DEFAULT_DAILY_LIMIT = int(os.getenv("DEFAULT_DAILY_LIMIT", "50")) or None
-PUBLIC_API_ENABLED = os.getenv("PUBLIC_API_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
-PUBLIC_API_MAX_PROMPT_TOKENS = int(os.getenv("PUBLIC_API_MAX_PROMPT_TOKENS", "4000"))
-PUBLIC_API_MAX_OUTPUT_TOKENS = int(os.getenv("PUBLIC_API_MAX_OUTPUT_TOKENS", "600"))
-PUBLIC_API_ALLOW_SYSTEM_PROMPT = os.getenv("PUBLIC_API_ALLOW_SYSTEM_PROMPT", "false").lower() in {"1", "true", "yes", "on"}
 SHOW_LLM_KEY_SETTINGS = os.getenv("SHOW_LLM_KEY_SETTINGS", "false").lower() in {"1", "true", "yes", "on"}
 APP_ENV = os.getenv("APP_ENV", os.getenv("ENV", "development")).lower()
 
@@ -182,14 +186,25 @@ _PROVIDER_URLS = {
 
 _OLLAMA_MODEL_IDS      = {s.strip() for s in os.getenv("OLLAMA_MODEL_IDS", "").split(",") if s.strip()}
 _LOCAL_OPENAI_MODEL_IDS: set[str] = set()
-OLLAMA_BASE_URL        = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+_DISCOVERED_MODELS: dict[str, list[str]] = {}  # provider → [prefixed model IDs like "openai/gpt-4.1"]
+OLLAMA_BASE_URL        = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
+COMPOSE_PROJECT_NAME   = os.getenv("COMPOSE_PROJECT_NAME", "homegrown-ai-app-demo")
 
 
 def _detect_provider(model_id: str) -> str:
-    if model_id in _OLLAMA_MODEL_IDS:
+    if model_id.startswith("ollama/") or model_id in _OLLAMA_MODEL_IDS:
         return "ollama"
     if model_id in _LOCAL_OPENAI_MODEL_IDS:
         return "local_openai"
+    # Handle explicit provider-prefixed IDs (e.g. from model discovery)
+    if model_id.startswith("openai/"):
+        return "openai"
+    if model_id.startswith("anthropic/"):
+        return "anthropic"
+    if model_id.startswith("perplexity/"):
+        return "perplexity"
+    if model_id.startswith("google/"):
+        return "google"
     m = model_id.lower()
     if m.startswith(("gpt-", "o1", "o3", "o4")):
         return "openai"
@@ -230,21 +245,148 @@ def _get_llm_key(user: User, model_id: str) -> str:
     return _SHARED_LLM_KEYS.get(provider, "")
 
 
-def _user_llm_client(user: User, model_id: str):
-    """Returns (AsyncOpenAI client, model_id) — uses per-user key if set, else shared LiteLLM."""
-    if not user.llm_api_keys_enc:
-        return litellm_client, model_id
-    try:
-        keys = json.loads(decrypt(user.llm_api_keys_enc))
-    except Exception:
-        return litellm_client, model_id
+def _guest_llm_client(model_id: str):
+    """Like _user_llm_client but for open-mode/guest requests (no per-user key).
+
+    Priority:
+    1. Discovered/prefixed model (e.g. "openai/gpt-5.2") + shared key → direct provider call
+    2. Everything else → LiteLLM proxy
+    """
     provider = _detect_provider(model_id)
-    key = keys.get(provider)
-    if not key:
-        return litellm_client, model_id
-    base_url = _PROVIDER_URLS[provider]
-    logger.info("Using per-user %s key for %s", provider, user.email)
-    return AsyncOpenAI(api_key=key, base_url=base_url), model_id
+    base_url = _PROVIDER_URLS.get(provider)
+    bare_model = model_id.split("/", 1)[1] if (base_url and model_id.startswith(f"{provider}/")) else model_id
+
+    if base_url and model_id.startswith(f"{provider}/"):
+        shared_key = _SHARED_LLM_KEYS.get(provider, "")
+        if shared_key:
+            logger.info("Direct %s call (shared key, guest) for discovered model %s", provider, model_id)
+            return AsyncOpenAI(api_key=shared_key, base_url=base_url), bare_model
+
+    return litellm_client, model_id
+
+
+def _user_llm_client(user: User, model_id: str):
+    """Returns (AsyncOpenAI client, effective_model_id).
+
+    Priority:
+    1. Per-user provider key  → direct call to provider (bypasses LiteLLM)
+    2. Discovered/prefixed model (e.g. "openai/gpt-5.1") + shared key
+                              → direct call to provider (LiteLLM wildcards require a restart
+                                and are unreliable; direct is simpler and faster)
+    3. Everything else        → LiteLLM proxy
+    """
+    provider = _detect_provider(model_id)
+    base_url = _PROVIDER_URLS.get(provider)
+    # Strip "provider/" namespace prefix for the actual API call
+    bare_model = model_id.split("/", 1)[1] if (base_url and model_id.startswith(f"{provider}/")) else model_id
+
+    # 1. Per-user key
+    if user.llm_api_keys_enc and base_url:
+        try:
+            keys = json.loads(decrypt(user.llm_api_keys_enc))
+            key = keys.get(provider, "")
+            if key:
+                logger.info("Using per-user %s key for %s", provider, user.email)
+                return AsyncOpenAI(api_key=key, base_url=base_url), bare_model
+        except Exception:
+            pass
+
+    # 2. Provider-prefixed model (discovered) + shared key → bypass LiteLLM
+    if base_url and model_id.startswith(f"{provider}/"):
+        shared_key = _SHARED_LLM_KEYS.get(provider, "")
+        if shared_key:
+            logger.info("Direct %s call (shared key) for discovered model %s", provider, model_id)
+            return AsyncOpenAI(api_key=shared_key, base_url=base_url), bare_model
+
+    # 3. LiteLLM proxy (handles unprefixed models in config.yaml)
+    return litellm_client, model_id
+
+
+# ── Provider model discovery ──────────────────────────────────────────────────
+_OPENAI_CHAT_EXCLUDE = re.compile(
+    r"(embed|tts|whisper|dall-e|davinci-002|babbage-002|omni-moderation|text-moderation|realtime|:ft-)",
+    re.IGNORECASE,
+)
+_OPENAI_CHAT_PREFIXES = ("gpt-", "o1", "o3", "o4", "chatgpt-")
+
+
+def _is_chat_model_openai(model_id: str) -> bool:
+    if _OPENAI_CHAT_EXCLUDE.search(model_id):
+        return False
+    return any(model_id.startswith(p) for p in _OPENAI_CHAT_PREFIXES)
+
+
+async def _discover_provider_models(provider: str, key: str) -> list[str]:
+    """Query a provider's models API; return prefixed IDs (e.g. 'openai/gpt-4.1')."""
+    results: list[str] = []
+    if provider == "openai":
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.get(
+                    "https://api.openai.com/v1/models",
+                    headers={"Authorization": f"Bearer {key}"},
+                )
+                if r.status_code == 200:
+                    for m in r.json().get("data", []):
+                        mid = m.get("id", "")
+                        if _is_chat_model_openai(mid):
+                            results.append(f"openai/{mid}")
+                    logger.info("OpenAI discovery: %d chat models found", len(results))
+                else:
+                    logger.warning("OpenAI /models returned %s", r.status_code)
+        except Exception as exc:
+            logger.warning("OpenAI model discovery failed: %s", exc)
+
+    elif provider == "anthropic":
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.get(
+                    "https://api.anthropic.com/v1/models",
+                    headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
+                )
+                if r.status_code == 200:
+                    for m in r.json().get("data", []):
+                        mid = m.get("id", "")
+                        if mid:
+                            results.append(f"anthropic/{mid}")
+                    logger.info("Anthropic discovery: %d models found", len(results))
+        except Exception as exc:
+            logger.warning("Anthropic model discovery failed: %s", exc)
+        if not results:
+            # Static fallback for known Claude models not already in config
+            results = [
+                "anthropic/claude-opus-4-5-20250929",
+                "anthropic/claude-sonnet-4-5-20250929",
+                "anthropic/claude-haiku-3-5-20241022",
+                "anthropic/claude-3-5-sonnet-20241022",
+                "anthropic/claude-3-5-haiku-20241022",
+                "anthropic/claude-3-opus-20240229",
+                "anthropic/claude-3-haiku-20240307",
+            ]
+            logger.info("Using static Anthropic model list (%d models)", len(results))
+
+    return results
+
+
+async def _run_discovery(provider: str, key: str) -> None:
+    """Background task: discover models for a provider, persist, and refresh cache."""
+    global _DISCOVERED_MODELS
+    discovered = await _discover_provider_models(provider, key)
+    if not discovered:
+        return
+    _DISCOVERED_MODELS[provider] = discovered
+    try:
+        async with AsyncSessionLocal() as db:
+            dm_row = await db.get(AppSetting, "discovered_models")
+            payload = json.dumps(_DISCOVERED_MODELS)
+            if dm_row:
+                dm_row.value = payload
+            else:
+                db.add(AppSetting(key="discovered_models", value=payload))
+            await db.commit()
+    except Exception as exc:
+        logger.warning("Could not persist discovered models: %s", exc)
+    await refresh_model_cache()
 
 
 # ── Fallback model list (used when LiteLLM is unreachable) ───────────────────
@@ -264,7 +406,7 @@ _model_cache: list[dict] = []
 
 
 async def refresh_model_cache() -> list[dict]:
-    global _model_cache
+    global _model_cache, _OLLAMA_MODEL_IDS
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             headers = {}
@@ -273,11 +415,52 @@ async def refresh_model_cache() -> list[dict]:
             r = await client.get(f"{LITELLM_BASE_URL}/v1/models", headers=headers)
             r.raise_for_status()
             data = r.json().get("data", [])
-            _model_cache = [{"id": m["id"]} for m in data]
+            # Exclude LiteLLM's wildcard placeholder entry from the visible list
+            _model_cache = [{"id": m["id"]} for m in data if not m["id"].endswith("/*")]
             logger.info("LiteLLM: %d models loaded", len(_model_cache))
     except Exception as e:
         logger.warning("Could not reach LiteLLM (%s) — using fallback model list", e)
         _model_cache = []
+
+    # Auto-discover Ollama models directly from the Ollama API.
+    # Any model installed via `ollama pull` will appear automatically
+    # without needing a config.yaml change or LiteLLM restart —
+    # the wildcard `ollama/*` entry in config.yaml routes all of them.
+    if OLLAMA_BASE_URL:
+        try:
+            async with httpx.AsyncClient(timeout=5.0, verify=False) as oclient:
+                r = await oclient.get(f"{OLLAMA_BASE_URL}/api/tags")
+                if r.status_code == 200:
+                    existing_ids = {m["id"] for m in _model_cache}
+                    for om in r.json().get("models", []):
+                        name = om.get("name") or om.get("model", "")
+                        if not name:
+                            continue
+                        full_id = f"ollama/{name}"
+                        if full_id not in existing_ids:
+                            _model_cache.append({"id": full_id})
+                            existing_ids.add(full_id)
+                        _OLLAMA_MODEL_IDS.add(name)  # keep bare-name set in sync
+                    ollama_count = sum(1 for m in _model_cache if m["id"].startswith("ollama/"))
+                    logger.info("Ollama: %d model(s) available", ollama_count)
+        except Exception as e:
+            logger.debug("Could not reach Ollama for model discovery (%s)", e)
+
+    # Inject discovered provider models (deduplicate against existing bare names)
+    if _DISCOVERED_MODELS:
+        existing_ids = {m["id"] for m in _model_cache}
+        existing_bare = {m["id"].split("/", 1)[-1] for m in _model_cache}
+        added = 0
+        for provider_models in _DISCOVERED_MODELS.values():
+            for mid in provider_models:
+                bare = mid.split("/", 1)[-1]
+                if mid not in existing_ids and bare not in existing_bare:
+                    _model_cache.append({"id": mid})
+                    existing_ids.add(mid)
+                    existing_bare.add(bare)
+                    added += 1
+        if added:
+            logger.info("Injected %d discovered model(s) into cache", added)
     return _model_cache
 
 
@@ -447,6 +630,15 @@ async def lifespan(app: FastAPI):
         if ob_row:
             OLLAMA_BASE_URL = ob_row.value
 
+        # Load previously discovered provider models
+        dm_row = await db.get(AppSetting, "discovered_models")
+        if dm_row:
+            try:
+                _DISCOVERED_MODELS.update(json.loads(dm_row.value))
+                logger.info("Loaded discovered models for providers: %s", list(_DISCOVERED_MODELS.keys()))
+            except Exception as exc:
+                logger.warning("Could not load discovered models: %s", exc)
+
     await refresh_model_cache()
     yield
 
@@ -579,12 +771,21 @@ async def me(current_user: User = Depends(get_current_user)):
 
 
 def _setup_complete(s: dict) -> bool:
-    """Return True only when all required wizard items are configured."""
-    any_llm = any(s.get(f"provider_key_{p['id']}") for p in KNOWN_PROVIDERS)
+    """Return True only when all required items are configured.
+
+    LLM source: at least one provider key OR Ollama enabled with a model saved.
+    Encryption key override is advisory (ephemeral fallback works); excluded here
+    so a missing override file doesn't trap admins in a login→admin redirect loop.
+    """
+    any_provider_key = any(s.get(f"provider_key_{p['id']}") for p in KNOWN_PROVIDERS)
+    ollama_ready = (
+        s.get("ollama_enabled") == "true"
+        and bool(s.get("ollama_model_ids", "").strip())
+    )
+    any_llm = any_provider_key or ollama_ready
     return bool(
         s.get("admin_password_hash")
         and s.get("jwt_secret_enc")
-        and encryption_key_overridden()
         and any_llm
     )
 
@@ -679,6 +880,26 @@ async def health():
         "models_loaded": len(_model_cache),
     }
 
+
+_APP_VERSION: str = "unknown"
+
+def _load_app_version() -> str:
+    """Read VERSION file from repo root (one level above app/)."""
+    for candidate in [
+        Path(__file__).parent.parent / "VERSION",  # repo root when running in container
+        Path(__file__).parent / "VERSION",          # fallback if copied alongside app
+    ]:
+        if candidate.exists():
+            return candidate.read_text().strip()
+    return "unknown"
+
+_APP_VERSION = _load_app_version()
+
+
+@app.get("/version")
+async def version():
+    return {"version": _APP_VERSION}
+
 @app.get("/models")
 async def models(current_user: User = Depends(get_current_user)):
     live = _model_cache or await refresh_model_cache()
@@ -735,138 +956,6 @@ async def chat_token_estimate(
     )
 
 
-@app.post("/v1/responses", response_model=PublicResponseOut)
-async def public_responses(
-    body: PublicResponseRequest,
-    auth_ctx: tuple[APIKey, User] = Depends(get_current_api_key),
-    db: AsyncSession = Depends(get_db),
-):
-    _ensure_public_api_enabled()
-    api_key, current_user = auth_ctx
-
-    available = _model_cache or await refresh_model_cache() or _FALLBACK_MODELS
-    model = body.model or available[0]["id"]
-    if not model:
-        raise HTTPException(status_code=503, detail="No models available — check LiteLLM config")
-    if current_user.allowed_models is not None and model not in current_user.allowed_models:
-        raise HTTPException(status_code=403, detail="Model not allowed for this API key")
-
-    user_prompt = (body.input or "").strip()
-    if not user_prompt:
-        raise HTTPException(status_code=400, detail="input is required")
-
-    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    used_today = await db.scalar(
-        select(func.count(Message.id)).where(
-            Message.user_id == current_user.id,
-            Message.role == "user",
-            Message.created_at >= today_start,
-        )
-    ) or 0
-    if current_user.daily_message_limit and used_today >= current_user.daily_message_limit:
-        raise HTTPException(status_code=429, detail="Daily message limit reached")
-
-    system_prompt = "You are a helpful AI assistant."
-    if PUBLIC_API_ALLOW_SYSTEM_PROMPT and body.system_prompt:
-        system_prompt = body.system_prompt
-
-    payload = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt},
-    ]
-    prompt_tokens = estimate_message_tokens(payload, model=model)
-    if prompt_tokens > PUBLIC_API_MAX_PROMPT_TOKENS:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Prompt too large for public test endpoint ({prompt_tokens} > {PUBLIC_API_MAX_PROMPT_TOKENS} tokens).",
-        )
-
-    ps_client = _build_ps_api_client(current_user)
-    prompt_action = "pass"
-    ps_violations: list = []
-    effective_prompt = user_prompt
-    if ps_client:
-        try:
-            ps_result = await ps_client.protect_prompt(
-                user_prompt=user_prompt,
-                system_prompt=system_prompt,
-                user=current_user.email,
-            )
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"Prompt Security scan failed: {exc}")
-        if not ps_result.allowed:
-            raise HTTPException(status_code=403, detail={"ps_action": "block", "violations": ps_result.violations})
-        if ps_result.modified_text:
-            effective_prompt = ps_result.modified_text
-            prompt_action = "modify"
-            payload[-1]["content"] = effective_prompt
-
-    llm, effective_model = _user_llm_client(current_user, model)
-    try:
-        _pub_kwargs: dict = {"model": effective_model, "messages": payload, "max_tokens": PUBLIC_API_MAX_OUTPUT_TOKENS}
-        if llm is litellm_client:
-            _pub_kwargs["extra_body"] = _litellm_extra(effective_model)
-        resp = await llm.chat.completions.create(**_pub_kwargs)
-    except Exception as exc:
-        logger.error("Public API completion error: %s", exc)
-        raise HTTPException(status_code=502, detail=str(exc))
-
-    text = _extract_response_text(resp)
-    if not text:
-        raise HTTPException(status_code=502, detail="Model returned an empty response")
-
-    if ps_client:
-        try:
-            ps_resp = await ps_client.protect_response(
-                response_text=text,
-                user_prompt=user_prompt,
-                system_prompt=system_prompt,
-                user=current_user.email,
-            )
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"Prompt Security response scan failed: {exc}")
-        ps_violations = ps_resp.violations
-        if not ps_resp.allowed:
-            raise HTTPException(status_code=403, detail={"ps_action": "block", "violations": ps_violations})
-        if ps_resp.modified_text:
-            text = ps_resp.modified_text
-            prompt_action = "modify"
-
-    usage = getattr(resp, "usage", None)
-    prompt_tokens = int(getattr(usage, "prompt_tokens", prompt_tokens) or prompt_tokens)
-    completion_tokens = int(getattr(usage, "completion_tokens", estimate_text_tokens(text, model=effective_model)))
-    total_tokens = int(getattr(usage, "total_tokens", prompt_tokens + completion_tokens))
-
-    session = ChatSession(
-        id=str(uuid.uuid4()),
-        user_id=current_user.id,
-        title=f"API Test: {user_prompt[:48]}" + ("…" if len(user_prompt) > 48 else ""),
-    )
-    db.add(session)
-    await db.commit()
-    await _log_msg(db, session.id, current_user.id, "user", user_prompt, model)
-    await _log_msg(
-        db, session.id, current_user.id, "assistant", text, model,
-        ps_scanned=bool(ps_client), ps_action=prompt_action, ps_violations=ps_violations,
-    )
-    await _log_audit(
-        db, current_user.id, current_user.email, "public_api_invoked",
-        f"model={model} key={api_key.name} total_tokens={total_tokens}",
-    )
-
-    return PublicResponseOut(
-        id=f"resp_{uuid.uuid4().hex}",
-        model=model,
-        output=[PublicResponseOutput(text=text)],
-        usage=PublicResponseUsage(
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            total_tokens=total_tokens,
-        ),
-        ps_scanned=bool(ps_client),
-        ps_action=prompt_action,
-        ps_violations=ps_violations,
-    )
 
 
 # ── User self-service ─────────────────────────────────────────────────────────
@@ -1599,6 +1688,7 @@ async def upload_file(
 @app.post("/chat/stream")
 async def chat_stream(
     request: ChatRequest,
+    http_request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1694,6 +1784,7 @@ async def chat_stream(
             except Exception as e:
                 logger.warning("Could not init PS client for %s: %s", current_user.email, e)
 
+    # skip_ps is restricted to admins (used by compare mode right pane)
     if request.skip_ps and current_user.role != "admin":
         raise HTTPException(status_code=403, detail="skip_ps is restricted to admin users")
 
@@ -1805,6 +1896,12 @@ async def chat_stream(
                             body_bytes = await resp.aread()
                             raise Exception(f"Anthropic gateway {resp.status_code}: {body_bytes[:300]}")
                         async for line in resp.aiter_lines():
+                            if await http_request.is_disconnected():
+                                logger.info(
+                                    "Client disconnected — aborting Anthropic gateway stream (user=%s)",
+                                    current_user.email,
+                                )
+                                return
                             if not line.startswith('data: '):
                                 continue
                             data_str = line[6:]
@@ -1848,6 +1945,12 @@ async def chat_stream(
                     model=model, messages=payload, stream=True
                 )
                 async for chunk in stream:
+                    if await http_request.is_disconnected():
+                        logger.info(
+                            "Client disconnected — aborting PS gateway stream (user=%s)",
+                            current_user.email,
+                        )
+                        return
                     if getattr(chunk, "usage", None):
                         prompt_tokens = getattr(chunk.usage, "prompt_tokens", prompt_tokens)
                         completion_tokens = getattr(chunk.usage, "completion_tokens", completion_tokens)
@@ -1941,22 +2044,96 @@ async def chat_stream(
 
         # ── Stream (per-user key or shared LiteLLM) ────────────────────────────
         llm, effective_model = _user_llm_client(current_user, model)
+        provider = _detect_provider(effective_model)
         try:
             prompt_tokens = estimate_message_tokens(payload, model=effective_model)
-            stream_kwargs = {"model": effective_model, "messages": payload, "stream": True}
-            if llm is litellm_client:
-                stream_kwargs["stream_options"] = {"include_usage": True}
-                stream_kwargs["extra_body"] = _litellm_extra(effective_model)
-            stream = await llm.chat.completions.create(**stream_kwargs)
-            async for chunk in stream:
-                if getattr(chunk, "usage", None):
-                    prompt_tokens = getattr(chunk.usage, "prompt_tokens", prompt_tokens)
-                    completion_tokens = getattr(chunk.usage, "completion_tokens", completion_tokens)
-                    total_tokens = getattr(chunk.usage, "total_tokens", total_tokens)
-                if chunk.choices and chunk.choices[0].delta.content:
-                    token = chunk.choices[0].delta.content
-                    reply += token
-                    yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+
+            # For Ollama models we bypass LiteLLM and call Ollama directly.
+            #
+            # LiteLLM is a separate Docker container that acts as a proxy.
+            # Even when our connection to LiteLLM is closed, LiteLLM does not
+            # reliably propagate the cancellation upstream to Ollama — the Ollama
+            # process keeps running and pins the CPU.
+            #
+            # By calling Ollama's OpenAI-compatible endpoint directly we own the
+            # TCP socket.  When the client disconnects we cancel the pump task,
+            # which raises CancelledError inside httpx recv(), the socket closes,
+            # and Ollama's Go HTTP server sees the connection drop and stops the
+            # inference immediately.
+            if provider == "ollama":
+                bare_model = effective_model.removeprefix("ollama/")
+                ollama_direct = AsyncOpenAI(
+                    api_key="ollama",          # Ollama ignores the key
+                    base_url=f"{OLLAMA_BASE_URL}/v1",
+                    timeout=None,              # inference can take a while on CPU
+                )
+                stream = await ollama_direct.chat.completions.create(
+                    model=bare_model,
+                    messages=payload,
+                    stream=True,
+                )
+            else:
+                stream_kwargs = {"model": effective_model, "messages": payload, "stream": True}
+                if llm is litellm_client:
+                    stream_kwargs["stream_options"] = {"include_usage": True}
+                    stream_kwargs["extra_body"] = _litellm_extra(effective_model)
+                stream = await llm.chat.completions.create(**stream_kwargs)
+
+            # ── Cancellation-aware drain loop ─────────────────────────────────
+            # A plain `async for chunk in stream` blocks inside httpx recv()
+            # while waiting for the next token — is_disconnected() can only fire
+            # between chunks.  Instead we pump chunks into a queue from a
+            # background task and drain with a short timeout so we can check for
+            # disconnection even when the model is slow.
+            _STREAM_DONE = object()
+            chunk_queue: asyncio.Queue = asyncio.Queue()
+
+            async def _pump():
+                try:
+                    async for chunk in stream:
+                        await chunk_queue.put(chunk)
+                except asyncio.CancelledError:
+                    pass  # expected — client disconnected
+                except Exception as exc:
+                    logger.debug("Stream pump error: %s", exc)
+                finally:
+                    await chunk_queue.put(_STREAM_DONE)
+
+            pump_task = asyncio.create_task(_pump())
+            try:
+                while True:
+                    try:
+                        chunk = await asyncio.wait_for(chunk_queue.get(), timeout=0.4)
+                    except asyncio.TimeoutError:
+                        # No token arrived in 0.4 s — check if the client left
+                        if await http_request.is_disconnected():
+                            logger.info(
+                                "Client disconnected — cancelling generation "
+                                "(user=%s, model=%s)", current_user.email, effective_model,
+                            )
+                            pump_task.cancel()
+                            return
+                        continue  # still connected, keep waiting
+
+                    if chunk is _STREAM_DONE:
+                        break  # stream finished normally
+
+                    if getattr(chunk, "usage", None):
+                        prompt_tokens = getattr(chunk.usage, "prompt_tokens", prompt_tokens)
+                        completion_tokens = getattr(chunk.usage, "completion_tokens", completion_tokens)
+                        total_tokens = getattr(chunk.usage, "total_tokens", total_tokens)
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        token = chunk.choices[0].delta.content
+                        reply += token
+                        yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+            finally:
+                if not pump_task.done():
+                    pump_task.cancel()
+                    try:
+                        await pump_task
+                    except asyncio.CancelledError:
+                        pass
+
         except Exception as e:
             logger.error("LLM stream error: %s", e)
             yield f"data: {json.dumps({'type': 'error', 'detail': str(e)})}\n\n"
@@ -2020,12 +2197,12 @@ async def upload_sanitize(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ):
-    if not (current_user.ps_enabled and current_user.ps_tenant and current_user.ps_api_key_enc):
-        raise HTTPException(status_code=400, detail="Prompt Security is not configured. Set up PS in Settings first.")
+    if not (current_user.ps_tenant and current_user.ps_api_key_enc):
+        raise HTTPException(status_code=400, detail="Prompt Security is not configured. Set your PS region and App ID in Settings.")
     try:
         ps_app_id = decrypt(current_user.ps_api_key_enc)
     except ValueError:
-        raise HTTPException(status_code=400, detail="PS key could not be decrypted — re-enter it in Settings.")
+        raise HTTPException(status_code=400, detail="PS App ID could not be decrypted — re-enter it in Settings.")
     ps_client = PromptSecurityClient(base_url=current_user.ps_tenant.base_url, app_id=ps_app_id)
     mime = (file.content_type or "application/octet-stream").split(";")[0].strip()
     filename = file.filename or "upload"
@@ -2048,16 +2225,16 @@ async def upload_sanitize(
 
         t0 = time.monotonic()
         try:
-            job_id = await ps_client.sanitize_file_submit(file_bytes, file.filename or "upload")
-            result = await ps_client.sanitize_file_poll(job_id, max_seconds=30)
-        except TimeoutError as e:
-            raise HTTPException(status_code=504, detail=str(e))
+            result, request_info = await ps_client.sanitize_file(file_bytes, file.filename or "upload")
         except Exception as e:
             logger.error("File sanitization error for %s: %s", current_user.email, e)
             raise HTTPException(status_code=502, detail=f"PS file sanitization failed: {e}")
         scan_ms = round((time.monotonic() - t0) * 1000)
-        action = result.get("action", result.get("status", "pass"))
-        violations = result.get("violations", [])
+        job_id = result.get("jobId", "")
+        # PS sanitizeFile wraps action/violations inside result["metadata"]
+        _meta = result.get("metadata") or {}
+        action = _meta.get("action") or result.get("action") or result.get("status", "pass")
+        violations = _meta.get("violations") or result.get("violations") or []
         sanitized_url = result.get("sanitizedFileUrl") or result.get("sanitized_file_url") or result.get("url")
         return {
             "job_id": job_id,
@@ -2066,9 +2243,98 @@ async def upload_sanitize(
             "sanitized_url": sanitized_url,
             "scan_ms": scan_ms,
             "raw": result,
+            "request_info": request_info,
         }
     finally:
         await _release_sanitize_slot(current_user.id)
+
+
+@app.get("/upload/sanitize/status")
+async def upload_sanitize_status(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Poll PS for the result of a previously submitted sanitize job."""
+    if not (current_user.ps_tenant and current_user.ps_api_key_enc):
+        raise HTTPException(status_code=400, detail="Prompt Security is not configured.")
+    ps_app_id = decrypt(current_user.ps_api_key_enc)
+    url = f"{current_user.ps_tenant.base_url}/api/sanitizeFile"
+    request_info = {
+        "method": "GET",
+        "url": f"{url}?jobId={job_id}",
+        "headers": {"APP-ID": f"{ps_app_id[:6]}…"},
+    }
+    try:
+        async with __import__("httpx").AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url, params={"jobId": job_id}, headers={"APP-ID": ps_app_id})
+            resp.raise_for_status()
+            result = resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"PS status check failed: {e}")
+    _meta = result.get("metadata") or {}
+    action = _meta.get("action") or result.get("action") or result.get("status", "processing")
+    violations = _meta.get("violations") or result.get("violations") or []
+    sanitized_url = result.get("sanitizedFileUrl") or result.get("sanitized_file_url") or result.get("url")
+    result.setdefault("jobId", job_id)
+    return {
+        "job_id": job_id,
+        "action": action,
+        "violations": violations,
+        "sanitized_url": sanitized_url,
+        "raw": result,
+        "request_info": request_info,
+    }
+
+
+@app.get("/guest/upload/sanitize/status")
+async def guest_upload_sanitize_status(
+    job_id: str,
+    ps_base_url: str = "",
+    ps_app_id: str = "",
+    db: AsyncSession = Depends(get_db),
+):
+    """Poll PS for the result of a guest sanitize job."""
+    base_url = ps_base_url.strip()
+    app_id   = ps_app_id.strip()
+    if not base_url or not app_id:
+        admin = await db.scalar(
+            select(User).where(User.role == "admin", User.is_active == True)
+            .options(selectinload(User.ps_tenant))
+        )
+        if admin and admin.ps_tenant and admin.ps_api_key_enc:
+            base_url = admin.ps_tenant.base_url
+            try:
+                app_id = decrypt(admin.ps_api_key_enc)
+            except Exception:
+                pass
+    if not base_url or not app_id:
+        raise HTTPException(status_code=400, detail="Prompt Security is not configured.")
+    url = f"{base_url}/api/sanitizeFile"
+    request_info = {
+        "method": "GET",
+        "url": f"{url}?jobId={job_id}",
+        "headers": {"APP-ID": f"{app_id[:6]}…"},
+    }
+    try:
+        async with __import__("httpx").AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url, params={"jobId": job_id}, headers={"APP-ID": app_id})
+            resp.raise_for_status()
+            result = resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"PS status check failed: {e}")
+    _meta = result.get("metadata") or {}
+    action = _meta.get("action") or result.get("action") or result.get("status", "processing")
+    violations = _meta.get("violations") or result.get("violations") or []
+    sanitized_url = result.get("sanitizedFileUrl") or result.get("sanitized_file_url") or result.get("url")
+    result.setdefault("jobId", job_id)
+    return {
+        "job_id": job_id,
+        "action": action,
+        "violations": violations,
+        "sanitized_url": sanitized_url,
+        "raw": result,
+        "request_info": request_info,
+    }
 
 
 # ── User: LLM key overrides ───────────────────────────────────────────────────
@@ -2284,7 +2550,6 @@ def _parse_app_settings(s: dict) -> dict:
         "email_username": s.get("email_username", ""),
         "email_password_set": bool(s.get("email_password_enc")),
         "from_email": s.get("from_email", ""),
-        "db_password_set": bool(s.get("db_password_enc")),
         "jwt_secret_set": bool(s.get("jwt_secret_enc")),
         "admin_password_set": bool(s.get("admin_password_hash")),
         "litellm_key_set": bool(s.get("litellm_key_enc")),
@@ -2345,54 +2610,6 @@ async def update_app_settings(
     return _parse_app_settings(s)
 
 
-class DbPasswordUpdate(BaseModel):
-    password: str
-    confirm: str
-
-
-@app.post("/admin/db-password")
-async def update_db_password(
-    body: DbPasswordUpdate,
-    admin: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-):
-    """Change the Postgres user password, persist the new DATABASE_URL, and hot-swap the engine."""
-    if not body.password:
-        raise HTTPException(status_code=422, detail="Password cannot be empty")
-    if body.password != body.confirm:
-        raise HTTPException(status_code=422, detail="Passwords do not match")
-
-    # Build new DATABASE_URL by substituting the password into the current URL
-    parsed = urlparse(_db_module.DATABASE_URL)
-    host_port = f"{parsed.hostname}:{parsed.port}" if parsed.port else parsed.hostname
-    new_netloc = f"{parsed.username}:{body.password}@{host_port}"
-    new_url = urlunparse(parsed._replace(netloc=new_netloc))
-
-    # Issue ALTER USER on the live connection before swapping the engine
-    safe_pwd = body.password.replace("'", "''")
-    await db.execute(text(f"ALTER USER {parsed.username} WITH PASSWORD '{safe_pwd}'"))
-
-    # Store encrypted in AppSetting so admin can see it's been set
-    enc_pwd = encrypt(body.password)
-    existing = await db.get(AppSetting, "db_password_enc")
-    if existing:
-        existing.value = enc_pwd
-    else:
-        db.add(AppSetting(key="db_password_enc", value=enc_pwd))
-
-    await db.commit()
-    await _log_audit(db, admin.id, admin.email, "db_password_changed", "Postgres password updated via admin UI")
-    await db.commit()
-
-    # Persist new URL to override file (survives container restart)
-    write_db_override(new_url)
-
-    # Hot-swap engine in-process (no restart needed)
-    await rebuild_engine(new_url)
-
-    return {"ok": True}
-
-
 class JwtSecretUpdate(BaseModel):
     secret: str
 
@@ -2418,8 +2635,11 @@ async def update_jwt_secret(
     await _log_audit(db, admin.id, admin.email, "jwt_secret_changed", "JWT signing secret updated via admin UI")
     await db.commit()
 
+    # Hot-swap the key THEN immediately issue a new token signed with it so the
+    # calling admin session survives — without this the next request would 401.
     set_secret_key(body.secret)
-    return {"ok": True}
+    new_token = create_access_token({"sub": str(admin.id)})
+    return {"ok": True, "token": new_token}
 
 
 class EncryptionKeyUpdate(BaseModel):
@@ -2614,11 +2834,332 @@ async def update_application_settings(
         ids = body.ollama_model_ids.strip()
         await _upsert("ollama_model_ids", ids)
         _OLLAMA_MODEL_IDS = {s.strip() for s in ids.split(",") if s.strip()}
+        # Ensure the wildcard entry is in config.yaml (idempotent; no restart needed)
+        model_id_list = [s.strip() for s in ids.split(",") if s.strip()]
+        try:
+            _update_litellm_ollama_models(model_id_list)
+        except Exception as exc:
+            logger.warning("Could not update LiteLLM config: %s", exc)
+        # Refresh model cache so new models appear immediately
+        asyncio.create_task(refresh_model_cache())
 
     await db.commit()
     await _log_audit(db, admin.id, admin.email, "application_settings_changed", "Application settings updated via admin UI")
     await db.commit()
-    return {"ok": True}
+    return {"ok": True, "litellm_restarting": False}
+
+
+# ── LiteLLM config + restart helpers ─────────────────────────────────────────
+
+LITELLM_CONFIG_PATH = Path(os.getenv("LITELLM_CONFIG_PATH", "/app/litellm/config.yaml"))
+
+
+def _update_litellm_ollama_models(model_ids: list[str]) -> None:
+    """Ensure the wildcard Ollama entry exists in litellm/config.yaml.
+
+    With wildcard routing (ollama/*), LiteLLM can route any Ollama model
+    without per-model config entries or a restart.  Individual model_ids
+    are now discovered at runtime from the Ollama API; we only need to
+    guarantee the catch-all wildcard entry is present.
+    """
+    import yaml  # pyyaml — available at runtime inside the container
+
+    if not LITELLM_CONFIG_PATH.exists():
+        logger.warning("LiteLLM config not found at %s — skipping YAML update", LITELLM_CONFIG_PATH)
+        return
+
+    cfg = yaml.safe_load(LITELLM_CONFIG_PATH.read_text()) or {}
+    model_list = cfg.get("model_list", [])
+
+    # Remove any individual ollama entries (legacy) and any old wildcard
+    model_list = [
+        m for m in model_list
+        if not str(m.get("litellm_params", {}).get("model", "")).startswith("ollama/")
+    ]
+
+    # Always write a single wildcard entry — routes every Ollama model
+    model_list.append({
+        "model_name": "ollama/*",
+        "litellm_params": {
+            "model": "ollama/*",
+            "api_base": "os.environ/OLLAMA_BASE_URL",
+        },
+    })
+
+    cfg["model_list"] = model_list
+    LITELLM_CONFIG_PATH.write_text(
+        yaml.dump(cfg, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    )
+    logger.info("Ensured ollama/* wildcard entry in litellm/config.yaml")
+
+
+async def _restart_litellm_and_refresh() -> None:
+    """Restart the LiteLLM container so it picks up the updated config, then rebuild the model cache."""
+    if not _DOCKER_SDK_AVAILABLE:
+        logger.warning("Docker SDK unavailable — cannot restart LiteLLM")
+        return
+    try:
+        client = _docker_sdk.from_env()
+        containers = client.containers.list(filters={
+            "label": [
+                "com.docker.compose.service=litellm",
+                f"com.docker.compose.project={COMPOSE_PROJECT_NAME}",
+            ]
+        })
+        if not containers:
+            logger.warning("LiteLLM container not found — skipping restart")
+            return
+        containers[0].restart()
+        logger.info("LiteLLM container restarted to pick up new Ollama model config")
+        await asyncio.sleep(8)          # wait for LiteLLM to come back up
+        await refresh_model_cache()
+        logger.info("Model cache refreshed after LiteLLM restart")
+    except Exception as exc:
+        logger.warning("Failed to restart LiteLLM container: %s", exc)
+
+
+@app.post("/admin/ollama/test")
+async def test_ollama_connection(
+    body: dict,
+    admin: User = Depends(require_admin),
+):
+    """Probe an Ollama instance and return its available model names."""
+    url = (body.get("url") or OLLAMA_BASE_URL).strip().rstrip("/")
+    if not url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=422, detail="URL must start with http:// or https://")
+    try:
+        async with httpx.AsyncClient(timeout=8.0, verify=False) as client:
+            resp = await client.get(f"{url}/api/tags")
+        if resp.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"Ollama returned HTTP {resp.status_code}")
+        data = resp.json()
+        models = [m["name"] for m in data.get("models", [])]
+        return {"ok": True, "models": models, "url": url}
+    except httpx.ConnectError:
+        raise HTTPException(status_code=502, detail="Could not connect — is Ollama running?")
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Connection timed out")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+def _get_docker_client():
+    """Connect to Docker daemon via socket. Raises HTTP 503 if unavailable."""
+    if not _DOCKER_SDK_AVAILABLE:
+        raise HTTPException(status_code=503, detail="docker Python SDK not installed")
+    try:
+        return _docker_sdk.from_env()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Docker socket unavailable: {exc}")
+
+
+def _find_ollama_container(client):
+    """Find the Ollama container for this compose project. Returns None if not found."""
+    try:
+        containers = client.containers.list(
+            all=True,
+            filters={"label": [
+                "com.docker.compose.service=ollama",
+                f"com.docker.compose.project={COMPOSE_PROJECT_NAME}",
+            ]},
+        )
+        if containers:
+            return containers[0]
+        # Fallback: any container whose name contains "ollama"
+        for c in client.containers.list(all=True):
+            if "ollama" in c.name.lower():
+                return c
+    except Exception:
+        pass
+    return None
+
+
+@app.get("/admin/ollama/service")
+async def get_ollama_service_status(admin: User = Depends(require_admin)):
+    """Return the status of the Ollama Docker container."""
+    if not _DOCKER_SDK_AVAILABLE:
+        return {"status": "docker_unavailable", "detail": "docker SDK not installed"}
+    try:
+        client = _get_docker_client()
+    except HTTPException:
+        return {"status": "docker_unavailable", "detail": "Docker socket not mounted"}
+    try:
+        c = _find_ollama_container(client)
+        if c is None:
+            return {"status": "not_found", "container_name": None}
+        c.reload()
+        return {"status": c.status, "container_name": c.name, "id": c.short_id}
+    except Exception as exc:
+        return {"status": "error", "detail": str(exc)}
+
+
+@app.post("/admin/ollama/service/start")
+async def start_ollama_service(admin: User = Depends(require_admin)):
+    """Start (or create) the Ollama Docker container."""
+    client = _get_docker_client()
+    try:
+        c = _find_ollama_container(client)
+        if c is not None:
+            c.reload()
+            if c.status != "running":
+                try:
+                    c.start()
+                    c.reload()
+                except Exception as start_exc:
+                    # Stale network reference (e.g. after docker compose down -v).
+                    # Remove the broken container and fall through to recreate it.
+                    if "network" in str(start_exc).lower():
+                        logger.warning("Ollama container has stale network — removing and recreating: %s", start_exc)
+                        try:
+                            c.remove(force=True)
+                        except Exception:
+                            pass
+                        c = None
+                    else:
+                        raise
+            if c is not None:
+                return {"ok": True, "action": "started", "container": c.name, "status": c.status}
+        # Container doesn't exist (or was just removed due to stale network) — create it fresh
+        volume_name = f"{COMPOSE_PROJECT_NAME}_ollama_data"
+        try:
+            client.volumes.get(volume_name)
+        except Exception:
+            client.volumes.create(volume_name)
+
+        # Find the host project root by inspecting the app container's /app bind mount,
+        # then look for certs/corporate-ca.pem so we can inject it into Ollama.
+        ollama_volumes = {volume_name: {"bind": "/root/.ollama", "mode": "rw"}}
+        ollama_env = {"OLLAMA_INSECURE": "true"}
+        try:
+            app_cs = client.containers.list(filters={"label": [
+                "com.docker.compose.service=app",
+                f"com.docker.compose.project={COMPOSE_PROJECT_NAME}",
+            ]})
+            if app_cs:
+                for m in app_cs[0].attrs.get("Mounts", []):
+                    if m.get("Type") == "bind" and m.get("Destination") == "/app":
+                        host_project_root = os.path.dirname(m["Source"])
+                        cert_host_path = os.path.join(host_project_root, "certs", "corporate-ca.pem")
+                        ollama_volumes[cert_host_path] = {"bind": "/certs/corporate-ca.pem", "mode": "ro"}
+                        ollama_env["SSL_CERT_FILE"] = "/certs/corporate-ca.pem"
+                        break
+        except Exception:
+            pass
+
+        c = client.containers.run(
+            "ollama/ollama:latest",
+            name=f"{COMPOSE_PROJECT_NAME}-ollama-1",
+            detach=True,
+            ports={"11434/tcp": 11434},
+            volumes=ollama_volumes,
+            environment=ollama_env,
+            labels={
+                "com.docker.compose.service": "ollama",
+                "com.docker.compose.project": COMPOSE_PROJECT_NAME,
+            },
+            restart_policy={"Name": "unless-stopped"},
+        )
+        # Attach to the Compose project network so other services can reach
+        # it via the "ollama" hostname. Find the network by inspecting the
+        # app container — that's guaranteed to be on the right network.
+        try:
+            app_containers = client.containers.list(
+                filters={"label": [
+                    "com.docker.compose.service=app",
+                    f"com.docker.compose.project={COMPOSE_PROJECT_NAME}",
+                ]}
+            )
+            if app_containers:
+                app_net_names = list(app_containers[0].attrs["NetworkSettings"]["Networks"].keys())
+                if app_net_names:
+                    client.networks.get(app_net_names[0]).connect(c, aliases=["ollama"])
+        except Exception:
+            pass  # non-fatal: container is running, just may not be on compose network
+        return {"ok": True, "action": "created", "container": c.name, "status": c.status}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/admin/ollama/service/stop")
+async def stop_ollama_service(admin: User = Depends(require_admin)):
+    """Stop the Ollama Docker container."""
+    client = _get_docker_client()
+    try:
+        c = _find_ollama_container(client)
+        if c is None:
+            raise HTTPException(status_code=404, detail="Ollama container not found")
+        c.stop(timeout=10)
+        return {"ok": True, "action": "stopped"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/admin/ollama/pull")
+async def pull_ollama_model(
+    body: dict,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stream model pull progress from the Ollama API."""
+    model = (body.get("model") or "").strip()
+    if not model:
+        raise HTTPException(status_code=422, detail="Model name required")
+    row = await db.get(AppSetting, "ollama_base_url")
+    base_url = (row.value if row else OLLAMA_BASE_URL).rstrip("/")
+
+    async def _stream():
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(600.0, connect=10.0), verify=False
+            ) as client:
+                async with client.stream(
+                    "POST",
+                    f"{base_url}/api/pull",
+                    json={"model": model, "name": model, "stream": True},
+                ) as resp:
+                    logger.info("Ollama pull %s → HTTP %s", model, resp.status_code)
+                    async for line in resp.aiter_lines():
+                        if line:
+                            logger.debug("Ollama pull line: %s", line[:120])
+                            yield f"data: {line}\n\n"
+                    logger.info("Ollama pull stream ended for %s", model)
+        except httpx.ConnectError:
+            yield 'data: {"status":"error","error":"Cannot connect to Ollama — is the service running?"}\n\n'
+        except Exception as exc:
+            yield f'data: {{"status":"error","error":"{str(exc)}"}}\n\n'
+        yield 'data: {"status":"done"}\n\n'
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
+@app.delete("/admin/ollama/model")
+async def delete_ollama_model(
+    body: dict,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a local Ollama model."""
+    model = (body.get("model") or "").strip()
+    if not model:
+        raise HTTPException(status_code=422, detail="Model name required")
+    row = await db.get(AppSetting, "ollama_base_url")
+    base_url = (row.value if row else OLLAMA_BASE_URL).rstrip("/")
+    try:
+        async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+            resp = await client.request(
+                "DELETE",
+                f"{base_url}/api/delete",
+                json={"name": model},
+            )
+        if resp.status_code not in (200, 204):
+            raise HTTPException(status_code=resp.status_code, detail=f"Ollama returned {resp.status_code}")
+    except httpx.ConnectError:
+        raise HTTPException(status_code=503, detail="Cannot connect to Ollama — is the service running?")
+    return {"deleted": model}
 
 
 # ── LLM Provider Key management ──────────────────────────────────────────────
@@ -2638,11 +3179,15 @@ async def list_llm_provider_keys(
                 key_preview = f"…{raw[-4:]}" if len(raw) >= 4 else "set"
             except Exception:
                 key_preview = "set"
+        # Strip provider-namespace prefix for display (e.g. "openai/gpt-4.1" → "gpt-4.1")
+        disc = _DISCOVERED_MODELS.get(p["id"], [])
+        disc_bare = [m.split("/", 1)[-1] for m in disc]
         out.append({
             "provider": p["id"],
             "name": p["name"],
             "key_set": bool(row),
             "key_preview": key_preview,
+            "discovered_models": disc_bare,
         })
     return out
 
@@ -2674,6 +3219,7 @@ async def set_llm_provider_key(
     await db.commit()
 
     _SHARED_LLM_KEYS[body.provider] = body.key.strip()
+    asyncio.create_task(_run_discovery(body.provider, body.key.strip()))
     await _log_audit(db, admin.id, admin.email, "llm_provider_key_changed",
                      f"Provider key updated: {body.provider}")
     await db.commit()
@@ -2699,6 +3245,16 @@ async def delete_llm_provider_key(
     _SHARED_LLM_KEYS[provider] = os.getenv(
         next(p["env"] for p in KNOWN_PROVIDERS if p["id"] == provider), ""
     )
+    if provider in _DISCOVERED_MODELS:
+        del _DISCOVERED_MODELS[provider]
+        try:
+            dm_row = await db.get(AppSetting, "discovered_models")
+            if dm_row:
+                dm_row.value = json.dumps(_DISCOVERED_MODELS)
+                await db.commit()
+        except Exception as exc:
+            logger.warning("Could not update discovered models after key removal: %s", exc)
+        asyncio.create_task(refresh_model_cache())
     await _log_audit(db, admin.id, admin.email, "llm_provider_key_removed",
                      f"Provider key removed: {provider}")
     await db.commit()
@@ -3022,6 +3578,63 @@ async def guest_log_event(body: dict, http_request: Request, db: AsyncSession = 
     await _log_audit(db, None, user_email, event_type, detail)
 
 
+@app.post("/guest/upload/sanitize")
+async def guest_upload_sanitize(
+    file: UploadFile = File(...),
+    ps_base_url: str = Form(default=""),
+    ps_app_id: str = Form(default=""),
+    db: AsyncSession = Depends(get_db),
+):
+    """Open-mode file sanitization.
+    PS config is taken from the client (localStorage) when present,
+    otherwise falls back to the server-side admin PS config."""
+    base_url = ps_base_url.strip()
+    app_id   = ps_app_id.strip()
+
+    if not base_url or not app_id:
+        # Fall back to the admin user's PS tenant + key
+        admin = await db.scalar(
+            select(User).where(User.role == "admin", User.is_active == True)
+            .options(selectinload(User.ps_tenant))
+        )
+        if admin and admin.ps_tenant and admin.ps_api_key_enc:
+            base_url = admin.ps_tenant.base_url
+            try:
+                app_id = decrypt(admin.ps_api_key_enc)
+            except Exception:
+                pass
+
+    if not base_url or not app_id:
+        # PS not configured — return a pass result so the demo still works
+        return {"job_id": "", "action": "pass", "violations": [], "sanitized_url": None, "scan_ms": 0}
+
+    ps_client = PromptSecurityClient(base_url=base_url, app_id=app_id)
+    mime = (file.content_type or "application/octet-stream").split(";")[0].strip()
+    filename = file.filename or "upload"
+    if mime not in ALLOWED_SANITIZE_TYPES and not filename.lower().endswith(ALLOWED_SANITIZE_EXTENSIONS):
+        raise HTTPException(status_code=415, detail=f"Unsupported file type '{mime}'.")
+    file_bytes = await _read_upload_with_limit(file)
+    t0 = time.monotonic()
+    try:
+        result, request_info = await ps_client.sanitize_file(file_bytes, filename)
+    except Exception as e:
+        logger.error("Guest file sanitization error: %s", e)
+        raise HTTPException(status_code=502, detail=f"PS file sanitization failed: {e}")
+    scan_ms = round((time.monotonic() - t0) * 1000)
+    action = result.get("action", result.get("status", "pass"))
+    violations = result.get("violations", [])
+    sanitized_url = result.get("sanitizedFileUrl") or result.get("sanitized_file_url") or result.get("url")
+    return {
+        "job_id": result.get("jobId", ""),
+        "action": action,
+        "violations": violations,
+        "sanitized_url": sanitized_url,
+        "scan_ms": scan_ms,
+        "raw": result,
+        "request_info": request_info,
+    }
+
+
 @app.post("/guest/chat/stream")
 async def guest_chat_stream(
     request: GuestChatRequest,
@@ -3196,12 +3809,14 @@ async def guest_chat_stream(
                 yield f"data: {json.dumps({'type': 'error', 'detail': f'PS scan failed: {e}'})}\n\n"
                 return
 
-        # LLM stream
+        # LLM stream — bypass LiteLLM for discovered provider-prefixed models (e.g. openai/gpt-5.2)
         try:
-            prompt_tokens = estimate_message_tokens(payload, model=model)
-            stream_kwargs = {"model": model, "messages": payload, "stream": True, "stream_options": {"include_usage": True},
-                             "extra_body": _litellm_extra(model)}
-            stream = await litellm_client.chat.completions.create(**stream_kwargs)
+            llm, effective_model = _guest_llm_client(model)
+            prompt_tokens = estimate_message_tokens(payload, model=effective_model)
+            stream_kwargs: dict = {"model": effective_model, "messages": payload, "stream": True, "stream_options": {"include_usage": True}}
+            if llm is litellm_client:
+                stream_kwargs["extra_body"] = _litellm_extra(effective_model)
+            stream = await llm.chat.completions.create(**stream_kwargs)
             async for chunk in stream:
                 if getattr(chunk, "usage", None):
                     prompt_tokens = getattr(chunk.usage, "prompt_tokens", prompt_tokens)
@@ -3301,14 +3916,6 @@ def _build_content(m: ChatMessage):
             parts.append({"type": "text", "text": m.content})
         return parts
     return m.content
-
-
-def _ensure_public_api_enabled():
-    if not PUBLIC_API_ENABLED:
-        raise HTTPException(
-            status_code=403,
-            detail="Public API is disabled. Set PUBLIC_API_ENABLED=true to use /v1/responses.",
-        )
 
 
 _PRIVATE_IP_PREFIXES = (

@@ -165,33 +165,6 @@ class ChatResponse(BaseModel):
     ps_violations: list = []
 
 
-class PublicResponseRequest(BaseModel):
-    model: Optional[str] = None
-    input: str
-    system_prompt: Optional[str] = None
-
-
-class PublicResponseOutput(BaseModel):
-    text: str
-
-
-class PublicResponseUsage(BaseModel):
-    prompt_tokens: int
-    completion_tokens: int
-    total_tokens: int
-
-
-class PublicResponseOut(BaseModel):
-    id: str
-    object: str = "response"
-    model: str
-    output: list[PublicResponseOutput]
-    usage: PublicResponseUsage
-    ps_scanned: bool = False
-    ps_action: str = "pass"
-    ps_violations: list = []
-
-
 # ── Sessions ──────────────────────────────────────────────────────────────────
 class SessionOut(BaseModel):
     id: str

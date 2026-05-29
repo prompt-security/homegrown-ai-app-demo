@@ -1,5 +1,4 @@
 import json
-import time
 import httpx
 import logging
 from typing import Literal, Optional
@@ -66,51 +65,71 @@ class PromptSecurityClient:
             payload["user"] = user
         return await self._call(payload, scan_type="response")
 
-    async def sanitize_file_submit(self, file_bytes: bytes, filename: str) -> str:
+    async def sanitize_file(self, file_bytes: bytes, filename: str) -> dict:
+        """Submit file to PS and poll for result. Returns (result, request_info) tuple.
+
+        Step 1 — POST /api/sanitizeFile  (multipart file upload) → { jobId }
+        Step 2 — GET  /api/sanitizeFile?jobId=<id>              → result when ready
+        """
+        import asyncio
         url = f"{self.base_url}/api/sanitizeFile"
+        headers = {"APP-ID": self.app_id}
+        request_info = {
+            "step1": {
+                "method": "POST",
+                "url": url,
+                "headers": {"APP-ID": f"{self.app_id[:6]}…"},
+                "form": {"file": filename},
+            },
+        }
+
+        # Step 1: submit
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(
-                    url,
-                    headers={"APP-ID": self.app_id},
-                    files={"file": (filename, file_bytes)},
-                )
+                resp = await client.post(url, headers=headers, files={"file": (filename, file_bytes)})
                 resp.raise_for_status()
-                data = resp.json()
-                return data["jobId"]
+                submit_data = resp.json()
+                logger.info("PS sanitizeFile submit: %s", json.dumps(submit_data, default=str)[:300])
         except httpx.HTTPStatusError as e:
             logger.error("PS sanitizeFile submit error %s: %s", e.response.status_code, e.response.text)
             raise
         except httpx.RequestError as e:
-            logger.error("PS sanitizeFile connection error: %s", e)
+            logger.error("PS sanitizeFile submit connection error: %s", e)
             raise
 
-    async def sanitize_file_poll(self, job_id: str, max_seconds: int = 30) -> dict:
-        url = f"{self.base_url}/api/sanitizeFile"
-        deadline = time.time() + max_seconds
-        import asyncio
+        job_id = submit_data.get("jobId")
+        if not job_id:
+            # API returned a direct result with no jobId — treat as synchronous response
+            request_info["step2"] = None
+            return submit_data, request_info
+
+        request_info["step2"] = {
+            "method": "GET",
+            "url": f"{url}?jobId={job_id}",
+            "headers": {"APP-ID": f"{self.app_id[:6]}…"},
+        }
+
+        # Step 2: poll until complete
+        deadline = __import__("time").time() + 60
         while True:
             try:
                 async with httpx.AsyncClient(timeout=10.0) as client:
-                    resp = await client.get(
-                        url,
-                        params={"jobId": job_id},
-                        headers={"APP-ID": self.app_id},
-                    )
+                    resp = await client.get(url, params={"jobId": job_id}, headers=headers)
                     resp.raise_for_status()
-                    data = resp.json()
-                    logger.info("PS sanitizeFile poll jobId=%s: %s", job_id, json.dumps(data, default=str)[:300])
-                    if data.get("status") != "processing":
-                        return data
+                    result = resp.json()
+                    logger.info("PS sanitizeFile poll jobId=%s: %s", job_id, json.dumps(result, default=str)[:300])
+                    if result.get("status") != "processing":
+                        result.setdefault("jobId", job_id)
+                        return result, request_info
             except httpx.HTTPStatusError as e:
                 logger.error("PS sanitizeFile poll error %s: %s", e.response.status_code, e.response.text)
                 raise
             except httpx.RequestError as e:
                 logger.error("PS sanitizeFile poll connection error: %s", e)
                 raise
-            if time.time() >= deadline:
-                raise TimeoutError(f"File sanitization job {job_id} did not complete within {max_seconds}s")
-            await asyncio.sleep(1.0)
+            if __import__("time").time() >= deadline:
+                raise TimeoutError(f"File sanitization job {job_id} did not complete within 60s")
+            await asyncio.sleep(5.0)
 
     async def _call(
         self, payload: dict, scan_type: Literal["prompt", "response"] = "prompt"

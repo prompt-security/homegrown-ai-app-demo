@@ -1,6 +1,95 @@
 # Changelog
 
+## [2026-05-28]
+### Removed
+- `PUBLIC_API_ENABLED` feature and `POST /v1/responses` endpoint removed entirely: env vars (`PUBLIC_API_ENABLED`, `PUBLIC_API_MAX_PROMPT_TOKENS`, `PUBLIC_API_MAX_OUTPUT_TOKENS`, `PUBLIC_API_ALLOW_SYSTEM_PROMPT`), the endpoint handler, the `_ensure_public_api_enabled()` helper, and the four `PublicResponse*` Pydantic schemas (`PublicResponseRequest`, `PublicResponseOutput`, `PublicResponseUsage`, `PublicResponseOut`) have all been deleted; README documentation for the public test API has been removed — @pj.norris
+
+## [2026-05-27]
+### Added
+- Model discovery: when an OpenAI or Anthropic provider key is saved in Settings → LLM Provider Keys, the app automatically queries that provider's models API, injects the full list of chat-capable models into the chat dropdown, and displays the discovered model names as inline chips below the provider row in the LLM Keys settings table (first 8 visible, remainder shown as "+N more"); the table auto-refreshes ~3.5 s after save to show the chips once discovery completes; OpenAI discovery uses `GET /v1/models` filtered to chat-capable prefixes; Anthropic uses their models API with a static fallback list; discovered models are stored with a provider-prefix ID (e.g. `openai/gpt-4.1`) and bypass LiteLLM entirely — routed direct to the provider using the shared or per-user key (`_user_llm_client` priority: per-user key → shared key direct bypass → LiteLLM for unprefixed config models); no LiteLLM config changes or restarts needed; discovered lists persist in `app_settings` and survive restarts — @pj.norris
+- Unavailable models (those requiring a provider key that isn't set) are now hidden entirely from the chat model dropdown instead of being shown greyed-out — @pj.norris
+- Ollama active model selection is now instant: clicking a model chip in Settings → Ollama saves and activates it immediately with no LiteLLM restart; the orange "pending" state and restart countdown are removed; the nav dot no longer shows orange for an unsaved model selection — @pj.norris
+- Stream cancellation on client disconnect: Ollama inference is now called directly from FastAPI (bypassing the LiteLLM proxy), because LiteLLM does not reliably propagate connection closes to Ollama — the inference kept running at 1000%+ CPU even after the client disconnected; the direct httpx connection plus a pump-task pattern (background task feeds a queue; main generator drains with a 0.4 s timeout and calls `is_disconnected()` on each timeout) ensures that cancelling the pump task raises `CancelledError` inside httpx recv(), which closes the TCP socket directly to Ollama's Go HTTP server, stopping inference within under a second; non-Ollama models continue to route through LiteLLM unchanged; gateway streaming paths (Anthropic, PS OpenAI) retain simpler per-line disconnect checks — @pj.norris
+- Ollama wildcard routing: replaced individual per-model entries in `litellm/config.yaml` with a single `ollama/*` wildcard; any model installed via `ollama pull` now appears in the chat dropdown automatically — no config edit or LiteLLM restart required; `refresh_model_cache()` queries the Ollama API directly on every refresh and injects discovered models (using the `ollama/<name>` prefix that matches the wildcard); display names in the dropdown strip the prefix so users still see plain model names — @pj.norris
+- Mandatory disclaimer step added to both the open-mode first-run wizard and the user-mode first-login wizard; after initial setup is complete, only the disclaimer is shown on each subsequent login (full wizard steps are skipped); disclaimer acceptance is tracked per session via sessionStorage and cleared on logout so it always reappears on the next login; the disclaimer covers work-only use and chat data retention; users must tick a checkbox before the Continue button enables, and the step indicator / progress bar are hidden until accepted — @pj.norris
+- Ollama and LLM provider keys can now be used simultaneously; LLM Keys nav is always visible regardless of Ollama state; the LLM Keys nav dot and field highlight now clear when either Ollama is running with a selected model OR at least one provider key is set — @pj.norris
+- Unified model selector in chat UI: when both Ollama models and LLM provider models are available, a single dropdown shows all options grouped as "Local Models (Ollama)", "Free Models", and "Paid Models"; works in both user mode and open mode; selected model is persisted per-user in localStorage; the static Ollama badge is retired in favour of the full picker — @pj.norris
+
+### Fixed
+- File scan now uses the correct PS API: a single synchronous `POST /api/sanitizeFile` with `APP-ID` header and `file` form field, replacing the previous submit+poll pattern that was incorrect; `PromptSecurityClient.sanitize_file()` replaces the old `sanitize_file_submit` + `sanitize_file_poll` methods in `prompt_security.py`; both the authenticated and guest endpoints updated to use the new method — @pj.norris
+- File scan (Demo tab) in open mode was calling the authenticated `/upload/sanitize` endpoint, which returned 401 and redirected to the login page; added a `/guest/upload/sanitize` endpoint that accepts PS config as form fields (`ps_base_url`, `ps_app_id`) instead of reading from a user account; the frontend now routes to the guest endpoint in open mode (reading PS config from `hgapp_open_ps_config` localStorage) and shows a clear error if PS is not yet configured — @pj.norris
+- Fix Model (lock model) setting was hidden in Settings → General whenever Ollama was enabled; since Ollama and LLM provider models now coexist in the same unified picker, the restriction is removed — Fix Model is always visible and Ollama no longer force-disables it when toggled on — @pj.norris
+- Open mode (guest) chat was routing discovered provider-prefixed models (e.g. `openai/gpt-5.2`) through LiteLLM, which has no config entry for them, causing a 400 error; same bypass logic applied to guest requests via a new `_guest_llm_client()` helper: if the model ID has a provider prefix and a shared key exists, the request goes direct to the provider and `extra_body` (LiteLLM-specific) is omitted — @pj.norris
+- Admin entry from the chat UI was storing the admin JWT in `hgapp_token` (the chat session key), wiping the logged-in user's token; this caused a second password prompt on the admin page (which found no `hgapp_admin_token` and re-prompted), and meant exit from admin either landed as the wrong user or logged the real user out; fixed by writing the admin token to `hgapp_admin_token` in the chat UI's admin-auth modal (line 3217 in `index.html`), so the chat user's `hgapp_token` is never touched; admin page picks up the pre-supplied token silently and `exitAdmin()` finds the original `hgapp_token` intact and returns to `/`; `showAdminOverlay()` guard switched from a DOM-based check to a synchronous `_overlayShowing` boolean for robustness — @pj.norris
+- Returning to user mode after exiting admin triggered the full setup wizard instead of just the disclaimer; root cause: the account used to access admin had never gone through the user wizard, so its wizard-complete marker was never set in localStorage; fixed by auto-marking wizard complete for any user who already has existing chat sessions on the server (established users are not new and don't need onboarding) — @pj.norris
+- Removed all `role === 'admin'` checks from the chat UI (`index.html`): there is no admin user concept in the user-facing app — the admin section is a separate password-protected area; removed the hidden "⚙️ Admin → Prompt Security Settings" link that was only shown to admin-role users, removed the role check from `canUseCompareMode()`, and removed it from the wizard-done auto-mark logic — @pj.norris
+- Compare mode right pane (raw LLM, no PS) was incorrectly showing PS results for regular users; root cause was `canUseCompareMode()` returning false for non-admin users, which forced `effectiveSkipPs = false` in `streamIntoBubble` regardless of the `skipPs` argument; fixed by extending `canUseCompareMode()` to return true for any user who has PS configured and enabled, and removing the backend admin-only gate on `skip_ps` (any authenticated user may now call the right compare pane without PS processing) — @pj.norris
+- Exit Admin was permanently blocked in User Mode when no PS Regions were configured; PS Regions is optional (Prompt Security may not be in use) so it now shows a nav dot but no longer counts toward the exit gate — @pj.norris
+- Exit Admin link could never be clicked when security settings (encryption key, LiteLLM master key, etc.) were not yet saved via the Settings panel, leaving admins permanently stranded; the hard CSS block (`pointer-events: none`) is removed — exit is now always possible, and any incomplete security items surface as a soft confirmation dialog ("Exit Anyway" or "Go to Security") rather than a hard lock — @pj.norris
+- Exit Admin soft warning was triggering on every exit because Encryption key and LiteLLM master key were always unset (both use safe ephemeral fallbacks); these are now advisory-only nav dots on the Security pane and no longer trigger the exit dialog — only Admin password and JWT secret (the items that leave the app insecure without them) prompt the warning — @pj.norris
+- Admins were trapped in a login→admin redirect loop on exit: `_setup_complete()` required `encryption_key_overridden()` and at least one LLM provider key, so installs using only Ollama (or without the encryption override file) always returned `needs_setup=true`, causing `/login` to immediately bounce back to `/admin`; fixed by removing the encryption key requirement (ephemeral fallback is safe) and recognising Ollama-enabled-with-model as a valid LLM source — @pj.norris
+- Saving the JWT secret before setting an admin password caused an immediate 401 / login redirect, locking the admin out (no password to log back in with); `POST /admin/jwt-secret` now hot-swaps the key then issues a fresh token signed with it and returns `{"ok": true, "token": "…"}` — the frontend immediately stores the new token so the session continues seamlessly — @pj.norris
+
+## [2026-05-26]
+### Fixed
+- Ollama Start button no longer fails with "network not found" on fresh installs or after `docker compose down -v`; when an existing container has a stale network reference it is automatically removed and recreated — @pj.norris
+- Ollama container created via the admin Start button was not joined to the Compose project network (`homegrown-ai-app-demo_default`), causing `http://ollama:11434` to be unreachable from the app container; added `network=network_name` to the Docker SDK `containers.run()` call — @pj.norris
+
+### Changed
+- Ollama Settings: "Detect Models" and "Pull a Model" controls (input, Pull button, Browse Models button) are now disabled — and a warning banner is shown — when the Ollama toggle has been turned on but not yet saved; once saved (which auto-starts the service), the controls unlock; `_savedOllamaEnabled` tracks the persisted DB state separately from the in-flight toggle — @pj.norris
+- Ollama Settings: Active Model row is now hidden until the service is confirmed running; model detection runs automatically whenever service status resolves to "running" (covers both the manual Start button and the ↺ refresh button), so the model picker populates without needing a manual Detect click — @pj.norris
+
+### Removed
+- Admin Setup Wizard removed entirely — all configuration now lives directly in the Settings panel; the 🛠 Setup Wizard topbar button, wizard overlay HTML, all `.wz-*` CSS, and ~925 lines of wizard JS (state, step rendering, per-step save logic, navigation functions) are deleted; on first-run (`needs_setup=true`) the admin lands directly on the Settings panel instead of being routed through the wizard — @pj.norris
+
+### Changed
+- Config Status panel now mirrors the Settings sidebar structure exactly — sections are ordered and named General, Application, Security, Email (Open Mode only), PS Regions, Ollama, LLM Keys; each section header is a clickable link that switches directly to the corresponding settings pane; PS Regions count is now fetched and displayed; General shows access mode and fix-model state; nav dots updated to include `sp-general` (fix model fail) and `sp-psregions` (no regions configured) — @pj.norris
+- Admin wizard "Admin" links now call `openAdminAuthModal()` instead of navigating directly to `/admin`, ensuring the password prompt always appears; `adminAuthBackdrop` z-index raised to 400 so it renders above wizard modals (z-index 300) — @pj.norris
+
+## [2026-05-25]
+### Added
+- Ollama Model Browser modal in Admin → Settings: a "Browse Models" button next to the Pull input opens a searchable, filterable grid of 120+ models from ollama.com/library with capability badges (Tools, Vision, Thinking, Embedding), size chips, pull counts, and a one-click Pull button per card that streams progress inline — @pj.norris
+- Model Browser size chips are now clickable: selecting a size tag (e.g. `7b`, `1.5b`) pre-fills the pull command with that variant, updates the Pull button label to `Pull :size`, and displays a colour-coded size warning (blue info → orange caution → red danger) based on estimated download size; clicking the chip again deselects it — @pj.norris
+- Model Browser chips now show two visual states: green border + dot (●) marks the `latest` (default) tag for each model; green shaded background + ✓ icon marks already-downloaded variants (matched against the detected Ollama model list, including `:latest` alias resolution); chips update live after a pull completes — @pj.norris
+- Hovering a downloaded chip reveals a red ✕ delete button; clicking it calls `DELETE /admin/ollama/model` to remove the model from Ollama, then refreshes the chip states immediately; success/error feedback appears in the pull status bar — @pj.norris
+- A ✕ Cancel button appears in the pull status bar during an active download and aborts the stream via `AbortController`; cancellation shows a brief "⊘ Download cancelled" message then dismisses the bar — @pj.norris
+
+### Changed
+- Moved Prompt Security Regions out of the main sidebar navigation and into the Settings page as a new "PS Regions" pane (between LLM Keys and Ollama); the standalone nav item is removed, and the pane loads region data automatically when activated via `switchSettingsPane` — @pj.norris
+- Settings pane fields that are not yet configured now get a red border and faint red background highlight via `.field-unset` CSS class, applied automatically by `applyFieldHighlights()` whenever `loadConfigChecklist()` runs; covers Admin Password, JWT Secret, Encryption Key, LiteLLM Key (Security pane), SMTP Host and Allowed Domains (Email pane, Open Mode only), the provider key table (LLM Keys pane when no key is set), the Fix Model selector (Application pane when Fix Model is enabled but blank), and the Active Model row (Ollama pane when no model is selected) — @pj.norris
+- Ollama model picker in Admin → Settings now shows three distinct states: green (✓) = currently active model saved in DB, orange (◎) = selected but not yet saved/pending restart, neutral = not selected — @pj.norris
+- Added an inline orange warning banner below the model picker when a selection hasn't been saved yet, reminding admins to click Save and that the change requires a LiteLLM restart — @pj.norris
+- Chat UI model badge (index.html) now always displays a single admin-selected model badge (no per-user dropdown in Ollama mode); model switching is admin-only via Settings — @pj.norris
+
+## [2026-05-24]
+### Added
+- Ollama service management UI in Admin → Settings: admins can start/stop the Ollama Docker container, view live service status (Running / Stopped / Docker N/A), detect available models with a clickable model picker, and pull new models with a streaming progress bar — @pj.norris
+- New backend endpoints: `GET /admin/ollama/service`, `POST /admin/ollama/service/start`, `POST /admin/ollama/service/stop`, `POST /admin/ollama/pull` (streaming SSE) — @pj.norris
+- Docker socket (`/var/run/docker.sock`) mounted into the `app` container and `docker>=7.0.0` added to `requirements.txt` to enable container management from the API — @pj.norris
+
+### Changed
+- Postgres password hardcoded to `hgapp_dev` in `docker-compose.yml` for both the `db` and `litellm` services; removed `${POSTGRES_PASSWORD:-hgapp_dev}` variable substitution so both services always agree on the password without a `.env` file — @pj.norris
+- Removed DB Password panel from Admin → Settings and the corresponding "DB Password" step from the Setup Wizard; the password is fixed in `docker-compose.yml` so runtime changes were causing LiteLLM authentication failures (Prisma P1000) — @pj.norris
+- Removed `POST /admin/db-password` API endpoint and the `db_password_set` field from `GET /app/settings` response — @pj.norris
+
 ## [2026-05-20]
+### Added
+- Ollama mode: when Ollama is enabled, Fix Model is automatically disabled and hidden in both App Settings and the setup wizard (Ollama controls model selection) — @pj.norris
+- Ollama mode: when Ollama is enabled in App Settings, the model selector is hidden and replaced with a toolbar badge showing the active Ollama model; model defaults to the first available local model — @pj.norris
+- Ollama service added to `docker-compose.yml` as an opt-in profile (`--profile ollama`) with a persistent `ollama_data` volume; does not start with the main stack — @pj.norris
+- Ollama: "Test Connection" button in Admin → App Settings next to the Base URL field; calls new `POST /admin/ollama/test` backend endpoint which probes the Ollama instance's `/api/tags` API, reports reachable models, and auto-populates the Model IDs field on success — @pj.norris
+
+### Changed
+- Compare mode now automatically exits to single view when the user turns off Prompt Security via the toolbar toggle, for both open mode and authenticated mode — @pj.norris
+
+### Fixed
+- Ollama mode: compare and chat bubbles showed wrong model (e.g. `gpt-5-nano`) because all send paths read `modelSelect.value` directly — if a cloud model was saved in localStorage it would win over the Ollama override; replaced all four model-read sites with `getActiveModel()` which returns the Ollama badge text when `OLLAMA_ENABLED`, bypassing the selector entirely — @pj.norris
+- Compare mode: PS insights (ALLOWED chip, violation cards, "No Prompt Security" badge) were rendered using the raw `skipPs` argument instead of the gated `effectiveSkipPs` variable — causing both panels to show identical PS output even when the right panel had PS skipped. Fixed `streamIntoBubble` at the three `evt.type === 'done'`, `'blocked'`, and `'revoke'` render branches to use `effectiveSkipPs` — @pj.norris
+
+### Added
+- Dynamic build version: `VERSION` file at repo root, `GET /version` endpoint, version displayed near the logo in the chat UI; GitHub Actions workflow (`version-bump.yml`) writes `build.<run_number>` to `VERSION` and commits it back on every merge to `main` — @pj.norris
+
+
 ### Fixed
 - Guest activity not logged after DB password change via Setup Wizard: `_persist_guest` used a stale `AsyncSessionLocal` reference (copied at import time) instead of the module-level reference updated by `rebuild_engine`; fixed to use `_db_module.AsyncSessionLocal()` so it always reflects the live engine — @pj.norris
 
@@ -321,7 +410,6 @@
 
 ## [2026-04-01]
 ### Added
-- Public test API (`POST /v1/responses`) with app-issued bearer keys
 - Live token estimation and usage badges
 - Demo scenarios: PII, topic policy, token DoS, prompt injection
 

@@ -301,6 +301,7 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
 .btn { padding: 7px 18px; border-radius: 8px; font-family: var(--font); font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); transition: all 0.2s; }
 .btn-primary   { background: var(--accent); color: #fff; border-color: transparent; }
 .btn-primary:hover { background: var(--accent-hover); }
+.btn-primary:disabled { background: var(--border); color: var(--text-muted); cursor: not-allowed; }
 .btn-secondary { background: transparent; color: var(--text-muted); }
 .btn-secondary:hover { background: var(--surface2); color: var(--text); }
 .btn-danger { background: transparent; color: var(--red); border-color: rgba(231,76,60,0.3); }
@@ -347,6 +348,8 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
 .retry-btn:hover { color:var(--accent); border-color:var(--accent); background:rgba(108,99,255,0.08); }
 #demoBtn { font-size:11px; font-weight:600; padding:5px 12px; border:1px solid var(--accent); border-radius:8px; color:var(--accent); background:rgba(108,99,255,0.08); cursor:pointer; transition:all 0.15s; white-space:nowrap; }
 #demoBtn:hover { background:rgba(108,99,255,0.18); }
+#fileScanToolbarBtn { font-size:11px; font-weight:600; padding:5px 12px; border:1px solid rgba(46,204,113,0.5); border-radius:8px; color:var(--green); background:rgba(46,204,113,0.07); cursor:pointer; transition:all 0.15s; white-space:nowrap; }
+#fileScanToolbarBtn:hover { background:rgba(46,204,113,0.15); }
 @media (max-width:480px) { #demoPanel { width:100vw; right:-100vw; } }
 
 /* ── User Scenarios Modal ── */
@@ -584,6 +587,18 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
 .file-scan-result { margin-top:12px; padding:14px; background:var(--surface2); border-radius:10px; border:1px solid var(--border); display:none; }
 .file-scan-result.visible { display:block; }
 .file-scan-meta { font-size:10px; color:var(--text-muted); margin-top:8px; font-family:monospace; }
+.fs-finding-chip { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:600; padding:3px 9px; border-radius:20px; border:1px solid; white-space:nowrap; }
+.fs-finding-count { font-size:10px; background:rgba(0,0,0,0.12); border-radius:10px; padding:0 5px; min-width:16px; text-align:center; }
+.fs-cat-header { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; color:var(--text-muted); margin:12px 0 6px; display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none; }
+.fs-cat-header:hover { color:var(--text); }
+.fs-finding-row { display:grid; grid-template-columns:200px 200px 55px 200px; gap:8px; align-items:center; padding:6px 10px; border-radius:6px; font-size:11px; margin-bottom:3px; background:var(--bg); border:1px solid var(--border); }
+.fs-finding-row:hover { border-color:var(--accent); }
+.fs-col-label { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin-bottom:3px; }
+.fs-entity-type { font-weight:600; color:var(--text); font-family:monospace; font-size:11px; }
+.fs-entity-val { color:var(--text-muted); font-family:monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:200px; }
+.fs-score { font-family:monospace; font-size:11px; }
+.fs-sanitized { font-family:monospace; font-size:11px; }
+.fs-total-line { font-size:13px; font-weight:600; color:var(--text); margin:10px 0 8px; }
 
 /* API Flow custom diagram */
 .api-flow-diagram { display:grid; grid-template-columns:1fr 80px 1fr 80px 1fr; align-items:center; padding:32px 20px; background:var(--surface2); border:1px solid var(--border); border-radius:12px; }
@@ -670,7 +685,7 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
   <div id="sidebar-header">
     <div style="padding:4px 2px 6px;position:relative">
       <img src="/static/prompt-security-logo.png" alt="Prompt Security">
-      <span style="position:absolute;bottom:8px;right:2px;font-size:9px;color:var(--text-muted);opacity:0.5;letter-spacing:0.3px">v2.1.0</span>
+      <span id="appVersion" style="position:absolute;bottom:8px;right:2px;font-size:9px;color:var(--text-muted);opacity:0.5;letter-spacing:0.3px"></span>
     </div>
     <button class="sidebar-btn" id="newChatBtn">✏️ New Chat</button>
   </div>
@@ -691,9 +706,11 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
     </div>
     <div class="spacer"></div>
     <select id="modelSelect"><option disabled selected>Loading…</option></select>
+    <span id="ollamaModelBadge" style="display:none;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:4px 10px;border-radius:8px;border:1px solid rgba(108,99,255,0.4);background:rgba(108,99,255,0.12);color:var(--accent);white-space:nowrap">🦙 <span id="ollamaModelName"></span></span>
     <button class="icon-btn" id="sysPromptBtn" title="System prompt">⚙️</button>
     <button id="introBtn" title="Architecture & Integration Guide">Intro</button>
     <button id="demoBtn" title="Demo Scenarios">Demo</button>
+    <button id="fileScanToolbarBtn" title="File Scan with Prompt Security">🛡️ File Scan</button>
     <button id="seNotesToolbarBtn" class="se-notes-toggle" title="Show SE talking points"><span class="tog-dot"></span>SE Notes</button>
     <button id="expNotesToolbarBtn" class="se-notes-toggle" title="Show 'Why PS Caught This' explanations"><span class="tog-dot"></span>Exp. Notes</button>
     <button id="compareModeBtn" title="Toggle compare mode">⚡ Compare</button>
@@ -1021,7 +1038,7 @@ reply = await client.chat.completions.create(
       </div>
     </div>
     <div id="settingsApi" style="display:none">
-      <p style="font-size:12px;color:var(--text-muted);margin:6px 0 10px">Create a narrow app-issued key for the public <code>/v1/responses</code> test endpoint. The plaintext key is shown only once when created.</p>
+      <p style="font-size:12px;color:var(--text-muted);margin:6px 0 10px">Create an app-issued API key for authenticated API access. The plaintext key is shown only once when created.</p>
       <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:12px">
         <div style="flex:1">
           <label for="apiKeyNameInput" style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px">Key name</label>
@@ -1038,19 +1055,8 @@ reply = await client.chat.completions.create(
       </div>
       <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Existing Keys</div>
       <div id="apiKeyList" style="display:flex;flex-direction:column;gap:8px"></div>
-      <div style="margin-top:12px">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">cURL Template</div>
-        <pre style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;overflow:auto;font-size:11px;line-height:1.6;white-space:pre-wrap;color:var(--text-muted)">curl http://localhost:9000/v1/responses \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer &lt;your_app_api_key&gt;" \
-  -d '{
-    "model": "meta-llama/llama-3.1-8b-instruct:free",
-    "input": "Hello from ngrok"
-  }'</pre>
-      </div>
     </div>
     <div class="modal-actions" style="margin-top:12px">
-      <a id="adminPsLink" href="/admin" style="display:none;font-size:11px;color:var(--accent);text-decoration:none;margin-right:auto;align-self:center">⚙️ Admin → Prompt Security Settings</a>
       <button class="btn btn-secondary" id="psCancelBtn">Cancel</button>
       <button class="btn btn-primary" id="psSaveBtn">Save</button>
     </div>
@@ -1070,7 +1076,7 @@ reply = await client.chat.completions.create(
 </div>
 
 <!-- ── Admin Auth Modal (open mode) ── -->
-<div class="backdrop" id="adminAuthBackdrop">
+<div class="backdrop" id="adminAuthBackdrop" style="z-index:400">
   <div class="modal" style="max-width:360px">
     <h3>Admin Sign In</h3>
     <div class="field"><label>Password</label><input type="password" id="adminAuthPassword" placeholder="••••••••" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore="true"></div>
@@ -1097,31 +1103,54 @@ reply = await client.chat.completions.create(
     <div class="demo-cat-tabs" id="demoDynTabs"></div>
     <div id="demoDynContent"></div>
 
-    <!-- File Scan (static) -->
-    <div id="demoCatFileScan" class="demo-cat-content">
-      <div class="demo-desc">Upload a file to scan it with Prompt Security's file sanitization API. PS will analyze the content and block or sanitize sensitive data.</div>
-      <input type="file" id="fileScanInput" accept=".pdf,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.txt,text/plain,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation,.doc,application/msword,.csv,text/csv" style="display:none">
-      <div class="file-drop-zone" id="fileScanDropZone">
-        <div class="file-drop-icon">📁</div>
-        <div class="file-drop-label">Drop a file here or click to select</div>
-        <div class="file-drop-sub">PDF, DOCX, TXT, XLSX, PPTX, CSV</div>
-      </div>
-      <div class="file-selected-badge" id="fileSelectedBadge">
-        <span>📄</span><span id="fileSelectedName"></span>
-        <button class="file-clear-btn" id="fileClearBtn">&times;</button>
-      </div>
-      <button class="btn btn-primary" id="fileScanBtn" style="width:100%" disabled>🔍 Scan with Prompt Security</button>
-      <div class="file-scan-status" id="fileScanStatus"></div>
-      <div class="file-scan-result" id="fileScanResult">
-        <div id="fileScanResultBadge"></div>
-        <div class="file-scan-meta" id="fileScanMeta"></div>
-      </div>
-    </div>
   </div>
   <div id="demoPsWarning">PS is not configured or disabled. <a id="demoPsSetupLink">Set up PS</a> to see violations.</div>
 </div>
 
-<!-- ── Compare Modal ── -->
+<!-- ── File Scan Modal ── -->
+<div id="fileScanOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:200;display:none;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto"></div>
+<div id="fileScanModal" style="position:fixed;inset:0;z-index:201;display:none;align-items:flex-start;justify-content:center;padding:40px 16px;pointer-events:none">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:1400px;pointer-events:auto;box-shadow:0 24px 80px rgba(0,0,0,0.5);display:flex;flex-direction:column;max-height:calc(100vh - 80px)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:20px">🛡️</span>
+        <div>
+          <div style="font-size:15px;font-weight:700;color:var(--text)">File Scan</div>
+          <div style="font-size:11px;color:var(--text-muted)">Upload a file to scan with Prompt Security's sanitization API</div>
+        </div>
+      </div>
+      <button id="fileScanModalClose" style="background:none;border:none;color:var(--text-muted);font-size:22px;cursor:pointer;padding:4px 8px;border-radius:6px;line-height:1">&times;</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:12px">
+      <!-- Upload controls row -->
+      <input type="file" id="fileScanInput" accept=".pdf,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.txt,text/plain,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation,.doc,application/msword,.csv,text/csv" style="display:none">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div class="file-drop-zone" id="fileScanDropZone" style="flex:1;min-width:220px;margin:0;padding:14px 20px">
+          <div class="file-drop-icon" style="font-size:20px">📁</div>
+          <div class="file-drop-label">Drop a file or click to select</div>
+          <div class="file-drop-sub">PDF, DOCX, TXT, XLSX, PPTX, CSV</div>
+        </div>
+        <div class="file-selected-badge" id="fileSelectedBadge" style="flex:1;min-width:180px">
+          <span>📄</span><span id="fileSelectedName"></span>
+          <button class="file-clear-btn" id="fileClearBtn">&times;</button>
+        </div>
+        <button class="btn btn-primary" id="fileScanBtn" style="white-space:nowrap;flex-shrink:0" disabled>🔍 Scan with Prompt Security</button>
+        <button class="btn btn-secondary" id="fileScanExampleBtn" style="white-space:nowrap;flex-shrink:0;font-size:11px">📄 Load example</button>
+      </div>
+      <div class="file-scan-status" id="fileScanStatus"></div>
+      <div style="font-size:11px;color:var(--text-muted);background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;display:flex;align-items:flex-start;gap:7px">
+        <span style="flex-shrink:0;opacity:0.6">ℹ️</span>
+        <span>Files are scanned using the <strong>Default Homegrown App Policy</strong>, not your own configured policy app. Results may differ from your production PS policy.</span>
+      </div>
+      <!-- Results (shown below controls) -->
+      <div id="fileScanResultBadge"></div>
+      <div id="fileScanFindings"></div>
+      <div class="file-scan-meta" id="fileScanMeta"></div>
+    </div>
+  </div>
+</div>
+
+
 <div id="compareOverlay">
   <div id="compareModal">
     <div class="compare-hdr">
@@ -2187,8 +2216,18 @@ reply = await client.chat.completions.create(
   // ── Auth ──────────────────────────────────────────────────────────────────
   let AUTH_TOKEN = localStorage.getItem('hgapp_token');
   let AUTH_USER = JSON.parse(localStorage.getItem('hgapp_user') || 'null');
+
+  // Clear only auth credentials on logout — preserves per-user preferences (wizard
+  // completion, model choice, etc.) so they survive across login sessions.
+  function clearAuthSession() {
+    localStorage.removeItem('hgapp_token');
+    localStorage.removeItem('hgapp_user');
+    sessionStorage.clear();
+  }
   let OPEN_MODE = false;
   let FIXED_MODEL = null;
+  let OLLAMA_ENABLED = false;
+  let OLLAMA_MODEL_IDS_ORDERED = []; // admin-configured order, first = active/default
 
   // ── Client-side AES-GCM encryption for Open Mode PS App ID ───────────────
   let _encCryptoKey = null;
@@ -2234,7 +2273,7 @@ reply = await client.chat.completions.create(
       },
     }).then(res => {
       if (res.status === 401) {
-        localStorage.clear();
+        clearAuthSession();
         fetch('/setup/status').then(r => r.json()).then(({ needs_setup }) => {
           window.location.replace(needs_setup ? '/admin' : '/login');
         }).catch(() => window.location.replace('/login'));
@@ -2252,7 +2291,7 @@ reply = await client.chat.completions.create(
   const psStatusEl   = document.getElementById('psToggleBtn');
 
   // ── State ─────────────────────────────────────────────────────────────────
-  const MODEL_KEY = id => `hgapp_model_${id}`;
+  const MODEL_KEY = id => id ? `hgapp_model_${id}` : 'hgapp_model_guest';
   const SYS_KEY = 'hgapp_v2_sysprompt';
   const COMPARE_SESSIONS_KEY = 'hgapp_compare_sessions';
   const HISTORY_DAYS_KEY = 'hgapp_history_days';
@@ -2318,7 +2357,6 @@ reply = await client.chat.completions.create(
 
   // ── Init ──────────────────────────────────────────────────────────────────
   function applyFixedModel() {
-    const wrap = document.getElementById('modelSelect')?.parentElement;
     if (FIXED_MODEL) {
       modelSelect.innerHTML = `<option value="${FIXED_MODEL}">${FIXED_MODEL}</option>`;
       modelSelect.value = FIXED_MODEL;
@@ -2348,6 +2386,12 @@ reply = await client.chat.completions.create(
     if (el) el.style.display = 'flex';
   }
 
+  // Load and display build version near logo
+  fetch('/version').then(r => r.ok ? r.json() : null).then(d => {
+    const el = document.getElementById('appVersion');
+    if (el && d?.version) el.textContent = d.version;
+  }).catch(() => {});
+
   async function init() {
     try {
       const sr = await fetch('/app/settings');
@@ -2355,6 +2399,10 @@ reply = await client.chat.completions.create(
         const s = await sr.json();
         OPEN_MODE = s.user_mgmt_enabled === false;
         if (s.fixed_model_enabled && s.fixed_model_id) FIXED_MODEL = s.fixed_model_id;
+        OLLAMA_ENABLED = s.ollama_enabled === true;
+        if (OLLAMA_ENABLED && s.ollama_model_ids) {
+          OLLAMA_MODEL_IDS_ORDERED = s.ollama_model_ids.split(',').map(x => x.trim()).filter(Boolean);
+        }
         if (OPEN_MODE) {
           const hint = document.getElementById('psSettingsHint');
           if (hint) hint.textContent = 'Select your Prompt Security region and enter your App ID. Your settings are stored locally in your browser — nothing is sent to the server.';
@@ -2376,28 +2424,33 @@ reply = await client.chat.completions.create(
       return;
     }
     const res = await authFetch('/auth/me');
-    if (!res.ok) { localStorage.clear(); window.location.replace('/login'); return; }
+    if (!res.ok) { clearAuthSession(); window.location.replace('/login'); return; }
     AUTH_USER = await res.json();
     localStorage.setItem('hgapp_user', JSON.stringify(AUTH_USER));
 
     document.getElementById('userLabel').textContent = AUTH_USER.email.split('@')[0];
     document.getElementById('userEmailLabel').textContent = AUTH_USER.email;
-    if (AUTH_USER.role === 'admin') {
-      document.getElementById('adminPsLink').style.display = 'inline';
-    }
     updatePsStatus();
-    if (AUTH_USER?.ps_configured) enterCompareMode();
+    if (canUseCompareMode()) enterCompareMode();
     await Promise.all([loadModels(), loadSessions(), loadStats()]);
     pruneOldSessions();
     applyFixedModel();
     scheduleTokenEstimate();
-    // Show first-login wizard if user hasn't completed it yet
-    if (!localStorage.getItem(UMW_KEY(AUTH_USER.id))) {
-      // Ensure PS tenants are loaded before opening wizard
-      if (!_psTenants?.length) {
+    // Disclaimer: shown on every login (sessionStorage cleared on logout).
+    // Full wizard: shown only on first login (localStorage key per user).
+    const _disclaimerSeen  = !!sessionStorage.getItem('hgapp_disclaimer_accepted');
+    // Auto-mark wizard done for established users: having existing sessions OR having
+    // already accepted the disclaimer this session (e.g. returning from admin) means
+    // they are not a first-time user and don't need onboarding.
+    if (!localStorage.getItem(UMW_KEY(AUTH_USER.id)) && (serverSessions.length > 0 || _disclaimerSeen)) {
+      localStorage.setItem(UMW_KEY(AUTH_USER.id), '1');
+    }
+    const _wizardDone      = !!localStorage.getItem(UMW_KEY(AUTH_USER.id));
+    if (!_disclaimerSeen || !_wizardDone) {
+      if (!_wizardDone && !_psTenants?.length) {
         try { const r = await authFetch('/ps-tenants'); if (r.ok) _psTenants = await r.json(); } catch {}
       }
-      await openUserWizard();
+      await openUserWizard({ disclaimerOnly: _wizardDone, skipDisclaimer: _disclaimerSeen });
       return;
     }
     maybeShowHelp();
@@ -2448,7 +2501,6 @@ reply = await client.chat.completions.create(
       chatEl.classList.add('ps-inactive'); chatEl.classList.remove('ps-active');
     }
     if (AUTH_USER?.ps_configured && AUTH_USER?.ps_enabled && !compareModeActive) enterCompareMode();
-    if (!(AUTH_USER?.ps_configured && AUTH_USER?.ps_enabled) && compareModeActive) exitCompare();
   }
 
   async function quickTogglePs() {
@@ -2457,6 +2509,7 @@ reply = await client.chat.completions.create(
       if (!cfg.base_url || !cfg.app_id_enc) { openPsSettings('ps'); return; }
       cfg.enabled = !cfg.enabled;
       localStorage.setItem('hgapp_open_ps_config', JSON.stringify(cfg));
+      if (!cfg.enabled && compareModeActive) exitCompare();
       updatePsStatus(); return;
     }
     if (!AUTH_USER?.ps_configured) { openPsSettings('ps'); return; }
@@ -2467,6 +2520,7 @@ reply = await client.chat.completions.create(
     if (res.ok) {
       AUTH_USER = await res.json();
       localStorage.setItem('hgapp_user', JSON.stringify(AUTH_USER));
+      if (!AUTH_USER.ps_enabled && compareModeActive) exitCompare();
       updatePsStatus();
     }
   }
@@ -2499,37 +2553,56 @@ reply = await client.chat.completions.create(
     let firstSelectable = null;
 
     function addGroup(label, list) {
-      if (!list.length) return;
+      const available = list.filter(m => { if (m.requires_key && !m.key_set) return false; return true; });
+      if (!available.length) return;
       const grp = document.createElement('optgroup');
       grp.label = label;
-      list.forEach(m => {
+      available.forEach(m => {
         const opt = document.createElement('option');
         opt.value = m.id;
+        // Strip provider-namespace prefix for display (e.g. "ollama/gemma3:latest" → "gemma3:latest", "openai/gpt-4.1" → "gpt-4.1")
+        const displayId = m.id.replace(/^(?:ollama|openai|anthropic|perplexity|google)\//, '');
         const provTag = m.provider ? ` [${m.provider}]` : '';
-        if (m.requires_key && !m.key_set) {
-          opt.textContent = m.id + provTag + ' (key required)';
-          opt.disabled = true;
-          opt.style.color = 'var(--text-muted)';
-        } else {
-          opt.textContent = m.id + provTag;
-          if (!firstSelectable) firstSelectable = opt;
-        }
+        opt.textContent = displayId + provTag;
+        if (!firstSelectable) firstSelectable = opt;
         grp.appendChild(opt);
       });
       modelSelect.appendChild(grp);
     }
 
-    addGroup('Local Models (Ollama)', local);
+    if (OLLAMA_ENABLED) addGroup('Local Models (Ollama)', local);
     addGroup('Free Models', free);
     addGroup('Paid Models', paid);
 
-    // Restore saved model for authenticated users
-    const savedModel = AUTH_USER ? localStorage.getItem(MODEL_KEY(AUTH_USER.id)) : null;
+    // Restore saved model (works for both auth users and open-mode guests)
+    const _modelStorageKey = MODEL_KEY(AUTH_USER?.id);
+    const savedModel = localStorage.getItem(_modelStorageKey);
     if (savedModel) {
       const opt = modelSelect.querySelector(`option[value="${CSS.escape(savedModel)}"]`);
-      if (opt && !opt.disabled) { opt.selected = true; return; }
+      if (opt && !opt.disabled) { opt.selected = true; }
+    } else if (firstSelectable) {
+      firstSelectable.selected = true;
     }
-    if (firstSelectable) firstSelectable.selected = true;
+
+    // ── Model selector: always visible as a dropdown ──
+    // When Ollama models and LLM provider models are both available, the user can
+    // pick from all of them in one unified selector. The Ollama badge is never shown.
+    document.getElementById('ollamaModelBadge').style.display = 'none';
+    modelSelect.style.display = '';
+
+    // If no saved preference, default to the first Ollama model (admin-ordered) when available.
+    // local model IDs now carry the "ollama/" prefix (e.g. "ollama/gemma3:latest"),
+    // while OLLAMA_MODEL_IDS_ORDERED holds bare names — compare after stripping.
+    if (OLLAMA_ENABLED && local.length && !savedModel) {
+      const preferredId = local.find(m =>
+        OLLAMA_MODEL_IDS_ORDERED.includes(m.id.replace(/^ollama\//, ''))
+      )?.id || local[0].id;
+      const prefOpt = modelSelect.querySelector(`option[value="${CSS.escape(preferredId)}"]`);
+      if (prefOpt) prefOpt.selected = true;
+    }
+
+    // Persist whatever is now selected so the next load restores it without needing a manual change.
+    if (modelSelect.value) localStorage.setItem(_modelStorageKey, modelSelect.value);
   }
 
   async function loadSessions() {
@@ -3033,8 +3106,12 @@ reply = await client.chat.completions.create(
   input.addEventListener('input', scheduleTokenEstimate);
   modelSelect.addEventListener('change', scheduleTokenEstimate);
   modelSelect.addEventListener('change', () => {
-    if (AUTH_USER) localStorage.setItem(MODEL_KEY(AUTH_USER.id), modelSelect.value);
+    localStorage.setItem(MODEL_KEY(AUTH_USER?.id), modelSelect.value);
   });
+
+  function getActiveModel() {
+    return modelSelect.value || undefined;
+  }
 
   document.getElementById('psSaveBtn').addEventListener('click', async () => {
     if (_settingsTab === 'ps') {
@@ -3135,7 +3212,7 @@ reply = await client.chat.completions.create(
   const userDropdown = document.getElementById('userDropdown');
   document.getElementById('userMenuBtn').addEventListener('click', e => { e.stopPropagation(); userDropdown.classList.toggle('open'); });
   document.addEventListener('click', () => userDropdown.classList.remove('open'));
-  document.getElementById('logoutBtn').addEventListener('click', () => { localStorage.clear(); window.location.replace('/login'); });
+  document.getElementById('logoutBtn').addEventListener('click', () => { clearAuthSession(); window.location.replace('/login'); });
 
   // ── Admin auth modal — all users, all modes ──
   const adminAuthBackdrop = document.getElementById('adminAuthBackdrop');
@@ -3165,7 +3242,7 @@ reply = await client.chat.completions.create(
       });
       if (!res.ok) { errEl.textContent = 'Invalid password.'; return; }
       const data = await res.json();
-      localStorage.setItem('hgapp_token', data.access_token);
+      localStorage.setItem('hgapp_admin_token', data.access_token);  // separate key — never overwrites the chat user's hgapp_token
       adminAuthBackdrop.classList.remove('open');
       window.location.replace('/admin');
     } catch { errEl.textContent = 'Network error. Try again.'; }
@@ -3398,7 +3475,7 @@ reply = await client.chat.completions.create(
         method: 'POST',
         body: JSON.stringify({
           messages: [...messages, draft],
-          model: modelSelect.value || undefined,
+          model: getActiveModel(),
           system_prompt: localStorage.getItem(SYS_KEY) || undefined,
           session_id: currentSessionId || undefined,
         }),
@@ -3578,7 +3655,7 @@ reply = await client.chat.completions.create(
 
   // ── Compare Mode ─────────────────────────────────────────────────────────
   function canUseCompareMode() {
-    return OPEN_MODE || AUTH_USER?.role === 'admin';
+    return OPEN_MODE || (AUTH_USER?.role === 'admin' && !!(AUTH_USER?.ps_configured && AUTH_USER?.ps_enabled));
   }
 
   let compareModeActive = false;
@@ -3831,8 +3908,6 @@ reply = await client.chat.completions.create(
 
   async function initOpenMode() {
     document.getElementById('logoutBtn').style.display = 'none';
-    const adminPsLink = document.getElementById('adminPsLink');
-    if (adminPsLink) adminPsLink.style.display = 'none';
     document.getElementById('changeGuestNameBtn').style.display = 'block';
     AUTH_USER = { role: 'se', ps_configured: false, ps_enabled: false, ps_mode: 'api' };
 
@@ -3851,6 +3926,7 @@ reply = await client.chat.completions.create(
     await Promise.all([loadModels(), loadSessions(), loadStats()]);
     pruneOldSessions();
     applyFixedModel();
+    enterCompareMode();
   }
 
   async function openModeSend(text) {
@@ -3891,7 +3967,7 @@ reply = await client.chat.completions.create(
     typingBub.innerHTML = '<span></span><span></span><span></span>';
     typingIn.appendChild(typingBub); typingWrap.append(typingAv, typingIn); chatEl.appendChild(typingWrap); scrollToBottom();
 
-    const model = modelSelect.value || undefined;
+    const model = getActiveModel();
     const sys = localStorage.getItem(SYS_KEY) || undefined;
     const _psAppId = cfg.app_id_enc ? await _psDecrypt(cfg.app_id_enc) : null;
     const psEnabled = cfg.enabled !== false && !!_psAppId && !!(cfg.base_url);
@@ -4052,7 +4128,7 @@ reply = await client.chat.completions.create(
     typingBub.innerHTML = '<span></span><span></span><span></span>';
     typingIn.appendChild(typingBub); typingWrap.append(typingAv, typingIn); chatEl.appendChild(typingWrap); scrollToBottom();
 
-    const model = modelSelect.value || undefined;
+    const model = getActiveModel();
     const sys   = localStorage.getItem(SYS_KEY) || undefined;
 
     // 10-second timeout for initial response
@@ -4236,8 +4312,8 @@ reply = await client.chat.completions.create(
     const local = JSON.parse(localStorage.getItem('hgapp_user_scenarios') || '[]').filter(s => s.is_active !== false);
     _demoScenarios = [..._demoServerScenarios, ...local];
     _buildDemoTabs();
-    const firstCat = _demoScenarios.length ? _demoScenarios[0].category : 'fileScan';
-    switchDemoCategory(firstCat);
+    const firstCat = _demoScenarios.length ? _demoScenarios[0].category : null;
+    if (firstCat) switchDemoCategory(firstCat);
   }
 
   function _buildDemoTabs() {
@@ -4252,12 +4328,6 @@ reply = await client.chat.completions.create(
       btn.addEventListener('click', () => switchDemoCategory(cat));
       tabsEl.appendChild(btn);
     });
-    const fsBtn = document.createElement('button');
-    fsBtn.className = 'demo-cat-tab';
-    fsBtn.dataset.cat = 'fileScan';
-    fsBtn.textContent = 'File Scan';
-    fsBtn.addEventListener('click', () => { setSelectedFile(null); switchDemoCategory('fileScan'); });
-    tabsEl.appendChild(fsBtn);
   }
 
   function closeDemoPanel() {
@@ -4270,8 +4340,6 @@ reply = await client.chat.completions.create(
     document.querySelectorAll('.demo-cat-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === cat));
     // hide all dynamic content
     document.querySelectorAll('#demoDynContent .demo-cat-content').forEach(c => c.remove());
-    document.getElementById('demoCatFileScan').classList.remove('active');
-    if (cat === 'fileScan') { document.getElementById('demoCatFileScan').classList.add('active'); return; }
 
     const scenarios = _demoScenarios.filter(s => s.category === cat);
     if (!scenarios.length) return;
@@ -4372,6 +4440,19 @@ reply = await client.chat.completions.create(
   document.getElementById('demoPanelClose').addEventListener('click', closeDemoPanel);
   demoOverlay.addEventListener('click', closeDemoPanel);
   document.getElementById('demoPsSetupLink')?.addEventListener('click', e => { e.preventDefault(); closeDemoPanel(); openPsSettings('ps'); });
+
+  // ── File Scan Modal ──────────────────────────────────────────────────────
+  function openFileScanModal() {
+    document.getElementById('fileScanOverlay').style.display = 'block';
+    document.getElementById('fileScanModal').style.display = 'flex';
+  }
+  function closeFileScanModal() {
+    document.getElementById('fileScanOverlay').style.display = 'none';
+    document.getElementById('fileScanModal').style.display = 'none';
+  }
+  document.getElementById('fileScanToolbarBtn').addEventListener('click', openFileScanModal);
+  document.getElementById('fileScanModalClose').addEventListener('click', closeFileScanModal);
+  document.getElementById('fileScanOverlay').addEventListener('click', closeFileScanModal);
 
   // ── Intro Modal ──────────────────────────────────────────────────────────
   function openIntro() { document.getElementById('introOverlay').classList.add('open'); }
@@ -4769,7 +4850,7 @@ if (evt.type === 'done') {
   // ── Compare Mode ──────────────────────────────────────────────────────────
 
   async function streamIntoBubble(bubble, footer, msgs, skipPs, sessionId, onComplete, signal) {
-    const model = document.getElementById('modelSelect').value || undefined;
+    const model = getActiveModel();
     const sys = localStorage.getItem(SYS_KEY) || undefined;
     const scrollContainer = bubble.closest('.cmp-messages') || bubble.closest('.compare-bubble')?.parentElement;
     const scrollBub = () => { if (scrollContainer) scrollContainer.scrollTop = scrollContainer.scrollHeight; };
@@ -4838,7 +4919,7 @@ if (evt.type === 'done') {
               const cp = document.createElement('button'); cp.className = 'copy-btn'; cp.textContent = 'Copy';
               cp.addEventListener('click', () => { navigator.clipboard.writeText(bubble.innerText); cp.className = 'copy-btn copied'; cp.textContent = 'Copied!'; setTimeout(() => { cp.className = 'copy-btn'; cp.textContent = 'Copy'; }, 1500); });
               footer.appendChild(cp);
-              if (!skipPs) {
+              if (!effectiveSkipPs) {
                 if (evt.ps_scanned && (evt.ps_action || 'pass') === 'pass') {
                   const aChip = document.createElement('span'); aChip.className = 'msg-status-chip allowed'; aChip.textContent = 'ALLOWED';
                   inner.insertBefore(aChip, bubble);
@@ -4861,7 +4942,7 @@ if (evt.type === 'done') {
               const cp = document.createElement('button'); cp.className = 'copy-btn'; cp.textContent = 'Copy';
               cp.addEventListener('click', () => { navigator.clipboard.writeText(bubble.innerText); cp.className = 'copy-btn copied'; cp.textContent = 'Copied!'; setTimeout(() => { cp.className = 'copy-btn'; cp.textContent = 'Copy'; }, 1500); });
               footer.appendChild(cp);
-              if (!skipPs) renderPsInsight(bubble.parentElement, true, 'block', evt.violations || [], evt.ps_raw || null);
+              if (!effectiveSkipPs) renderPsInsight(bubble.parentElement, true, 'block', evt.violations || [], evt.ps_raw || null);
             }
             done = true;
           }
@@ -4874,7 +4955,7 @@ if (evt.type === 'done') {
               const cp = document.createElement('button'); cp.className = 'copy-btn'; cp.textContent = 'Copy';
               cp.addEventListener('click', () => { navigator.clipboard.writeText(bubble.innerText); cp.className = 'copy-btn copied'; cp.textContent = 'Copied!'; setTimeout(() => { cp.className = 'copy-btn'; cp.textContent = 'Copy'; }, 1500); });
               footer.appendChild(cp);
-              if (!skipPs) renderPsInsight(bubble.parentElement, true, 'block', evt.violations || [], evt.ps_raw || null);
+              if (!effectiveSkipPs) renderPsInsight(bubble.parentElement, true, 'block', evt.violations || [], evt.ps_raw || null);
             }
             done = true;
           }
@@ -4973,8 +5054,170 @@ if (evt.type === 'done') {
   const fileSelectedName = document.getElementById('fileSelectedName');
   const fileScanBtn = document.getElementById('fileScanBtn');
   const fileScanStatus = document.getElementById('fileScanStatus');
-  const fileScanResult = document.getElementById('fileScanResult');
   let selectedScanFile = null;
+  let _lastScanJobId = null;
+  let _lastScanPsCfg = null; // { base_url, app_id } for guest retries
+
+  function _isProcessing(data) {
+    const s = (data.action || data.raw?.status || '').toLowerCase();
+    return s === 'processing' || s === 'in_progress' || s === 'in progress';
+  }
+
+  let _scanPollTimer = null;
+
+  function _cancelPoll() {
+    if (_scanPollTimer) { clearTimeout(_scanPollTimer); _scanPollTimer = null; }
+  }
+
+  async function _pollScanJob(delayMs = 0) {
+    _cancelPoll();
+    if (!_lastScanJobId) return;
+    if (delayMs > 0) {
+      await new Promise(r => { _scanPollTimer = setTimeout(r, delayMs); });
+    }
+    if (!_lastScanJobId) return; // may have been cancelled during wait
+    fileScanStatus.textContent = 'Checking…';
+    try {
+      let res;
+      if (OPEN_MODE) {
+        const params = new URLSearchParams({ job_id: _lastScanJobId, ps_base_url: _lastScanPsCfg?.base_url || '', ps_app_id: _lastScanPsCfg?.app_id || '' });
+        res = await fetch(`/guest/upload/sanitize/status?${params}`);
+      } else {
+        res = await authFetch(`/upload/sanitize/status?job_id=${encodeURIComponent(_lastScanJobId)}`);
+      }
+      const data = await res.json();
+      if (!res.ok) { fileScanStatus.textContent = `Error: ${data.detail || res.statusText}`; return; }
+      _renderScanResult(data);
+    } catch(e) {
+      fileScanStatus.textContent = `Network error: ${e.message}`;
+    } finally {
+    }
+  }
+
+  // Colour palette for finding category chips (cycles if more than 6 categories)
+  const _FS_CAT_COLORS = [
+    { color: '#7c6fcd', border: 'rgba(124,111,205,0.4)', bg: 'rgba(124,111,205,0.1)' }, // purple
+    { color: '#e67e22', border: 'rgba(230,126,34,0.4)',  bg: 'rgba(230,126,34,0.1)'  }, // orange
+    { color: '#2e86ab', border: 'rgba(46,134,171,0.4)',  bg: 'rgba(46,134,171,0.1)'  }, // blue
+    { color: '#27ae60', border: 'rgba(39,174,96,0.4)',   bg: 'rgba(39,174,96,0.1)'   }, // green
+    { color: '#c0392b', border: 'rgba(192,57,43,0.4)',   bg: 'rgba(192,57,43,0.1)'   }, // red
+    { color: '#8e44ad', border: 'rgba(142,68,173,0.4)',  bg: 'rgba(142,68,173,0.1)'  }, // violet
+  ];
+
+  function _fsCatColor(idx) { return _FS_CAT_COLORS[idx % _FS_CAT_COLORS.length]; }
+
+  function _fsScoreBar(score) {
+    const pct = Math.round((score || 0) * 100);
+    const col = pct >= 90 ? '#e74c3c' : pct >= 70 ? '#e67e22' : '#27ae60';
+    return `<span class="fs-score" style="color:${col}">${pct}%</span>`;
+  }
+
+  function _renderFindingsSection(raw) {
+    // PS sanitizeFile wraps findings inside raw.metadata; protect endpoint uses raw.result.*
+    const findings = raw?.metadata?.findings || raw?.findings || raw?.result?.findings || raw?.result?.prompt?.findings || {};
+    const cats = Object.entries(findings).filter(([, items]) => Array.isArray(items) && items.length > 0);
+    if (cats.length === 0) return '<div style="font-size:12px;color:var(--text-muted);margin-top:8px">No findings detected.</div>';
+
+    const total = cats.reduce((s, [, items]) => s + items.length, 0);
+
+    // Total line
+    let html = `<div class="fs-total-line">${total} finding${total !== 1 ? 's' : ''} detected</div>`;
+
+    // Category chips
+    html += `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">`;
+    cats.forEach(([cat, items], i) => {
+      const c = _fsCatColor(i);
+      html += `<span class="fs-finding-chip" style="color:${c.color};border-color:${c.border};background:${c.bg}">
+        ${esc(cat)}<span class="fs-finding-count">${items.length}</span>
+      </span>`;
+    });
+    html += `</div>`;
+
+    // Per-category expandable sections
+    cats.forEach(([cat, items], i) => {
+      const c = _fsCatColor(i);
+      const domId = `fscat_${i}_${Date.now()}`;
+      html += `<details open style="margin-bottom:10px">
+        <summary class="fs-cat-header" style="color:${c.color}">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c.color};margin-right:2px"></span>
+          ${esc(cat)}
+          <span style="font-size:10px;color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">${items.length} item${items.length !== 1 ? 's' : ''}</span>
+        </summary>
+        <div style="margin-top:6px">`;
+
+      // Column header row
+      html += `<div style="display:grid;grid-template-columns:200px 200px 55px 200px;gap:8px;padding:4px 10px;margin-bottom:3px">
+        <div class="fs-col-label">Type</div>
+        <div class="fs-col-label">Value found</div>
+        <div class="fs-col-label">Score</div>
+        <div class="fs-col-label">Redacted as</div>
+      </div>`;
+
+      items.forEach(item => {
+        // Stat-only items (e.g. Token Limitation) have no entity_type/entity — render as key-value pills
+        const isStatItem = !item.entity_type && !item.name && !item.entity;
+        if (isStatItem) {
+          const pairs = Object.entries(item).filter(([, v]) => v !== null && v !== undefined && v !== '' && v !== 0);
+          html += `<div style="display:flex;flex-wrap:wrap;gap:6px;padding:6px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);margin-bottom:3px">`;
+          pairs.forEach(([k, v]) => {
+            html += `<span style="font-size:11px;font-family:monospace;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 7px"><span style="color:var(--text-muted)">${esc(k)}:</span> ${esc(String(v))}</span>`;
+          });
+          html += `</div>`;
+          return;
+        }
+
+        const entityType = item.entity_type || item.type || item.name || '—';
+        const entityVal  = item.entity ?? item.value ?? '—';
+        const score      = item.score ?? item.confidence ?? null;
+        const sanitized  = item.sanitized_entity ?? item.sanitized ?? item.replacement ?? null;
+        const cats       = item.categories?.length ? item.categories.join(', ') : null;
+
+        html += `<div class="fs-finding-row">
+          <div>
+            <span class="fs-entity-type">${esc(String(entityType))}</span>
+            ${cats ? `<div style="font-size:9px;color:var(--text-muted);margin-top:2px">${esc(cats)}</div>` : ''}
+          </div>
+          <div class="fs-entity-val" title="${esc(String(entityVal))}">${esc(String(entityVal))}</div>
+          <div>${score !== null ? _fsScoreBar(score) : '<span style="color:var(--muted)">—</span>'}</div>
+          <div>${sanitized ? `<span class="ps-redacted">${esc(String(sanitized))}</span>` : '<span style="color:var(--muted)">—</span>'}</div>
+        </div>`;
+      });
+
+      html += `</div></details>`;
+    });
+
+    return html;
+  }
+
+  function _renderScanResult(data) {
+    _cancelPoll();
+    if (_isProcessing(data)) {
+      const statusMsg = data.raw?.status || data.action || 'In progress';
+      fileScanStatus.textContent = `${statusMsg}…`;
+      _pollScanJob(3000); // auto-retry in 3 s
+      return;
+    }
+    // Final result — show inline
+    fileScanStatus.textContent = '';
+
+    // ── Action badge ──
+    const action = (data.action || 'pass').toLowerCase();
+    const badgeClass = action === 'block' ? 'block' : (action.includes('modif') || action.includes('sanitiz') ? 'modify' : 'pass');
+    const badgeText  = action === 'block' ? '🚫 Blocked' : (badgeClass === 'modify' ? '⚠️ Sanitized' : '✅ Clean');
+    let badgeHtml = `<span class="ps-badge ${badgeClass}" style="font-size:13px;padding:4px 10px">${badgeText}</span>`;
+    if (data.sanitized_url) {
+      badgeHtml += ` <a href="${data.sanitized_url}" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;margin-left:8px">⬇️ Download Sanitized File</a>`;
+    }
+    document.getElementById('fileScanResultBadge').innerHTML = badgeHtml;
+
+    // ── Findings analysis ──
+    document.getElementById('fileScanFindings').innerHTML = _renderFindingsSection(data.raw || {});
+
+    // ── Meta line ──
+    const meta = [data.job_id ? `Job ID: ${data.job_id}` : null, data.scan_ms ? `Scan time: ${data.scan_ms}ms` : null].filter(Boolean).join(' · ');
+    document.getElementById('fileScanMeta').textContent = meta;
+
+  }
 
   function setSelectedFile(file) {
     selectedScanFile = file;
@@ -4987,15 +5230,38 @@ if (evt.type === 'done') {
       fileSelectedBadge.classList.remove('visible');
       fileScanBtn.disabled = true;
       fileScanDropZone.style.display = '';
-      fileScanResult.classList.remove('visible');
+      document.getElementById('fileScanResultBadge').innerHTML = '';
+      document.getElementById('fileScanFindings').innerHTML = '';
+      document.getElementById('fileScanMeta').textContent = '';
       fileScanStatus.textContent = '';
       fileScanInput.value = '';
+      _lastScanJobId = null;
+      _lastScanPsCfg = null;
+      _cancelPoll();
     }
   }
 
   fileScanDropZone?.addEventListener('click', () => fileScanInput?.click());
   document.getElementById('fileClearBtn')?.addEventListener('click', () => setSelectedFile(null));
   fileScanInput?.addEventListener('change', e => { if (e.target.files[0]) setSelectedFile(e.target.files[0]); });
+
+  document.getElementById('fileScanExampleBtn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('fileScanExampleBtn');
+    btn.disabled = true;
+    btn.textContent = 'Loading…';
+    try {
+      const res = await fetch('/static/PII_Test_Audit_File.pdf');
+      if (!res.ok) throw new Error('Failed to fetch example file');
+      const blob = await res.blob();
+      const file = new File([blob], 'PII_Test_Audit_File.pdf', { type: 'application/pdf' });
+      setSelectedFile(file);
+    } catch(e) {
+      fileScanStatus.textContent = `Could not load example: ${e.message}`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '📄 Load example';
+    }
+  });
 
   fileScanDropZone?.addEventListener('dragover', e => { e.preventDefault(); fileScanDropZone.classList.add('drag-over'); });
   fileScanDropZone?.addEventListener('dragleave', () => fileScanDropZone.classList.remove('drag-over'));
@@ -5007,41 +5273,45 @@ if (evt.type === 'done') {
   fileScanBtn?.addEventListener('click', async () => {
     if (!selectedScanFile) return;
     fileScanBtn.disabled = true;
-    fileScanResult.classList.remove('visible');
-    fileScanStatus.innerHTML = '<span class="file-scan-spinner"></span> Submitting to Prompt Security…';
+    fileScanStatus.textContent = 'Submitting…';
+    document.getElementById('fileScanResultBadge').innerHTML = '';
+    document.getElementById('fileScanFindings').innerHTML = '';
+    document.getElementById('fileScanMeta').textContent = '';
 
     const fd = new FormData(); fd.append('file', selectedScanFile);
     try {
-      const res = await authFetch('/upload/sanitize', { method: 'POST', body: fd });
+      let res;
+      if (OPEN_MODE) {
+        const cfg = JSON.parse(localStorage.getItem('hgapp_open_ps_config') || '{}');
+        const appId = cfg.app_id_enc ? await _psDecrypt(cfg.app_id_enc) : '';
+        fd.append('ps_base_url', cfg.base_url || '');
+        fd.append('ps_app_id', appId || '');
+        res = await fetch('/guest/upload/sanitize', { method: 'POST', body: fd });
+      } else {
+        res = await authFetch('/upload/sanitize', { method: 'POST', body: fd });
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         fileScanStatus.textContent = `Error: ${err.detail || res.statusText}`;
-        fileScanBtn.disabled = false; return;
+        return;
       }
-      fileScanStatus.innerHTML = '<span class="file-scan-spinner"></span> Scanning…';
       const data = await res.json();
-      fileScanStatus.textContent = '';
-
-      const action = (data.action || 'pass').toLowerCase();
-      const badgeClass = action === 'block' ? 'block' : (action.includes('modif') || action.includes('sanitiz') ? 'modify' : 'pass');
-      const badgeText = action === 'block' ? '🚫 Blocked' : (badgeClass === 'modify' ? '⚠️ Sanitized' : '✅ Clean');
-      document.getElementById('fileScanResultBadge').innerHTML = `<span class="ps-badge ${badgeClass}" style="font-size:13px;padding:4px 10px">${badgeText}</span>`;
-
-      const violations = data.violations || [];
-      if (violations.length) {
-        const vList = violations.map(v => typeof v === 'string' ? v : (v.type || v.name || JSON.stringify(v))).join(', ');
-        document.getElementById('fileScanResultBadge').innerHTML += `<div style="margin-top:6px;font-size:12px;color:var(--text-muted)">Violations: ${vList}</div>`;
+      _lastScanJobId = data.job_id || null;
+      _lastScanPsCfg = OPEN_MODE ? { base_url: fd.get('ps_base_url'), app_id: fd.get('ps_app_id') } : null;
+      if (_lastScanJobId && _isProcessing(data)) {
+        // Job queued — wait 3 s then start polling
+        fileScanStatus.textContent = 'Processing…';
+        _pollScanJob(3000);
+      } else {
+        _renderScanResult(data);
       }
-      if (data.sanitized_url) {
-        document.getElementById('fileScanResultBadge').innerHTML += `<div style="margin-top:6px"><a href="${data.sanitized_url}" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:4px 10px">⬇️ Download Sanitized File</a></div>`;
-      }
-      document.getElementById('fileScanMeta').textContent = `Job ID: ${data.job_id} · Scan time: ${data.scan_ms}ms`;
-      fileScanResult.classList.add('visible');
     } catch(e) {
       fileScanStatus.textContent = `Network error: ${e.message}`;
+    } finally {
+      fileScanBtn.disabled = false;
     }
-    fileScanBtn.disabled = false;
   });
+
 
   // File scan reset is handled inside _buildDemoTabs via the fileScan tab's click listener.
 
@@ -5642,8 +5912,47 @@ if (evt.type === 'done') {
     _umwFinish();
   }
 
-  async function openUserWizard() {
+  let _umwDisclaimerOnly = false;  // true when wizard is complete and we only need the disclaimer
+
+  function _umwAcceptDisclaimer() {
+    sessionStorage.setItem('hgapp_disclaimer_accepted', '1');
+    if (_umwDisclaimerOnly) {
+      // Wizard already set up — just close and proceed to chat
+      document.getElementById('umWizBackdrop').classList.remove('open');
+      maybeShowHelp();
+      return;
+    }
+    document.getElementById('umwStep0').style.display = 'none';
+    document.getElementById('umwStepNav').style.display = '';
     _umwSetStep(1);
+  }
+
+  async function openUserWizard({ disclaimerOnly = false, skipDisclaimer = false } = {}) {
+    _umwDisclaimerOnly = disclaimerOnly;
+
+    if (skipDisclaimer) {
+      // Disclaimer already accepted this session — skip straight to wizard steps
+      document.getElementById('umwStep0').style.display = 'none';
+      document.getElementById('umwStepNav').style.display = '';
+      _umwSetStep(1);
+    } else {
+      // Show disclaimer first — hide step nav and step panels until accepted
+      document.getElementById('umwStep0').style.display = '';
+      document.getElementById('umwStepNav').style.display = 'none';
+      [1,2,3].forEach(n => { document.getElementById('umwStep'+n).style.display = 'none'; });
+      const _udc = document.getElementById('umwDisclaimerCheck');
+      const _udb = document.getElementById('umwDisclaimerBtn');
+      _udc.checked = false;
+      _udb.disabled = true;
+      _udc.onchange = () => { _udb.disabled = !_udc.checked; };
+    }
+
+    // If only showing the disclaimer, open the modal now and stop
+    if (disclaimerOnly && !skipDisclaimer) {
+      document.getElementById('umWizBackdrop').classList.add('open');
+      return;
+    }
+
     document.getElementById('umwApiKey').value = '';
     document.getElementById('umwPsErr').textContent = '';
     document.getElementById('umwRetentionSelect').value = '7';
@@ -5738,12 +6047,22 @@ if (evt.type === 'done') {
     // Validate email
     const emailVal = _wizardGetEmail();
     if (_wizardAllowedDomains.length) {
+      // Split-input mode: just need the local part (domain comes from the select)
       const local = document.getElementById('wizardEmailLocal').value.trim();
       if (!local) { const li = document.getElementById('wizardEmailLocal'); li.focus(); li.style.borderColor = 'var(--red)'; return; }
       document.getElementById('wizardEmailLocal').style.borderColor = '';
     } else if (!emailVal) {
       // Email is optional when no domains configured — skip verification
       wizardGoTo(2); return;
+    } else {
+      // Free-text email provided — validate it looks like a real address
+      const freeInp = document.getElementById('wizardEmailFree');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal)) {
+        freeInp.style.borderColor = 'var(--red)';
+        freeInp.focus();
+        return;
+      }
+      freeInp.style.borderColor = '';
     }
 
     if (!emailVal) return;
@@ -5886,9 +6205,18 @@ if (evt.type === 'done') {
     document.getElementById('wizardVerifyError').textContent = '';
     ['otp0','otp1','otp2','otp3'].forEach(id => { document.getElementById(id).value = ''; document.getElementById(id).classList.remove('otp-error'); });
     _wizardPendingEmail = '';
-    wizardGoTo(1);
+
+    // Show disclaimer first — hide step indicator and all step panels until accepted
+    document.getElementById('wizardStep0').style.display = '';
+    document.getElementById('wizardStepNav').style.display = 'none';
+    [1,2,3].forEach(n => { document.getElementById('wizardStep'+n).style.display = 'none'; });
+    const _wdc = document.getElementById('wizardDisclaimerCheck');
+    const _wdb = document.getElementById('wizardDisclaimerBtn');
+    _wdc.checked = false;
+    _wdb.disabled = true;
+    _wdc.onchange = () => { _wdb.disabled = !_wdc.checked; };
+
     document.getElementById('wizardBackdrop').classList.add('open');
-    setTimeout(() => document.getElementById('wizardNameInput').focus(), 80);
 
     // ── Wire step-1 buttons ───────────────────────────────────────────────
     // "Send code →"
@@ -5999,6 +6327,13 @@ if (evt.type === 'done') {
     });
     document.getElementById('wizardBack3').onclick  = () => wizardGoTo(2);
     document.getElementById('wizardFinishBtn').onclick = wizardFinish;
+  }
+
+  function _wizardAcceptDisclaimer() {
+    document.getElementById('wizardStep0').style.display = 'none';
+    document.getElementById('wizardStepNav').style.display = '';
+    wizardGoTo(1);
+    setTimeout(() => document.getElementById('wizardNameInput').focus(), 80);
   }
 
   function wizardGoTo(step) {
@@ -6113,22 +6448,59 @@ if (evt.type === 'done') {
 <div class="backdrop" id="wizardBackdrop" style="z-index:300">
   <div class="modal" style="max-width:560px;width:94vw;gap:0;padding:28px 28px 24px">
 
-    <!-- Step indicator -->
-    <div class="wiz-step-indicator" style="margin-bottom:10px">
-      <div class="wiz-dot wiz-dot-active" id="wizardDot1">1</div>
-      <div class="wiz-connector" id="wizardConnector1"></div>
-      <div class="wiz-dot wiz-dot-inactive" id="wizardDot2">2</div>
-      <div class="wiz-connector" id="wizardConnector2"></div>
-      <div class="wiz-dot wiz-dot-inactive" id="wizardDot3">3</div>
+    <!-- Step 0: Disclaimer (shown before step indicator; must be accepted to continue) -->
+    <div id="wizardStep0">
+      <div style="text-align:center;margin-bottom:20px">
+        <div style="font-size:32px;margin-bottom:8px">📋</div>
+        <h3 style="font-size:17px;font-weight:700;margin-bottom:6px">Before You Begin</h3>
+        <p style="font-size:13px;color:var(--text-muted);line-height:1.6">Please read and accept the following before using this application.</p>
+      </div>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:20px;display:flex;flex-direction:column;gap:0">
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <span style="font-size:18px;flex-shrink:0;margin-top:1px">💼</span>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:3px">Work use only</div>
+            <div style="font-size:12px;color:var(--text-muted);line-height:1.55">This application is provided for professional use only. Personal use is not permitted.</div>
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--border);margin:12px 0"></div>
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <span style="font-size:18px;flex-shrink:0;margin-top:1px">🔒</span>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:3px">All chats are stored</div>
+            <div style="font-size:12px;color:var(--text-muted);line-height:1.55">Every conversation is logged and retained for support, security monitoring, and audit purposes. Do not enter passwords, personal data, or anything you would not want your organisation to review.</div>
+          </div>
+        </div>
+      </div>
+      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin-bottom:20px;padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
+        <input type="checkbox" id="wizardDisclaimerCheck" style="margin-top:2px;accent-color:var(--accent);width:16px;height:16px;flex-shrink:0">
+        <span style="font-size:13px;color:var(--text);line-height:1.5">I have read and understood the above. I agree to use this application for work purposes only.</span>
+      </label>
+      <div class="wiz-footer" style="justify-content:space-between;align-items:center">
+        <a href="#" onclick="openAdminAuthModal();return false;" style="font-size:12px;color:var(--text-muted);text-decoration:none;display:flex;align-items:center;gap:5px" title="Admin sign-in">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Admin
+        </a>
+        <button class="btn btn-primary" id="wizardDisclaimerBtn" disabled style="min-width:130px" onclick="_wizardAcceptDisclaimer()">Continue →</button>
+      </div>
     </div>
 
-    <!-- Progress bar -->
-    <div class="wiz-progress" style="margin-bottom:24px">
-      <div class="wiz-progress-fill" id="wizardProgressFill" style="width:33%"></div>
+    <!-- Step indicator + progress bar (hidden while disclaimer is shown) -->
+    <div id="wizardStepNav" style="display:none">
+      <div class="wiz-step-indicator" style="margin-bottom:10px">
+        <div class="wiz-dot wiz-dot-active" id="wizardDot1">1</div>
+        <div class="wiz-connector" id="wizardConnector1"></div>
+        <div class="wiz-dot wiz-dot-inactive" id="wizardDot2">2</div>
+        <div class="wiz-connector" id="wizardConnector2"></div>
+        <div class="wiz-dot wiz-dot-inactive" id="wizardDot3">3</div>
+      </div>
+      <div class="wiz-progress" style="margin-bottom:24px">
+        <div class="wiz-progress-fill" id="wizardProgressFill" style="width:33%"></div>
+      </div>
     </div>
 
     <!-- Step 1: Welcome & Name -->
-    <div id="wizardStep1">
+    <div id="wizardStep1" style="display:none">
       <h3 style="font-size:17px;font-weight:700;margin-bottom:8px">Welcome to HGA Prompt Demo 👋</h3>
       <p style="font-size:13px;color:var(--text-muted);line-height:1.6;margin-bottom:20px">This tool lets you explore how Prompt Security protects AI apps in real time. Let's get you set up in a few quick steps.</p>
       <div style="margin-bottom:16px">
@@ -6174,7 +6546,7 @@ if (evt.type === 'done') {
       </div>
 
       <div class="wiz-footer" style="margin-top:20px;justify-content:space-between;align-items:center" id="wizardStep1Footer">
-        <a href="/admin" style="font-size:12px;color:var(--text-muted);text-decoration:none;display:flex;align-items:center;gap:5px" title="Admin sign-in">
+        <a href="#" onclick="openAdminAuthModal();return false;" style="font-size:12px;color:var(--text-muted);text-decoration:none;display:flex;align-items:center;gap:5px" title="Admin sign-in">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           Admin
         </a>
@@ -6303,20 +6675,59 @@ if (evt.type === 'done') {
 <div class="backdrop" id="umWizBackdrop" style="z-index:300">
   <div class="modal" style="max-width:520px;width:94vw;gap:0;padding:28px 28px 24px">
 
-    <!-- Step indicator -->
-    <div class="wiz-step-indicator" style="margin-bottom:10px">
-      <div class="wiz-dot wiz-dot-active" id="umwDot1">1</div>
-      <div class="wiz-connector" id="umwConnector1"></div>
-      <div class="wiz-dot wiz-dot-inactive" id="umwDot2">2</div>
-      <div class="wiz-connector" id="umwConnector2"></div>
-      <div class="wiz-dot wiz-dot-inactive" id="umwDot3">3</div>
+    <!-- Step 0: Disclaimer (shown before step indicator; must be accepted to continue) -->
+    <div id="umwStep0">
+      <div style="text-align:center;margin-bottom:20px">
+        <div style="font-size:32px;margin-bottom:8px">📋</div>
+        <h3 style="font-size:17px;font-weight:700;margin-bottom:6px">Before You Begin</h3>
+        <p style="font-size:13px;color:var(--text-muted);line-height:1.6">Please read and accept the following before using this application.</p>
+      </div>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:20px;display:flex;flex-direction:column;gap:0">
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <span style="font-size:18px;flex-shrink:0;margin-top:1px">💼</span>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:3px">Work use only</div>
+            <div style="font-size:12px;color:var(--text-muted);line-height:1.55">This application is provided for professional use only. Personal use is not permitted.</div>
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--border);margin:12px 0"></div>
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <span style="font-size:18px;flex-shrink:0;margin-top:1px">🔒</span>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:3px">All chats are stored</div>
+            <div style="font-size:12px;color:var(--text-muted);line-height:1.55">Every conversation is logged and retained for support, security monitoring, and audit purposes. Do not enter passwords, personal data, or anything you would not want your organisation to review.</div>
+          </div>
+        </div>
+      </div>
+      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin-bottom:20px;padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
+        <input type="checkbox" id="umwDisclaimerCheck" style="margin-top:2px;accent-color:var(--accent);width:16px;height:16px;flex-shrink:0">
+        <span style="font-size:13px;color:var(--text);line-height:1.5">I have read and understood the above. I agree to use this application for work purposes only.</span>
+      </label>
+      <div class="wiz-footer" style="justify-content:space-between;align-items:center">
+        <a href="#" onclick="openAdminAuthModal();return false;" style="font-size:12px;color:var(--text-muted);text-decoration:none;display:flex;align-items:center;gap:5px;transition:color 0.2s" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'" title="Admin sign-in">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Admin
+        </a>
+        <button class="btn btn-primary" id="umwDisclaimerBtn" disabled style="min-width:130px" onclick="_umwAcceptDisclaimer()">Continue →</button>
+      </div>
     </div>
-    <div class="wiz-progress" style="margin-bottom:24px">
-      <div class="wiz-progress-fill" id="umwProgressFill" style="width:33%"></div>
+
+    <!-- Step indicator + progress bar (hidden while disclaimer is shown) -->
+    <div id="umwStepNav" style="display:none">
+      <div class="wiz-step-indicator" style="margin-bottom:10px">
+        <div class="wiz-dot wiz-dot-active" id="umwDot1">1</div>
+        <div class="wiz-connector" id="umwConnector1"></div>
+        <div class="wiz-dot wiz-dot-inactive" id="umwDot2">2</div>
+        <div class="wiz-connector" id="umwConnector2"></div>
+        <div class="wiz-dot wiz-dot-inactive" id="umwDot3">3</div>
+      </div>
+      <div class="wiz-progress" style="margin-bottom:24px">
+        <div class="wiz-progress-fill" id="umwProgressFill" style="width:33%"></div>
+      </div>
     </div>
 
     <!-- Step 1: Welcome -->
-    <div id="umwStep1">
+    <div id="umwStep1" style="display:none">
       <h3 style="font-size:17px;font-weight:700;margin-bottom:8px">Welcome to HGA Prompt Demo 👋</h3>
       <p style="font-size:13px;color:var(--text-muted);line-height:1.6;margin-bottom:20px">This tool lets you explore how Prompt Security protects AI applications in real time. Let's get you set up.</p>
       <div class="wiz-callout">
@@ -6328,7 +6739,7 @@ if (evt.type === 'done') {
         </ul>
       </div>
       <div class="wiz-footer" style="margin-top:24px;justify-content:space-between;align-items:center">
-        <a href="/admin" style="font-size:12px;color:var(--text-muted);text-decoration:none;display:flex;align-items:center;gap:5px;transition:color 0.2s" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+        <a href="#" onclick="openAdminAuthModal();return false;" style="font-size:12px;color:var(--text-muted);text-decoration:none;display:flex;align-items:center;gap:5px;transition:color 0.2s" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           Admin
         </a>
