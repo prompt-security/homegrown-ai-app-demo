@@ -439,7 +439,8 @@ def _ps_pass_result() -> PromptSecurityResult:
 
 
 @pytest.mark.asyncio
-async def test_chat_stream_non_admin_cannot_bypass_ps_with_skip_flag(client, db, test_user, test_tenant):
+async def test_chat_stream_non_admin_can_use_skip_ps_for_compare_mode(client, db, test_user, test_tenant):
+    """skip_ps is allowed for all authenticated users — it powers compare mode for SE users."""
     test_user.ps_tenant_id = test_tenant.id
     test_user.ps_api_key_enc = encrypt("test-app-id")
     test_user.ps_enabled = True
@@ -455,8 +456,8 @@ async def test_chat_stream_non_admin_cannot_bypass_ps_with_skip_flag(client, db,
         },
     )
 
-    assert response.status_code == 403
-    assert response.json()["detail"] == "skip_ps is restricted to admin users"
+    # Should proceed (LLM connection error in test env is expected), not 403
+    assert response.status_code != 403
 
 
 @pytest.mark.asyncio
