@@ -63,11 +63,14 @@ def test_frontend_only_disables_models_that_require_missing_keys():
     assert "if (m.requires_key && !m.key_set)" in html
 
 
-def test_frontend_gates_compare_mode_to_admins():
+def test_frontend_gates_compare_mode_to_ps_configured_users():
+    """Compare mode (and skip_ps) is available to any user with PS configured and enabled,
+    not just admins — SE users need compare mode too."""
     html = (REPO_ROOT / "app/static/index.html").read_text(encoding="utf-8")
 
     assert "function canUseCompareMode()" in html
-    assert "AUTH_USER?.role === 'admin'" in html
+    # Gate is PS configuration, not admin role
+    assert "AUTH_USER?.ps_configured && AUTH_USER?.ps_enabled" in html
     assert "const effectiveSkipPs = Boolean(skipPs && canUseCompareMode());" in html
 
 

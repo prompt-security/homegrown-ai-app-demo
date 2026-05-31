@@ -3655,7 +3655,7 @@ reply = await client.chat.completions.create(
 
   // ── Compare Mode ─────────────────────────────────────────────────────────
   function canUseCompareMode() {
-    return OPEN_MODE || (AUTH_USER?.role === 'admin' && !!(AUTH_USER?.ps_configured && AUTH_USER?.ps_enabled));
+    return OPEN_MODE || !!(AUTH_USER?.ps_configured && AUTH_USER?.ps_enabled);
   }
 
   let compareModeActive = false;
