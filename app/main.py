@@ -4466,19 +4466,21 @@ async def validate_scenarios_url(
     admin: User = Depends(require_admin),
 ):
     """Fetch the given URL and confirm it is a valid scenarios JSON array."""
-    _ALLOWED_HOSTS = {"raw.githubusercontent.com"}
+    from urllib.parse import urlparse
+    _ALLOWED_HOST = "raw.githubusercontent.com"
     url = (body.get("url") or "").strip()
     if not url:
         return {"ok": False, "error": "Please enter a URL."}
     if not url.startswith("https://"):
         return {"ok": False, "error": "The URL doesn't look right — it should start with https://"}
-    from urllib.parse import urlparse
     parsed = urlparse(url)
-    if parsed.hostname not in _ALLOWED_HOSTS:
-        return {"ok": False, "error": f"Only URLs from {', '.join(sorted(_ALLOWED_HOSTS))} are supported."}
+    if parsed.hostname != _ALLOWED_HOST:
+        return {"ok": False, "error": f"Only URLs from {_ALLOWED_HOST} are supported."}
+    # Reconstruct URL from validated components — never pass raw user input to httpx
+    safe_url = f"https://{_ALLOWED_HOST}{parsed.path}"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(url)
+            resp = await client.get(safe_url)
     except Exception:
         return {"ok": False, "error": "Couldn't reach that URL. Check the address is correct and the server is accessible."}
     if resp.status_code == 404:
@@ -4520,11 +4522,15 @@ async def sync_scenarios_from_url(
             url = "/".join(parts)
 
     from urllib.parse import urlparse as _urlparse
-    if _urlparse(url).hostname not in {"raw.githubusercontent.com"}:
+    _sync_host = "raw.githubusercontent.com"
+    _parsed = _urlparse(url)
+    if _parsed.hostname != _sync_host:
         raise HTTPException(status_code=400, detail="Sync URL must point to raw.githubusercontent.com.")
+    # Reconstruct URL from validated components — never pass raw user input to httpx
+    _safe_url = f"https://{_sync_host}{_parsed.path}"
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.get(url)
+            resp = await client.get(_safe_url)
             resp.raise_for_status()
             remote = resp.json()
     except Exception as exc:
