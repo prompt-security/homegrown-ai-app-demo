@@ -1,0 +1,74 @@
+services:
+  app:
+    build: .
+    ports:
+      - "9100:8000"
+    user: "0"   # entrypoint needs root to fix docker socket group, then drops to appuser via gosu
+    volumes:
+      - ./app:/app
+      - app_data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./litellm:/app/litellm
+    environment:
+      COMPOSE_PROJECT_NAME: homegrown-ai-app-demo
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    depends_on:
+      db:
+        condition: service_healthy
+      litellm:
+        condition: service_started
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: hgapp
+      POSTGRES_USER: hgapp
+      POSTGRES_PASSWORD: hgapp_dev
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hgapp"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml
+    environment:
+      DATABASE_URL: "postgresql://hgapp:hgapp_dev@db:5432/litellm"
+      PYTHONHTTPSVERIFY: "0"
+      OLLAMA_BASE_URL: "http://ollama:11434"
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "1"]
+    restart: unless-stopped
+
+  # ── Ollama (optional — not started by default) ────────────────────────────
+  # Start with:  docker compose --profile ollama up -d
+  # Pull a model: docker exec homegrown-ai-app-demo-ollama-1 ollama pull gemma3:270m
+  # Stop with:   docker compose --profile ollama stop ollama
+  ollama:
+    image: ollama/ollama:latest
+    profiles:
+      - ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+      - ./certs/corporate-ca.pem:/certs/corporate-ca.pem:ro
+    environment:
+      OLLAMA_INSECURE: "true"
+      SSL_CERT_FILE: /certs/corporate-ca.pem
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  app_data:
+  ollama_data:
