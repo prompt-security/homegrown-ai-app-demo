@@ -2624,7 +2624,8 @@ async def validate_llm_key(
                 else:
                     return {"valid": True, "provider": provider}  # non-401 likely means key is valid but other issue
         except Exception as e:
-            return {"valid": False, "provider": provider, "error": str(e)}
+            logger.warning("LLM key validation error (%s): %s", provider, e)
+            return {"valid": False, "provider": provider, "error": "Could not reach the provider. Check your network connection."}
 
     url = urls.get(provider)
     if not url:
@@ -2643,7 +2644,8 @@ async def validate_llm_key(
             else:
                 return {"valid": False, "provider": provider, "error": f"HTTP {resp.status_code}"}
     except Exception as e:
-        return {"valid": False, "provider": provider, "error": str(e)}
+        logger.warning("LLM key validation error (%s): %s", provider, e)
+        return {"valid": False, "provider": provider, "error": "Could not reach the provider. Check your network connection."}
 
 
 # ── Admin: Activity log ───────────────────────────────────────────────────────
@@ -3212,7 +3214,8 @@ async def get_ollama_service_status(admin: User = Depends(require_admin)):
         c.reload()
         return {"status": c.status, "container_name": c.name, "id": c.short_id}
     except Exception as exc:
-        return {"status": "error", "detail": str(exc)}
+        logger.warning("Ollama status check error: %s", exc)
+        return {"status": "error", "detail": "Could not retrieve Ollama container status."}
 
 
 @app.post("/admin/ollama/service/start")
