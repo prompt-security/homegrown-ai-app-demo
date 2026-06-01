@@ -4526,6 +4526,21 @@ async def sync_scenarios_from_url(
     if not isinstance(remote, list):
         raise HTTPException(status_code=422, detail="Remote file is not a JSON array.")
 
+    # Build set of keys from remote
+    remote_keys = set()
+    for item in remote:
+        if isinstance(item, dict) and item.get("title"):
+            remote_keys.add(item.get("key") or item["title"].lower().replace(" ", "_")[:60])
+
+    # Delete local scenarios not in remote
+    all_local = (await db.execute(select(DemoScenario))).scalars().all()
+    removed = 0
+    for s in all_local:
+        if s.key not in remote_keys:
+            await db.delete(s)
+            removed += 1
+
+    # Add / update
     added = updated = 0
     for item in remote:
         if not isinstance(item, dict) or not item.get("title"):
@@ -4559,5 +4574,5 @@ async def sync_scenarios_from_url(
 
     await db.commit()
     await _log_audit(db, admin.id, admin.email, "scenarios_synced",
-                     f"Synced from {url}: {added} added, {updated} updated")
-    return {"added": added, "updated": updated, "total": len(remote)}
+                     f"Synced from {url}: {added} added, {updated} updated, {removed} removed")
+    return {"added": added, "updated": updated, "removed": removed, "total": len(remote)}
