@@ -2,6 +2,11 @@ fastapi==0.115.6
 uvicorn[standard]==0.34.0
 python-multipart>=0.0.9
 pypdf>=4.0.0
+python-docx>=1.1.0
+python-pptx>=1.0.0
+openpyxl>=3.1.0
+xlrd>=2.0.0
+odfpy>=1.4.0
 openai>=1.65.0
 httpx>=0.28.0
 python-dotenv>=1.0.1

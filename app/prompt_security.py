@@ -65,6 +65,46 @@ class PromptSecurityClient:
             payload["user"] = user
         return await self._call(payload, scan_type="response")
 
+    # Map extensions to MIME types for multipart upload to PS
+    _MIME_MAP = {
+        ".pdf":   "application/pdf",
+        ".doc":   "application/msword",
+        ".docx":  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".docm":  "application/vnd.ms-word.document.macroEnabled.12",
+        ".dot":   "application/msword",
+        ".dotm":  "application/vnd.ms-word.template.macroEnabled.12",
+        ".xls":   "application/vnd.ms-excel",
+        ".xlsx":  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".ppt":   "application/vnd.ms-powerpoint",
+        ".pptx":  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ".pptm":  "application/vnd.ms-powerpoint.presentation.macroEnabled.12",
+        ".pot":   "application/vnd.ms-powerpoint",
+        ".odt":   "application/vnd.oasis.opendocument.text",
+        ".ods":   "application/vnd.oasis.opendocument.spreadsheet",
+        ".odp":   "application/vnd.oasis.opendocument.presentation",
+        ".rtf":   "application/rtf",
+        ".csv":   "text/csv",
+        ".tsv":   "text/tab-separated-values",
+        ".txt":   "text/plain",
+        ".html":  "text/html",
+        ".htm":   "text/html",
+        ".xml":   "application/xml",
+        ".md":    "text/markdown",
+        ".epub":  "application/epub+zip",
+        ".eml":   "message/rfc822",
+        ".msg":   "application/vnd.ms-outlook",
+        ".png":   "image/png",
+        ".jpg":   "image/jpeg",
+        ".jpeg":  "image/jpeg",
+        ".bmp":   "image/bmp",
+        ".tiff":  "image/tiff",
+        ".tif":   "image/tiff",
+        ".gif":   "image/gif",
+        ".webp":  "image/webp",
+        ".heic":  "image/heic",
+        ".zip":   "application/zip",
+    }
+
     async def sanitize_file(self, file_bytes: bytes, filename: str) -> dict:
         """Submit file to PS and poll for result. Returns (result, request_info) tuple.
 
@@ -84,9 +124,11 @@ class PromptSecurityClient:
         }
 
         # Step 1: submit
+        ext = ("." + filename.rsplit(".", 1)[-1].lower()) if "." in filename else ""
+        mime = self._MIME_MAP.get(ext, "application/octet-stream")
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(url, headers=headers, files={"file": (filename, file_bytes)})
+                resp = await client.post(url, headers=headers, files={"file": (filename, file_bytes, mime)})
                 resp.raise_for_status()
                 submit_data = resp.json()
                 logger.info("PS sanitizeFile submit: %s", json.dumps(submit_data, default=str)[:300])
