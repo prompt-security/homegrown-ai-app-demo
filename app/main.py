@@ -4516,13 +4516,15 @@ async def sync_scenarios_from_url(
         url = _DEFAULT_SYNC_URL
     branch_row = await db.get(AppSetting, "scenarios_sync_branch")
     branch = (branch_row.value or "").strip() if branch_row else "main"
-    # For raw.githubusercontent.com URLs, substitute the branch segment
-    # URL format: https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}
-    if branch and "raw.githubusercontent.com" in url:
-        parts = url.split("/")
-        if len(parts) >= 6:  # https: + '' + domain + owner + repo + branch + path...
-            parts[5] = branch
-            url = "/".join(parts)
+    # Substitute branch by parsing the URL properly — never use substring matching
+    from urllib.parse import urlparse as _up
+    _parsed_url = _up(url)
+    if branch and _parsed_url.hostname == "raw.githubusercontent.com":
+        # path: /{owner}/{repo}/{branch}/{rest...}
+        path_parts = _parsed_url.path.split("/")  # ['', owner, repo, branch, ...]
+        if len(path_parts) >= 4:
+            path_parts[3] = branch
+            url = f"https://raw.githubusercontent.com{'/'.join(path_parts)}"
 
     from urllib.parse import urlparse as _urlparse
     _sync_host = "raw.githubusercontent.com"
