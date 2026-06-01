@@ -10,7 +10,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ .
+COPY VERSION ./VERSION
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+
 RUN mkdir -p /app/data \
     && groupadd --system appuser \
     && useradd --system --gid appuser --no-create-home appuser \

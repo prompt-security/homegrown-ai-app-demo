@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/png" href="/static/favicon.png">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In — AI Chat</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3a;
+      --text: #e8e9f0; --text-muted: #7a7d8e; --accent: #6c63ff;
+      --accent-hover: #5a52e0; --font: 'Inter', system-ui, sans-serif;
+      --red: #e74c3c;
+    }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 40px 36px; width: 360px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+    .logo { font-size: 32px; text-align: center; margin-bottom: 8px; }
+    h1 { font-size: 20px; font-weight: 700; text-align: center; margin-bottom: 4px; }
+    .subtitle { font-size: 13px; color: var(--text-muted); text-align: center; margin-bottom: 28px; }
+    label { font-size: 12px; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 6px; }
+    .field { margin-bottom: 16px; }
+    input {
+      width: 100%; background: #0f1117; border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-family: var(--font);
+      font-size: 14px; padding: 10px 14px; outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus { border-color: var(--accent); }
+    input::placeholder { color: var(--text-muted); }
+    button[type=submit], .btn-primary {
+      width: 100%; background: var(--accent); border: none; border-radius: 8px;
+      color: #fff; cursor: pointer; font-family: var(--font); font-size: 14px;
+      font-weight: 600; padding: 11px; margin-top: 8px;
+      transition: background 0.2s; letter-spacing: 0.2px;
+    }
+    button[type=submit]:hover, .btn-primary:hover { background: var(--accent-hover); }
+    button[type=submit]:disabled, .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .pw-rules { font-size: 11px; line-height: 1.9; color: var(--text-muted); margin: 8px 0 4px; display: none; }
+    .pw-rules div { transition: color 0.15s; }
+    .confirm-row { display: flex; align-items: center; gap: 10px; }
+    .confirm-row input { flex: 1; }
+    .confirm-tick { font-size: 18px; font-weight: 700; min-width: 20px; }
+    .error { color: var(--red); font-size: 12px; margin-top: 12px; text-align: center; min-height: 18px; }
+    .info-banner {
+      background: rgba(108,99,255,0.12); border: 1px solid rgba(108,99,255,0.35);
+      border-radius: 8px; padding: 10px 14px; font-size: 12px; line-height: 1.6;
+      color: var(--text-muted); margin-bottom: 20px;
+    }
+    .info-banner strong { color: var(--text); }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">🔒</div>
+  <h1>HGA Prompt Demo</h1>
+  <p class="subtitle">powered by Prompt Security</p>
+
+  <!-- Login form -->
+  <form id="loginForm" style="visibility:hidden">
+    <div class="field">
+      <label for="email">Email</label>
+      <input type="email" id="email" placeholder="you@company.com" required autofocus>
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
+    </div>
+    <button type="submit" id="submitBtn">Sign In</button>
+    <div class="error" id="error"></div>
+    <div style="margin-top:18px;text-align:center">
+      <a href="/admin" style="font-size:12px;color:var(--text-muted);text-decoration:none;display:inline-flex;align-items:center;gap:5px;transition:color 0.2s" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Admin
+      </a>
+    </div>
+  </form>
+
+  <!-- Force change-password form (shown after first login) -->
+  <div id="changePasswordPanel" style="display:none">
+    <div class="info-banner">
+      <strong>Password change required.</strong><br>
+      You must set a new password before continuing. This cannot be skipped.
+    </div>
+    <div class="field">
+      <label for="newPw">New Password</label>
+      <input type="password" id="newPw" placeholder="New password" autocomplete="new-password" data-1p-ignore data-lpignore="true" data-bwignore="true" oninput="onNewPwInput()">
+      <div class="pw-rules" id="pwRules">
+        <div id="pwr-len">✗ At least 8 characters</div>
+        <div id="pwr-upper">✗ Uppercase letter (A–Z)</div>
+        <div id="pwr-lower">✗ Lowercase letter (a–z)</div>
+        <div id="pwr-digit">✗ Number (0–9)</div>
+        <div id="pwr-special">✗ Special character (!@#…)</div>
+      </div>
+    </div>
+    <div class="field">
+      <label for="confirmPw">Confirm New Password</label>
+      <div class="confirm-row">
+        <input type="password" id="confirmPw" placeholder="Re-enter new password" autocomplete="new-password" data-1p-ignore data-lpignore="true" data-bwignore="true" oninput="onConfirmPwInput()">
+        <span class="confirm-tick" id="confirmTick"></span>
+      </div>
+    </div>
+    <button type="button" id="changePwBtn" class="btn-primary" onclick="submitChangePassword()">Set New Password</button>
+    <div class="error" id="changePwError"></div>
+  </div>
+</div>
+<script>
+  const _nextParam = new URLSearchParams(window.location.search).get('next');
+  const _next = _nextParam || '/';
+
+  // Await setup check before anything else — prevents race condition with token redirect
+  (async function() {
+    try {
+      const sr = await fetch('/setup/status');
+      if (sr.ok) {
+        const { needs_setup } = await sr.json();
+        if (needs_setup) { window.location.replace('/admin'); return; }
+      }
+    } catch {}
+    // Setup complete — normal login flow
+    if (_nextParam) {
+      localStorage.removeItem('hgapp_token');
+      localStorage.removeItem('hgapp_user');
+    } else if (localStorage.getItem('hgapp_token')) {
+      window.location.replace('/');
+    }
+    document.getElementById('loginForm').style.visibility = 'visible';
+  })();
+
+  let _pendingToken = null;
+  let _pendingCurrentPassword = null;
+
+  document.getElementById('loginForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    const err = document.getElementById('error');
+    btn.disabled = true; err.textContent = '';
+    try {
+      const res = await fetch('/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: document.getElementById('email').value,
+          password: document.getElementById('password').value,
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        err.textContent = d.detail || 'Invalid credentials';
+        btn.disabled = false; return;
+      }
+      const data = await res.json();
+      if (data.user && data.user.must_change_password) {
+        // Store token temporarily so we can call /auth/change-password
+        _pendingToken = data.access_token;
+        _pendingCurrentPassword = document.getElementById('password').value;
+        document.getElementById('loginForm').style.display = 'none';
+        document.getElementById('changePasswordPanel').style.display = 'block';
+        document.getElementById('newPw').focus();
+      } else {
+        localStorage.setItem('hgapp_token', data.access_token);
+        localStorage.setItem('hgapp_user', JSON.stringify(data.user));
+        window.location.replace(_next);
+      }
+    } catch {
+      err.textContent = 'Network error'; btn.disabled = false;
+    }
+  });
+
+  function _pwRules(pwd) {
+    return {
+      len:     pwd.length >= 8,
+      upper:   /[A-Z]/.test(pwd),
+      lower:   /[a-z]/.test(pwd),
+      digit:   /[0-9]/.test(pwd),
+      special: /[^A-Za-z0-9]/.test(pwd),
+    };
+  }
+
+  function onNewPwInput() {
+    const pwd = document.getElementById('newPw').value;
+    const panel = document.getElementById('pwRules');
+    if (!pwd) { panel.style.display = 'none'; onConfirmPwInput(); return; }
+    panel.style.display = 'block';
+    const r = _pwRules(pwd);
+    const set = (id, pass, label) => {
+      const el = document.getElementById(id);
+      el.textContent = (pass ? '✓ ' : '✗ ') + label;
+      el.style.color = pass ? '#2ecc71' : '#e74c3c';
+    };
+    set('pwr-len',     r.len,     'At least 8 characters');
+    set('pwr-upper',   r.upper,   'Uppercase letter (A–Z)');
+    set('pwr-lower',   r.lower,   'Lowercase letter (a–z)');
+    set('pwr-digit',   r.digit,   'Number (0–9)');
+    set('pwr-special', r.special, 'Special character (!@#…)');
+    onConfirmPwInput();
+  }
+
+  function onConfirmPwInput() {
+    const pwd     = document.getElementById('newPw').value;
+    const confirm = document.getElementById('confirmPw').value;
+    const tick    = document.getElementById('confirmTick');
+    if (!confirm) { tick.textContent = ''; return; }
+    tick.textContent = pwd === confirm ? '✓' : '✗';
+    tick.style.color  = pwd === confirm ? '#2ecc71' : '#e74c3c';
+  }
+
+  async function submitChangePassword() {
+    const newPw  = document.getElementById('newPw').value;
+    const confPw = document.getElementById('confirmPw').value;
+    const err    = document.getElementById('changePwError');
+    const btn    = document.getElementById('changePwBtn');
+    err.textContent = '';
+
+    if (!newPw) { err.textContent = 'Enter a new password.'; return; }
+    const r = _pwRules(newPw);
+    if (!r.len || !r.upper || !r.lower || !r.digit || !r.special) {
+      err.textContent = 'Password does not meet complexity requirements.'; return;
+    }
+    if (newPw !== confPw) {
+      err.textContent = 'Passwords do not match.'; return;
+    }
+
+    btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+      const res = await fetch('/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${_pendingToken}` },
+        body: JSON.stringify({
+          current_password: _pendingCurrentPassword,
+          new_password: newPw,
+          confirm_password: confPw,
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        err.textContent = d.detail || 'Failed to change password';
+        btn.disabled = false; btn.textContent = 'Set New Password'; return;
+      }
+      // Re-login with the new password to get a fresh token
+      const loginRes = await fetch('/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: document.getElementById('email').value,
+          password: newPw,
+        }),
+      });
+      const loginData = await loginRes.json();
+      localStorage.setItem('hgapp_token', loginData.access_token);
+      localStorage.setItem('hgapp_user', JSON.stringify(loginData.user));
+      window.location.replace(_next);
+    } catch {
+      err.textContent = 'Network error';
+      btn.disabled = false; btn.textContent = 'Set New Password';
+    }
+  }
+</script>
+</body>
+</html>

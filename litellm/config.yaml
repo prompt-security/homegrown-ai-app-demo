@@ -1,0 +1,107 @@
+model_list:
+- model_name: gpt-4o
+  litellm_params:
+    model: openai/gpt-4o
+    api_key: os.environ/OPENAI_API_KEY
+- model_name: gpt-4o-mini
+  litellm_params:
+    model: openai/gpt-4o-mini
+    api_key: os.environ/OPENAI_API_KEY
+- model_name: gpt-5-nano
+  litellm_params:
+    model: openai/gpt-5-nano
+    api_key: os.environ/OPENAI_API_KEY
+- model_name: claude-sonnet-4-5-20250929
+  litellm_params:
+    model: anthropic/claude-sonnet-4-5-20250929
+    api_key: os.environ/ANTHROPIC_API_KEY
+- model_name: sonar
+  litellm_params:
+    model: perplexity/sonar
+    api_key: os.environ/PERPLEXITY_API_KEY
+- model_name: gemini-2.0-flash
+  litellm_params:
+    model: openrouter/google/gemini-2.0-flash-001
+    api_key: os.environ/OPENROUTER_API_KEY
+- model_name: gemini-1.5-pro
+  litellm_params:
+    model: openrouter/google/gemini-pro-1.5
+    api_key: os.environ/OPENROUTER_API_KEY
+- model_name: meta-llama/llama-3.3-70b-instruct:free
+  litellm_params:
+    model: openrouter/meta-llama/llama-3.3-70b-instruct:free
+    api_key: os.environ/OPENROUTER_API_KEY
+- model_name: meta-llama/llama-3.1-8b-instruct:free
+  litellm_params:
+    model: openrouter/meta-llama/llama-3.1-8b-instruct:free
+    api_key: os.environ/OPENROUTER_API_KEY
+- model_name: deepseek/deepseek-r1:free
+  litellm_params:
+    model: openrouter/deepseek/deepseek-r1:free
+    api_key: os.environ/OPENROUTER_API_KEY
+- model_name: qwen/qwen-2.5-72b-instruct:free
+  litellm_params:
+    model: openrouter/qwen/qwen-2.5-72b-instruct:free
+    api_key: os.environ/OPENROUTER_API_KEY
+- model_name: mistralai/mistral-7b-instruct:free
+  litellm_params:
+    model: openrouter/mistralai/mistral-7b-instruct:free
+    api_key: os.environ/OPENROUTER_API_KEY
+- model_name: microsoft/phi-3-mini-128k-instruct:free
+  litellm_params:
+    model: openrouter/microsoft/phi-3-mini-128k-instruct:free
+    api_key: os.environ/OPENROUTER_API_KEY
+- model_name: nvidia/nemotron-nano-9b-v2:free
+  litellm_params:
+    model: openrouter/nvidia/nemotron-nano-9b-v2:free
+    api_key: os.environ/OPENROUTER_API_KEY
+- model_name: nvidia/nemotron-3-super-120b-a12b:free
+  litellm_params:
+    model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
+    api_key: os.environ/OPENROUTER_API_KEY
+- model_name: minimax/minimax-m2.5:free
+  litellm_params:
+    model: openrouter/minimax/minimax-m2.5:free
+    api_key: os.environ/OPENROUTER_API_KEY
+- model_name: stepfun/step-3.5-flash:free
+  litellm_params:
+    model: openrouter/stepfun/step-3.5-flash:free
+    api_key: os.environ/OPENROUTER_API_KEY
+- model_name: liquid/lfm-2.5-1.2b-thinking:free
+  litellm_params:
+    model: openrouter/liquid/lfm-2.5-1.2b-thinking:free
+    api_key: os.environ/OPENROUTER_API_KEY
+- model_name: qwen/qwen3-next-80b-a3b-instruct:free
+  litellm_params:
+    model: openrouter/qwen/qwen3-next-80b-a3b-instruct:free
+    api_key: os.environ/OPENROUTER_API_KEY
+- model_name: qwen/qwen3-coder:free
+  litellm_params:
+    model: openrouter/qwen/qwen3-coder:free
+    api_key: os.environ/OPENROUTER_API_KEY
+- model_name: nousresearch/hermes-3-llama-3.1-405b:free
+  litellm_params:
+    model: openrouter/nousresearch/hermes-3-llama-3.1-405b:free
+    api_key: os.environ/OPENROUTER_API_KEY
+- model_name: bytedance/seedance-1-5-pro
+  litellm_params:
+    model: openrouter/bytedance/seedance-1-5-pro
+    api_key: os.environ/OPENROUTER_API_KEY
+- model_name: sourceful/riverflow-v2-fast-preview
+  litellm_params:
+    model: openrouter/sourceful/riverflow-v2-fast-preview
+    api_key: os.environ/OPENROUTER_API_KEY
+- model_name: huggingface/Qwen3VL-8B-Instruct-F16
+  litellm_params:
+    model: openai/huggingface/Qwen3VL-8B-Instruct-F16
+    api_base: os.environ/LOCAL_OPENAI_BASE_URL
+    api_key: os.environ/LOCAL_OPENAI_API_KEY
+- model_name: ollama/*
+  litellm_params:
+    model: ollama/*
+    api_base: os.environ/OLLAMA_BASE_URL
+litellm_settings:
+  drop_params: true
+  request_timeout: 60
+  ssl_verify: false
+general_settings: {}
