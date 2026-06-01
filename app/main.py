@@ -4466,11 +4466,16 @@ async def validate_scenarios_url(
     admin: User = Depends(require_admin),
 ):
     """Fetch the given URL and confirm it is a valid scenarios JSON array."""
+    _ALLOWED_HOSTS = {"raw.githubusercontent.com"}
     url = (body.get("url") or "").strip()
     if not url:
         return {"ok": False, "error": "Please enter a URL."}
-    if not url.startswith(("http://", "https://")):
+    if not url.startswith("https://"):
         return {"ok": False, "error": "The URL doesn't look right — it should start with https://"}
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    if parsed.hostname not in _ALLOWED_HOSTS:
+        return {"ok": False, "error": f"Only URLs from {', '.join(sorted(_ALLOWED_HOSTS))} are supported."}
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(url)
@@ -4514,6 +4519,9 @@ async def sync_scenarios_from_url(
             parts[5] = branch
             url = "/".join(parts)
 
+    from urllib.parse import urlparse as _urlparse
+    if _urlparse(url).hostname not in {"raw.githubusercontent.com"}:
+        raise HTTPException(status_code=400, detail="Sync URL must point to raw.githubusercontent.com.")
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(url)
