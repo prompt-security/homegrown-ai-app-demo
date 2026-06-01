@@ -3672,7 +3672,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     const res = await api('/admin/demo-scenarios/sync', { method: 'POST' });
     if (res.ok) {
       const d = await res.json();
-      showAlert('Synced', `${d.added} added, ${d.updated} updated (${d.total} in remote file).`);
+      showAlert('Synced', `${d.added} added, ${d.updated} updated, ${d.removed} removed (${d.total} in remote file).`);
       await loadScenarios();
     } else {
       const d = await res.json().catch(() => ({}));
