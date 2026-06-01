@@ -174,7 +174,6 @@ ALLOWED_SANITIZE_TYPES = {
     # Other
     "application/epub+zip",
     "application/zip",
-    "application/octet-stream",  # catch-all for unknown but extension-allowed files
 }
 ALLOWED_SANITIZE_EXTENSIONS = (
     # Documents
