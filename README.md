@@ -57,7 +57,7 @@ git clone https://github.com/prompt-security/homegrown-ai-app-demo.git
 cd homegrown-ai-app-demo
 ```
 
-### 2. Build and Start all services
+### 2. Build and start all services
 
 ```bash
 docker compose up -d --build

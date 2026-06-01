@@ -62,7 +62,7 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
-      - ./certs/corporate-ca.pem:/certs/corporate-ca.pem:ro
+      - ./certs:/certs:ro
     environment:
       OLLAMA_INSECURE: "true"
       SSL_CERT_FILE: /certs/corporate-ca.pem
