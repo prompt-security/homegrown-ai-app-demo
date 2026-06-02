@@ -6,7 +6,6 @@ services:
     user: "0"   # entrypoint needs root to fix docker socket group, then drops to appuser via gosu
     volumes:
       - ./app:/app
-      - app_data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
       - ./litellm:/app/litellm
     environment:
@@ -70,5 +69,4 @@ services:
 
 volumes:
   pgdata:
-  app_data:
   ollama_data:

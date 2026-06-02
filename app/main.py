@@ -147,12 +147,52 @@ ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 ALLOWED_TEXT_TYPES  = {"text/plain", "text/markdown", "text/csv", "application/json"}
 ALLOWED_PDF_TYPE    = "application/pdf"
 ALLOWED_SANITIZE_TYPES = {
+    # Documents
     "application/pdf",
+    "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-word.document.macroEnabled.12",
+    "application/rtf", "text/rtf",
+    "application/vnd.oasis.opendocument.text",
+    # Spreadsheets
+    "application/vnd.ms-excel",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "text/plain",
+    "application/vnd.oasis.opendocument.spreadsheet",
+    "text/csv", "text/tab-separated-values",
+    # Presentations
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.openxmlformats-officedocument.presentationml.template",
+    "application/vnd.ms-powerpoint.presentation.macroEnabled.12",
+    # Images
+    "image/bmp", "image/heic", "image/jpeg", "image/png", "image/tiff",
+    # Email
+    "message/rfc822", "application/vnd.ms-outlook",
+    # Text/markup
+    "text/plain", "text/html", "text/xml", "application/xml",
+    "text/markdown", "text/x-rst", "text/x-org",
+    # Other
+    "application/epub+zip",
+    "application/zip",
 }
-ALLOWED_SANITIZE_EXTENSIONS = (".pdf", ".docx", ".xlsx", ".txt")
+ALLOWED_SANITIZE_EXTENSIONS = (
+    # Documents
+    ".pdf", ".doc", ".docx", ".docm", ".dot", ".dotm", ".rtf", ".odt",
+    ".abw", ".zabw", ".hwp",
+    # Spreadsheets
+    ".xls", ".xlsx", ".csv", ".tsv", ".dbf", ".dif", ".et", ".fods", ".mw",
+    # Presentations
+    ".ppt", ".pptx", ".pot", ".pptm",
+    # Images
+    ".bmp", ".heic", ".jpg", ".jpeg", ".png", ".tiff", ".tif",
+    # Email
+    ".eml", ".msg", ".p7s",
+    # Apple
+    ".cwk", ".mcw",
+    # Text / markup / other
+    ".txt", ".html", ".htm", ".epub", ".md", ".org", ".rst", ".xml",
+    ".zip", ".eth", ".pbd", ".prn", ".sdp", ".sxg",
+)
 SANITIZE_MAX_PER_MINUTE = int(os.getenv("SANITIZE_MAX_PER_MINUTE") or "5")
 SANITIZE_MAX_CONCURRENT_PER_USER = int(os.getenv("SANITIZE_MAX_CONCURRENT_PER_USER") or "1")
 _sanitize_user_timestamps: dict[int, deque[float]] = defaultdict(deque)
@@ -2190,6 +2230,172 @@ async def chat_stream(
     )
 
 
+# ── File text extraction for context snippets ────────────────────────────────
+# Temporary store: job_id -> extracted text (cleared once consumed by the poll)
+_job_file_texts: dict[str, str] = {}
+
+def _extract_file_text(file_bytes: bytes, filename: str) -> str:  # noqa: C901
+    """Best-effort plain-text extraction from uploaded files."""
+    import html as _html
+    name = (filename or "").lower()
+    try:
+        # ── PDF ──────────────────────────────────────────────────────────────
+        if name.endswith(".pdf"):
+            import pypdf
+            reader = pypdf.PdfReader(io.BytesIO(file_bytes))
+            return "\n".join(page.extract_text() or "" for page in reader.pages)
+
+        # ── Plain text / markup (decode as UTF-8) ────────────────────────────
+        if name.endswith((".txt", ".csv", ".tsv", ".md", ".rst", ".org", ".rtf",
+                          ".xml", ".sdp", ".prn", ".eth", ".pbd", ".sxg")):
+            return file_bytes.decode("utf-8", errors="replace")
+
+        # ── HTML ─────────────────────────────────────────────────────────────
+        if name.endswith((".html", ".htm")):
+            from html.parser import HTMLParser
+            class _Strip(HTMLParser):
+                def __init__(self):
+                    super().__init__(); self.parts = []
+                def handle_data(self, d): self.parts.append(d)
+            p = _Strip(); p.feed(file_bytes.decode("utf-8", errors="replace"))
+            return " ".join(p.parts)
+
+        # ── DOCX / DOTX / DOCM ───────────────────────────────────────────────
+        if name.endswith((".docx", ".docm", ".dotx", ".dotm")):
+            import docx
+            doc = docx.Document(io.BytesIO(file_bytes))
+            parts = [p.text for p in doc.paragraphs if p.text.strip()]
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        if cell.text.strip(): parts.append(cell.text)
+            return "\n".join(parts)
+
+        # ── PPTX / POTX / PPTM ───────────────────────────────────────────────
+        if name.endswith((".pptx", ".pptm", ".potx", ".pot")):
+            from pptx import Presentation
+            prs = Presentation(io.BytesIO(file_bytes))
+            parts = []
+            for slide in prs.slides:
+                for shape in slide.shapes:
+                    if shape.has_text_frame:
+                        for para in shape.text_frame.paragraphs:
+                            t = "".join(r.text for r in para.runs).strip()
+                            if t: parts.append(t)
+                    if shape.has_table:
+                        for row in shape.table.rows:
+                            for cell in row.cells:
+                                if cell.text.strip(): parts.append(cell.text)
+            return "\n".join(parts)
+
+        # ── XLSX ──────────────────────────────────────────────────────────────
+        if name.endswith(".xlsx"):
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+            parts = []
+            for sheet in wb.worksheets:
+                for row in sheet.iter_rows(values_only=True):
+                    vals = [str(c) for c in row if c is not None and str(c).strip()]
+                    if vals: parts.append("\t".join(vals))
+            wb.close()
+            return "\n".join(parts)
+
+        # ── XLS (legacy Excel) ────────────────────────────────────────────────
+        if name.endswith(".xls"):
+            import xlrd
+            wb = xlrd.open_workbook(file_contents=file_bytes)
+            parts = []
+            for sheet in wb.sheets():
+                for rx in range(sheet.nrows):
+                    vals = [str(sheet.cell_value(rx, cx)) for cx in range(sheet.ncols)
+                            if str(sheet.cell_value(rx, cx)).strip()]
+                    if vals: parts.append("\t".join(vals))
+            return "\n".join(parts)
+
+        # ── ODT / ODS / ODP (OpenDocument ZIP-based XML) ─────────────────────
+        if name.endswith((".odt", ".ods", ".odp", ".fods")):
+            import zipfile, xml.etree.ElementTree as ET
+            with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
+                if "content.xml" in z.namelist():
+                    root = ET.fromstring(z.read("content.xml"))
+                    return " ".join(root.itertext())
+            return ""
+
+        # ── EPUB (ZIP containing HTML) ────────────────────────────────────────
+        if name.endswith(".epub"):
+            import zipfile
+            from html.parser import HTMLParser
+            class _Strip(HTMLParser):
+                def __init__(self): super().__init__(); self.parts = []
+                def handle_data(self, d): self.parts.append(d)
+            parts = []
+            with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
+                for n in z.namelist():
+                    if n.endswith((".html", ".htm", ".xhtml")):
+                        p = _Strip(); p.feed(z.read(n).decode("utf-8", errors="replace"))
+                        parts.extend(p.parts)
+            return " ".join(parts)
+
+        # ── EML ───────────────────────────────────────────────────────────────
+        if name.endswith(".eml"):
+            import email as _email
+            msg = _email.message_from_bytes(file_bytes)
+            parts = []
+            for part in msg.walk():
+                if part.get_content_type() in ("text/plain", "text/html"):
+                    payload = part.get_payload(decode=True)
+                    if payload:
+                        parts.append(payload.decode(part.get_content_charset() or "utf-8", errors="replace"))
+            return "\n".join(parts)
+
+    except Exception as exc:
+        logger.debug("Text extraction failed for %s: %s", filename, exc)
+    return ""
+
+
+@app.post("/upload/preview-text")
+async def upload_preview_text(file: UploadFile = File(...)):
+    """Extract and return plain text from an uploaded file for in-browser preview."""
+    file_bytes = await _read_upload_with_limit(file)
+    text = _extract_file_text(file_bytes, file.filename or "")
+    if not text:
+        return JSONResponse({"text": None, "error": "Could not extract text from this file type."})
+    return JSONResponse({"text": text, "filename": file.filename})
+
+
+def _build_entity_contexts(text: str, findings: dict, context_chars: int = 160) -> dict:
+    """
+    For each entity value in the findings, locate it in the extracted text and
+    return a snippet with `context_chars` characters of surrounding context.
+    Returns: {entity_value: {"before": str, "match": str, "after": str}}
+    """
+    contexts: dict = {}
+    if not text:
+        return contexts
+    for items in findings.values():
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            val = str(item.get("entity") or item.get("value") or "")
+            if not val or val in contexts:
+                continue
+            idx = text.find(val)
+            if idx == -1:
+                # Case-insensitive fallback
+                lower = text.lower()
+                idx = lower.find(val.lower())
+            if idx == -1:
+                continue
+            start = max(0, idx - context_chars)
+            end   = min(len(text), idx + len(val) + context_chars)
+            contexts[val] = {
+                "before": text[start:idx].replace("\n", " ").strip(),
+                "match":  text[idx:idx + len(val)],
+                "after":  text[idx + len(val):end].replace("\n", " ").strip(),
+            }
+    return contexts
+
+
 # ── File Sanitization ─────────────────────────────────────────────────────────
 @app.post("/upload/sanitize")
 async def upload_sanitize(
@@ -2222,6 +2428,7 @@ async def upload_sanitize(
                 raise HTTPException(status_code=429, detail="Sanitize rate limit exceeded")
             timestamps.append(now)
 
+        file_text = _extract_file_text(file_bytes, file.filename or "")
         t0 = time.monotonic()
         try:
             result, request_info = await ps_client.sanitize_file(file_bytes, file.filename or "upload")
@@ -2235,6 +2442,11 @@ async def upload_sanitize(
         action = _meta.get("action") or result.get("action") or result.get("status", "pass")
         violations = _meta.get("violations") or result.get("violations") or []
         sanitized_url = result.get("sanitizedFileUrl") or result.get("sanitized_file_url") or result.get("url")
+        findings = (_meta.get("findings") or result.get("findings") or {})
+        # Store text for context building once the async job completes
+        if job_id and file_text:
+            _job_file_texts[job_id] = file_text
+        entity_contexts = _build_entity_contexts(file_text, findings) if findings else {}
         return {
             "job_id": job_id,
             "action": action,
@@ -2243,6 +2455,7 @@ async def upload_sanitize(
             "scan_ms": scan_ms,
             "raw": result,
             "request_info": request_info,
+            "entity_contexts": entity_contexts,
         }
     finally:
         await _release_sanitize_slot(current_user.id)
@@ -2274,7 +2487,11 @@ async def upload_sanitize_status(
     action = _meta.get("action") or result.get("action") or result.get("status", "processing")
     violations = _meta.get("violations") or result.get("violations") or []
     sanitized_url = result.get("sanitizedFileUrl") or result.get("sanitized_file_url") or result.get("url")
+    findings = (_meta.get("findings") or result.get("findings") or {})
     result.setdefault("jobId", job_id)
+    # Build context snippets now that we have findings; consume stored text
+    file_text = _job_file_texts.pop(job_id, "") if findings else _job_file_texts.get(job_id, "")
+    entity_contexts = _build_entity_contexts(file_text, findings) if findings else {}
     return {
         "job_id": job_id,
         "action": action,
@@ -2282,6 +2499,7 @@ async def upload_sanitize_status(
         "sanitized_url": sanitized_url,
         "raw": result,
         "request_info": request_info,
+        "entity_contexts": entity_contexts,
     }
 
 
@@ -2325,7 +2543,10 @@ async def guest_upload_sanitize_status(
     action = _meta.get("action") or result.get("action") or result.get("status", "processing")
     violations = _meta.get("violations") or result.get("violations") or []
     sanitized_url = result.get("sanitizedFileUrl") or result.get("sanitized_file_url") or result.get("url")
+    findings = (_meta.get("findings") or result.get("findings") or {})
     result.setdefault("jobId", job_id)
+    file_text = _job_file_texts.pop(job_id, "") if findings else _job_file_texts.get(job_id, "")
+    entity_contexts = _build_entity_contexts(file_text, findings) if findings else {}
     return {
         "job_id": job_id,
         "action": action,
@@ -2333,6 +2554,7 @@ async def guest_upload_sanitize_status(
         "sanitized_url": sanitized_url,
         "raw": result,
         "request_info": request_info,
+        "entity_contexts": entity_contexts,
     }
 
 
@@ -2402,7 +2624,8 @@ async def validate_llm_key(
                 else:
                     return {"valid": True, "provider": provider}  # non-401 likely means key is valid but other issue
         except Exception as e:
-            return {"valid": False, "provider": provider, "error": str(e)}
+            logger.warning("LLM key validation error (%s): %s", provider, e)
+            return {"valid": False, "provider": provider, "error": "Could not reach the provider. Check your network connection."}
 
     url = urls.get(provider)
     if not url:
@@ -2421,7 +2644,8 @@ async def validate_llm_key(
             else:
                 return {"valid": False, "provider": provider, "error": f"HTTP {resp.status_code}"}
     except Exception as e:
-        return {"valid": False, "provider": provider, "error": str(e)}
+        logger.warning("LLM key validation error (%s): %s", provider, e)
+        return {"valid": False, "provider": provider, "error": "Could not reach the provider. Check your network connection."}
 
 
 # ── Admin: Activity log ───────────────────────────────────────────────────────
@@ -2559,6 +2783,8 @@ def _parse_app_settings(s: dict) -> dict:
         "ollama_base_url": s.get("ollama_base_url", OLLAMA_BASE_URL),
         "ollama_model_ids": s.get("ollama_model_ids", ",".join(sorted(_OLLAMA_MODEL_IDS))),
         "wizard_completed": s.get("wizard_completed") == "true",
+        "scenarios_sync_url": s.get("scenarios_sync_url", "https://raw.githubusercontent.com/prompt-security/homegrown-ai-app-demo/main/app/data/scenarios.json"),
+        "scenarios_sync_branch": s.get("scenarios_sync_branch", "main"),
     }
 
 
@@ -2580,7 +2806,7 @@ async def update_app_settings(
     db: AsyncSession = Depends(get_db),
 ):
     # Keys that should be stored as-is (no lowercasing)
-    _plain_str_keys = {"smtp_host", "smtp_port", "email_username", "from_email"}
+    _plain_str_keys = {"smtp_host", "smtp_port", "email_username", "from_email", "scenarios_sync_url", "scenarios_sync_branch"}
     for key, value in body.items():
         if key == "allowed_email_domains":
             # Store as a JSON array; validate it's a list of strings
@@ -2589,7 +2815,6 @@ async def update_app_settings(
             serialised = json.dumps([str(d).lower().strip() for d in value if str(d).strip()])
             store_key = key
         elif key == "email_password":
-            # Encrypt password and store under a different key; never store plaintext
             serialised = encrypt(str(value))
             store_key = "email_password_enc"
         elif key in _plain_str_keys:
@@ -2989,7 +3214,8 @@ async def get_ollama_service_status(admin: User = Depends(require_admin)):
         c.reload()
         return {"status": c.status, "container_name": c.name, "id": c.short_id}
     except Exception as exc:
-        return {"status": "error", "detail": str(exc)}
+        logger.warning("Ollama status check error: %s", exc)
+        return {"status": "error", "detail": "Could not retrieve Ollama container status."}
 
 
 @app.post("/admin/ollama/service/start")
@@ -3097,6 +3323,10 @@ async def stop_ollama_service(admin: User = Depends(require_admin)):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+# Tracks in-flight pulls: model_name -> asyncio.Event (set = cancel requested)
+_active_pulls: dict[str, asyncio.Event] = {}
+
+
 @app.post("/admin/ollama/pull")
 async def pull_ollama_model(
     body: dict,
@@ -3110,7 +3340,11 @@ async def pull_ollama_model(
     row = await db.get(AppSetting, "ollama_base_url")
     base_url = (row.value if row else OLLAMA_BASE_URL).rstrip("/")
 
+    cancel_event = asyncio.Event()
+    _active_pulls[model] = cancel_event
+
     async def _stream():
+        cancelled = False
         try:
             async with httpx.AsyncClient(
                 timeout=httpx.Timeout(600.0, connect=10.0), verify=False
@@ -3122,17 +3356,50 @@ async def pull_ollama_model(
                 ) as resp:
                     logger.info("Ollama pull %s → HTTP %s", model, resp.status_code)
                     async for line in resp.aiter_lines():
+                        if cancel_event.is_set():
+                            cancelled = True
+                            logger.info("Ollama pull %s cancelled by user", model)
+                            break
                         if line:
                             logger.debug("Ollama pull line: %s", line[:120])
                             yield f"data: {line}\n\n"
-                    logger.info("Ollama pull stream ended for %s", model)
+                    if not cancelled:
+                        logger.info("Ollama pull stream ended for %s", model)
         except httpx.ConnectError:
             yield 'data: {"status":"error","error":"Cannot connect to Ollama — is the service running?"}\n\n'
+            return
         except Exception as exc:
             yield f'data: {{"status":"error","error":"{str(exc)}"}}\n\n'
+            return
+        finally:
+            _active_pulls.pop(model, None)
+
+        if cancelled:
+            # Ollama stores partial blobs internally — DELETE /api/delete only removes
+            # complete models with a manifest, so there is no API to remove partial blobs.
+            # The stream is stopped; Ollama will resume from the checkpoint if pulled again.
+            yield 'data: {"status":"cancelled"}\n\n'
+            return
+
         yield 'data: {"status":"done"}\n\n'
 
     return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
+@app.delete("/admin/ollama/pull")
+async def cancel_ollama_pull(
+    body: dict,
+    admin: User = Depends(require_admin),
+):
+    """Cancel an in-flight model pull."""
+    model = (body.get("model") or "").strip()
+    if not model:
+        raise HTTPException(status_code=422, detail="Model name required")
+    event = _active_pulls.get(model)
+    if event:
+        event.set()
+        return {"cancelling": True}
+    return {"cancelling": False}
 
 
 @app.delete("/admin/ollama/model")
@@ -3613,6 +3880,7 @@ async def guest_upload_sanitize(
     if mime not in ALLOWED_SANITIZE_TYPES and not filename.lower().endswith(ALLOWED_SANITIZE_EXTENSIONS):
         raise HTTPException(status_code=415, detail=f"Unsupported file type '{mime}'.")
     file_bytes = await _read_upload_with_limit(file)
+    file_text = _extract_file_text(file_bytes, filename)
     t0 = time.monotonic()
     try:
         result, request_info = await ps_client.sanitize_file(file_bytes, filename)
@@ -3623,14 +3891,21 @@ async def guest_upload_sanitize(
     action = result.get("action", result.get("status", "pass"))
     violations = result.get("violations", [])
     sanitized_url = result.get("sanitizedFileUrl") or result.get("sanitized_file_url") or result.get("url")
+    findings = (result.get("metadata") or {}).get("findings") or result.get("findings") or {}
+    job_id = result.get("jobId", "")
+    # Store text in case this is async and we need it for the poll
+    if job_id and file_text:
+        _job_file_texts[job_id] = file_text
+    entity_contexts = _build_entity_contexts(file_text, findings) if findings else {}
     return {
-        "job_id": result.get("jobId", ""),
+        "job_id": job_id,
         "action": action,
         "violations": violations,
         "sanitized_url": sanitized_url,
         "scan_ms": scan_ms,
         "raw": result,
         "request_info": request_info,
+        "entity_contexts": entity_contexts,
     }
 
 
@@ -4183,5 +4458,139 @@ async def save_master_scenarios(
             json.dump(data, f, indent=2, ensure_ascii=False)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to write scenarios.json: {e}")
+
     await _log_audit(db, admin.id, admin.email, "scenarios_master_saved", f"{len(data)} scenarios written to scenarios.json")
     return {"saved": len(data)}
+
+
+@app.post("/admin/demo-scenarios/validate-url", status_code=200)
+async def validate_scenarios_url(
+    body: dict,
+    admin: User = Depends(require_admin),
+):
+    """Fetch the given URL and confirm it is a valid scenarios JSON array."""
+    from urllib.parse import urlparse
+    _ALLOWED_HOST = "raw.githubusercontent.com"
+    url = (body.get("url") or "").strip()
+    if not url:
+        return {"ok": False, "error": "Please enter a URL."}
+    if not url.startswith("https://"):
+        return {"ok": False, "error": "The URL doesn't look right — it should start with https://"}
+    parsed = urlparse(url)
+    if parsed.hostname != _ALLOWED_HOST:
+        return {"ok": False, "error": f"Only URLs from {_ALLOWED_HOST} are supported."}
+    # Reconstruct URL from validated components — never pass raw user input to httpx
+    safe_url = f"https://{_ALLOWED_HOST}{parsed.path}"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(safe_url)
+    except Exception:
+        return {"ok": False, "error": "Couldn't reach that URL. Check the address is correct and the server is accessible."}
+    if resp.status_code == 404:
+        return {"ok": False, "error": "File not found (404). Check the repository name, branch, and file path are all correct."}
+    if resp.status_code == 401 or resp.status_code == 403:
+        return {"ok": False, "error": "Access denied. The repository may be private — use a raw URL that includes an access token."}
+    if resp.status_code != 200:
+        return {"ok": False, "error": f"The server returned an unexpected response ({resp.status_code}). Double-check the URL."}
+    try:
+        data = resp.json()
+    except Exception:
+        return {"ok": False, "error": "The URL loaded successfully but didn't return JSON. Make sure it points directly to the raw scenarios.json file, not a GitHub webpage."}
+    if not isinstance(data, list):
+        return {"ok": False, "error": "The file loaded but isn't in the right format — expected a JSON array of scenarios."}
+    if len(data) == 0:
+        return {"ok": False, "error": "The file is empty — no scenarios were found in it."}
+    return {"ok": True, "count": len(data)}
+
+
+@app.post("/admin/demo-scenarios/sync", status_code=200)
+async def sync_scenarios_from_url(
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fetch scenarios.json from the configured sync URL and upsert into the DB."""
+    _DEFAULT_SYNC_URL = "https://raw.githubusercontent.com/prompt-security/homegrown-ai-app-demo/main/app/data/scenarios.json"
+    row = await db.get(AppSetting, "scenarios_sync_url")
+    url = (row.value or "").strip() if row else ""
+    if not url:
+        url = _DEFAULT_SYNC_URL
+    branch_row = await db.get(AppSetting, "scenarios_sync_branch")
+    branch = (branch_row.value or "").strip() if branch_row else "main"
+    # Substitute branch by parsing the URL properly — never use substring matching
+    from urllib.parse import urlparse as _up
+    _parsed_url = _up(url)
+    if branch and _parsed_url.hostname == "raw.githubusercontent.com":
+        # path: /{owner}/{repo}/{branch}/{rest...}
+        path_parts = _parsed_url.path.split("/")  # ['', owner, repo, branch, ...]
+        if len(path_parts) >= 4:
+            path_parts[3] = branch
+            url = f"https://raw.githubusercontent.com{'/'.join(path_parts)}"
+
+    from urllib.parse import urlparse as _urlparse
+    _sync_host = "raw.githubusercontent.com"
+    _parsed = _urlparse(url)
+    if _parsed.hostname != _sync_host:
+        raise HTTPException(status_code=400, detail="Sync URL must point to raw.githubusercontent.com.")
+    # Reconstruct URL from validated components — never pass raw user input to httpx
+    _safe_url = f"https://{_sync_host}{_parsed.path}"
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(_safe_url)
+            resp.raise_for_status()
+            remote = resp.json()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch scenarios from URL: {exc}")
+
+    if not isinstance(remote, list):
+        raise HTTPException(status_code=422, detail="Remote file is not a JSON array.")
+
+    # Build set of keys from remote
+    remote_keys = set()
+    for item in remote:
+        if isinstance(item, dict) and item.get("title"):
+            remote_keys.add(item.get("key") or item["title"].lower().replace(" ", "_")[:60])
+
+    # Delete local scenarios not in remote
+    all_local = (await db.execute(select(DemoScenario))).scalars().all()
+    removed = 0
+    for s in all_local:
+        if s.key not in remote_keys:
+            await db.delete(s)
+            removed += 1
+
+    # Add / update
+    added = updated = 0
+    for item in remote:
+        if not isinstance(item, dict) or not item.get("title"):
+            continue
+        key = item.get("key") or item["title"].lower().replace(" ", "_")[:60]
+        existing = await db.scalar(select(DemoScenario).where(DemoScenario.key == key))
+        if existing:
+            for field in ("title","category","severity","expected_action","sort_order",
+                          "description","attacker_goal","why_caught","talking_point",
+                          "entities","meta","prompt"):
+                if field in item:
+                    setattr(existing, field, item[field])
+            updated += 1
+        else:
+            db.add(DemoScenario(
+                key=key,
+                title=item.get("title",""),
+                category=item.get("category",""),
+                severity=item.get("severity","medium"),
+                expected_action=item.get("expected_action",""),
+                sort_order=item.get("sort_order",0),
+                description=item.get("description"),
+                attacker_goal=item.get("attacker_goal"),
+                why_caught=item.get("why_caught"),
+                talking_point=item.get("talking_point"),
+                entities=item.get("entities"),
+                meta=item.get("meta"),
+                prompt=item.get("prompt",""),
+            ))
+            added += 1
+
+    await db.commit()
+    await _log_audit(db, admin.id, admin.email, "scenarios_synced",
+                     f"Synced from {url}: {added} added, {updated} updated, {removed} removed")
+    return {"added": added, "updated": updated, "removed": removed, "total": len(remote)}

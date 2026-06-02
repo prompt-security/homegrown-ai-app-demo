@@ -455,6 +455,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
             <button class="btn btn-outline btn-sm" onclick="exportScenarios()">↓ Export</button>
             <label class="btn btn-outline btn-sm" style="cursor:pointer" title="Import JSON">↑ Import<input type="file" id="scenarioImportInput" accept=".json" style="display:none" onchange="importScenarios(this)"></label>
             <button class="btn btn-outline btn-sm" onclick="saveMasterScenarios()" title="Overwrite the server-side scenarios.json used when seeding a fresh database">💾 Save to Master</button>
+            <button class="btn btn-outline btn-sm" onclick="syncScenarios()" title="Fetch latest scenarios.json from the configured sync URL and update local database">↓ Sync</button>
             <button class="btn btn-primary btn-sm" onclick="openScenarioModal()">+ New Scenario</button>
           </div>
         </div>
@@ -527,6 +528,43 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
                     <option value="">Loading models…</option>
                   </select>
                   <div id="fixModelError" style="display:none;margin-top:6px;font-size:12px;color:var(--red)">A model must be selected to enable Fix Model.</div>
+                </div>
+              </div>
+            </div>
+            <div class="panel" style="margin-top:20px">
+              <div class="panel-head"><h3>Scenarios Sync</h3></div>
+              <div class="setting-row" style="flex-direction:column;align-items:flex-start;gap:10px">
+                <div>
+                  <div class="setting-label">Sync URL</div>
+                  <div class="setting-desc">Raw URL to a <code style="font-size:10px">scenarios.json</code> file. Used by the <strong>↓ Sync</strong> button in the Scenarios tab to pull the latest scenarios.</div>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;width:100%">
+                  <input type="text" id="scenariosSyncUrl" placeholder="https://raw.githubusercontent.com/org/repo/main/app/data/scenarios.json"
+                    style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:6px 10px;outline:none;flex:1"
+                    oninput="
+                      const u = this.value;
+                      if (u.includes('raw.githubusercontent.com')) {
+                        const parts = u.split('/');
+                        if (parts.length >= 6 && parts[5]) {
+                          document.getElementById('scenariosSyncBranch').value = parts[5];
+                        }
+                      }
+                    ">
+                </div>
+                <div style="display:flex;gap:8px;align-items:center">
+                  <div class="setting-label" style="white-space:nowrap">Branch</div>
+                  <input type="text" id="scenariosSyncBranch" placeholder="main"
+                    style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:6px 10px;outline:none;width:160px"
+                    oninput="
+                      const b = this.value.trim() || 'main';
+                      const urlEl = document.getElementById('scenariosSyncUrl');
+                      const u = urlEl.value;
+                      if (u.includes('raw.githubusercontent.com')) {
+                        const parts = u.split('/');
+                        if (parts.length >= 6) { parts[5] = b; urlEl.value = parts.join('/'); }
+                      }
+                    ">
+                  <button class="btn btn-primary btn-sm" onclick="saveScenariosSyncUrl()">Save</button>
                 </div>
               </div>
             </div>
@@ -835,13 +873,14 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
                       style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:6px 10px;outline:none"
                       onkeydown="if(event.key==='Enter')startModelPull()">
                     <button id="ollamaPullBtn" class="btn btn-sm btn-primary" onclick="startModelPull()" style="white-space:nowrap;flex-shrink:0">Pull</button>
+                    <button id="ollamaCancelBtn" class="btn btn-sm btn-danger" onclick="cancelModelPull()" style="white-space:nowrap;flex-shrink:0;display:none">Cancel</button>
                     <button id="ollamaBrowseBtn" class="btn btn-sm btn-outline" onclick="openModelBrowser()" style="white-space:nowrap;flex-shrink:0">Browse Models</button>
                   </div>
                   <div id="ollamaPullProgress" style="display:none;width:100%;max-width:520px">
                     <div style="background:var(--surface2);border-radius:4px;height:6px;overflow:hidden;margin-bottom:4px">
                       <div id="ollamaPullBar" style="height:100%;background:var(--blue,#63b3ed);width:0%;transition:width 0.3s"></div>
                     </div>
-                    <div id="ollamaPullText" style="font-size:11px;color:var(--muted)"></div>
+                    <div id="ollamaPullText" style="font-size:11px;color:var(--muted);margin-top:2px"></div>
                   </div>
                 </div>
 
@@ -1177,6 +1216,10 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     _allowedDomains = Array.isArray(settings.allowed_email_domains) ? settings.allowed_email_domains : [];
     renderDomainTags();
     loadEmailSettings(settings);
+    const syncUrlEl = document.getElementById('scenariosSyncUrl');
+    if (syncUrlEl) syncUrlEl.value = settings.scenarios_sync_url || 'https://raw.githubusercontent.com/prompt-security/homegrown-ai-app-demo/main/app/data/scenarios.json';
+    const syncBranchEl = document.getElementById('scenariosSyncBranch');
+    if (syncBranchEl) syncBranchEl.value = settings.scenarios_sync_branch || 'main';
     const adminPwChip = document.getElementById('adminPwSavedChip');
     if (adminPwChip) adminPwChip.style.display = settings.admin_password_set ? 'inline' : 'none';
     const jwtChip = document.getElementById('jwtSecretSavedChip');
@@ -3595,6 +3638,48 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     URL.revokeObjectURL(a.href);
   }
 
+  async function saveScenariosSyncUrl() {
+    const url    = document.getElementById('scenariosSyncUrl').value.trim();
+    const branch = document.getElementById('scenariosSyncBranch').value.trim() || 'main';
+    const saveBtn = document.querySelector('[onclick="saveScenariosSyncUrl()"]');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Validating…'; }
+    try {
+      // Validate the URL before saving
+      const vRes = await api('/admin/demo-scenarios/validate-url', {
+        method: 'POST', body: JSON.stringify({ url })
+      });
+      const v = await vRes.json().catch(() => ({}));
+      if (!v.ok) {
+        showAlert('Invalid URL', v.error || 'The URL could not be validated.');
+        return;
+      }
+      // URL is valid — save
+      const res = await api('/admin/app-settings', { method: 'PATCH', body: JSON.stringify({ scenarios_sync_url: url, scenarios_sync_branch: branch }) });
+      if (res.ok) showAlert('Saved', `Scenarios sync settings saved. Found ${v.count} scenario${v.count !== 1 ? 's' : ''} at that URL.`);
+      else { const d = await res.json().catch(()=>({})); showAlert('Error', d.detail || 'Failed to save.'); }
+    } finally {
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
+    }
+  }
+
+  async function syncScenarios() {
+    const ok = await showConfirm(
+      'Sync Scenarios?',
+      'This will fetch the remote <strong>scenarios.json</strong> and add or update matching scenarios in the local database. Existing scenarios not in the remote file are left untouched.',
+      'Sync', 'Cancel'
+    );
+    if (!ok) return;
+    const res = await api('/admin/demo-scenarios/sync', { method: 'POST' });
+    if (res.ok) {
+      const d = await res.json();
+      showAlert('Synced', `${d.added} added, ${d.updated} updated, ${d.removed} removed (${d.total} in remote file).`);
+      await loadScenarios();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      showAlert('Sync Failed', d.detail || 'Could not sync scenarios.');
+    }
+  }
+
   async function saveMasterScenarios() {
     const ok = await showConfirm(
       'Save to Master?',
@@ -4102,18 +4187,37 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
   }
 
   // ── Ollama model pull ─────────────────────────────────────────────────────
+  let _currentPullModel = null;
+
+  async function cancelModelPull() {
+    if (!_currentPullModel) return;
+    const cancelBtn = document.getElementById('ollamaCancelBtn');
+    cancelBtn.disabled = true; cancelBtn.textContent = 'Cancelling…';
+    try {
+      await fetch('/admin/ollama/pull', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}` },
+        body: JSON.stringify({ model: _currentPullModel }),
+      });
+    } catch (_) {}
+    // Stream handler emits status:cancelled → reader loop resets the UI
+  }
+
   async function startModelPull() {
-    const input = document.getElementById('ollamaPullInput');
-    const btn   = document.getElementById('ollamaPullBtn');
-    const prog  = document.getElementById('ollamaPullProgress');
-    const bar   = document.getElementById('ollamaPullBar');
-    const txt   = document.getElementById('ollamaPullText');
-    const model = input?.value.trim();
+    const input     = document.getElementById('ollamaPullInput');
+    const btn       = document.getElementById('ollamaPullBtn');
+    const cancelBtn = document.getElementById('ollamaCancelBtn');
+    const prog      = document.getElementById('ollamaPullProgress');
+    const bar       = document.getElementById('ollamaPullBar');
+    const txt       = document.getElementById('ollamaPullText');
+    const model     = input?.value.trim();
     if (!model) { input?.focus(); return; }
 
+    _currentPullModel = model;
     btn.disabled = true; btn.textContent = 'Pulling…';
+    cancelBtn.style.display = 'inline-flex'; cancelBtn.disabled = false; cancelBtn.textContent = 'Cancel';
     prog.style.display = 'block';
-    bar.style.width = '0%';
+    bar.style.width = '0%'; bar.style.background = 'var(--blue,#63b3ed)';
     txt.textContent = 'Connecting to Ollama…';
     txt.style.color = 'var(--muted)';
 
@@ -4132,7 +4236,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
       const reader = resp.body.getReader();
       const dec = new TextDecoder();
       let buf = '';
-      let hasError = false;
+      let finalStatus = 'done'; // 'done' | 'error' | 'cancelled'
       outer: while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -4148,8 +4252,12 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
             if (evt.status === 'error') {
               txt.textContent = '⚠ ' + (evt.error || 'Pull failed');
               txt.style.color = 'var(--red)';
-              hasError = true;
-              break outer;   // exit both loops immediately on error
+              finalStatus = 'error';
+              break outer;
+            }
+            if (evt.status === 'cancelled') {
+              finalStatus = 'cancelled';
+              break outer;
             }
             let pct = 0;
             if (evt.total && evt.completed) {
@@ -4168,19 +4276,26 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
           } catch (_) { /* ignore parse errors */ }
         }
       }
-      if (!hasError) {
+      if (finalStatus === 'done') {
         txt.textContent = '✓ Pull complete!';
         txt.style.color = 'var(--green)';
         bar.style.width = '100%';
         input.value = '';
-        setTimeout(() => detectOllamaModels(), 500);
+        await detectOllamaModels();
+        if (document.getElementById('modelBrowserBackdrop')?.classList.contains('open')) renderModelBrowser();
+      } else if (finalStatus === 'cancelled') {
+        bar.style.width = '0%';
+        bar.style.background = 'var(--blue,#63b3ed)';
+        txt.style.color = 'var(--muted)';
+        txt.textContent = '✕ Cancelled — pull again to resume from checkpoint';
       }
     } catch (e) {
       txt.textContent = '⚠ ' + e.message;
       txt.style.color = 'var(--red)';
     } finally {
-      btn.disabled = false;
-      btn.textContent = 'Pull';
+      _currentPullModel = null;
+      btn.disabled = false; btn.textContent = 'Pull';
+      cancelBtn.style.display = 'none'; cancelBtn.disabled = false; cancelBtn.textContent = 'Cancel';
     }
   }
 
@@ -4325,11 +4440,13 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
 
   let _mbFilter = 'all';
 
-  function openModelBrowser() {
+  async function openModelBrowser() {
     document.getElementById('modelBrowserBackdrop').classList.add('open');
     document.getElementById('modelBrowserSearch').value = '';
     _mbFilter = 'all';
     document.querySelectorAll('.mbf-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === 'all'));
+    // Refresh detected models so chips reflect the current state on disk
+    await detectOllamaModels();
     renderModelBrowser();
   }
 
@@ -4386,9 +4503,6 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
           const [dSlug, dTag] = d.split(':');
           return dSlug === m.slug && (dTag === s || (dTag === 'latest' && isLatest));
         });
-        const dlIcon = isDownloaded ? '<span style="font-size:9px">✓</span>' : '';
-        const latestDot = isLatest ? '<span style="font-size:9px;opacity:0.75">●</span>' : '';
-        const titleAttr = [isDownloaded ? 'downloaded' : '', isLatest ? 'latest (default)' : ''].filter(Boolean).join(' · ');
         // Use the exact name Ollama has on disk (may be :latest rather than :size)
         const actualEntry = _detectedOllamaModels.find(d => {
           const [dSlug, dTag] = d.split(':');
@@ -4396,6 +4510,9 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
         });
         const fullTag = actualEntry || `${m.slug}:${s}`;
         const escapedTag = fullTag.replace(/'/g, "\\'");
+        const dlIcon = isDownloaded ? '<span style="font-size:9px">✓</span>' : '';
+        const latestDot = isLatest && !isDownloaded ? '<span style="font-size:9px;opacity:0.75">●</span>' : '';
+        const titleAttr = [isDownloaded ? 'downloaded' : '', isLatest ? 'latest (default)' : ''].filter(Boolean).join(' · ');
         const delBtn = isDownloaded
           ? `<span class="mb-size-del" title="Delete from Ollama" onclick="event.stopPropagation();deleteOllamaModelFromBrowser('${escapedTag}',this)">✕</span>`
           : '';
@@ -4455,11 +4572,27 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
   }
 
   function selectModelSize(slug, size, el) {
+    // Partial chips are not selectable
+    if (el.dataset.partial === 'true') return;
+
     const card = el.closest('.mb-card');
     if (!card) return;
     const wasSelected = card.dataset.selectedSize === size;
+
+    // Deselect every chip in every OTHER card first (single global selection)
+    document.querySelectorAll('.mb-card').forEach(c => {
+      if (c === card) return;
+      c.querySelectorAll('.mb-size').forEach(s => s.classList.remove('active'));
+      c.dataset.selectedSize = '';
+      const pb = c.querySelector('.mb-pull-btn');
+      if (pb) pb.textContent = 'Pull';
+      const w = c.querySelector('.mb-warn');
+      if (w) w.style.display = 'none';
+    });
+
     // Deselect all chips on this card
     card.querySelectorAll('.mb-size').forEach(s => s.classList.remove('active'));
+
     if (wasSelected) {
       // Toggle off
       card.dataset.selectedSize = '';
