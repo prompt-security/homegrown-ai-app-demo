@@ -9,3 +9,4 @@ pgdata/
 docker-compose.yml
 docker-compose.yml
 .claude/worktrees/agent-a94f546398ae2890a/
+/.claude/worktrees

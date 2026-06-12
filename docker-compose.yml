@@ -10,6 +10,11 @@ services:
       - ./litellm:/app/litellm
     environment:
       COMPOSE_PROJECT_NAME: homegrown-ai-app-demo
+      # Fernet key for encrypting secrets at rest (PS API keys, LLM keys, JWT secret).
+      # Generate:  python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      # Set in a .env file (never commit the actual key):  ENCRYPTION_KEY=<your-key>
+      # WARNING: changing this key makes all previously encrypted DB values unreadable.
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     depends_on:
       db:
@@ -65,8 +70,16 @@ services:
     environment:
       OLLAMA_INSECURE: "true"
       SSL_CERT_FILE: /certs/corporate-ca.pem
+    networks:
+      - default
+      - home-grown-app_default   # join the main app network so litellm can reach http://ollama:11434
     restart: unless-stopped
 
 volumes:
   pgdata:
   ollama_data:
+
+networks:
+  default: {}
+  home-grown-app_default:
+    external: true   # created by the home-grown-app compose project
