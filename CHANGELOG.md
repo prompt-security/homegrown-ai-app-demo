@@ -1,5 +1,26 @@
 # Changelog
 
+## [2026-06-15]
+### Fixed
+- PS API tests now return `action=modify` for PII: isolated each test to a single detector (PII tests enable only Sensitive Data; injection tests enable only Prompt Injection Engine); previously the full policy's Data Privacy Guidelines, Natural Language Guardrails, and Topics Detector fired on financial/HR content in test prompts and returned `action=block` instead of `action=modify` — @ori.tabac
+- Removed stale `native_lang` parameter from `_pii_policy()` (Language Detector is now always disabled for PII tests as part of full detector isolation) — @ori.tabac
+
+### Added
+- Multi-country language picker in Demo panel: every PII country with a distinct local language now shows a `<select>` dropdown (EN + local); countries supported: India (हिन्दी), Israel (עברית), Singapore (中文), Germany (Deutsch), Japan (日本語), Brazil (Português), Malaysia (Bahasa Malaysia); US/AU/GB remain English-only with no picker shown — @ori.tabac
+- Prompt Injection demo scenarios also get a language `<select>` (EN / 日本語); same generic helper functions power both PII and non-PII scenarios — @ori.tabac
+- New `LANG_NAMES` JS constant, `_getLangsForScenario()`, and `_getPromptForLang()` helper functions in `index.html`; `_applyBuiltinTranslations()` generalised to merge any `prompt_XX` key, not just `prompt_ja` — @ori.tabac
+- Translated prompts stored in `meta.prompt_XX` in `app/data/scenarios.json` (for fresh DB seeds) and hardcoded in `_SCENARIO_TRANSLATIONS` in `index.html` (zero-reload for existing deployments) — @ori.tabac
+- Real PS API integration tests in `tests/test_pii_translations.py`: parametrised per country/lang, assert `action == "modify"` for PII and `action == "block"` for injection; tests skip when `PS_BASE_URL`/`PS_APP_ID` not set; coverage guard `pytest.fail()`s if any `meta.prompt_XX` key in `scenarios.json` has no corresponding test — @ori.tabac
+- `PS_BASE_URL` and `PS_APP_ID` secrets wired into `.github/workflows/ci.yml` pytest step — @ori.tabac
+- `app/data/translations.py` registry and `tests/fixtures/ps_policy_reference.json` entity reference added — @ori.tabac
+- CLAUDE.md "Demo Scenario Translations" section documents dual-write pattern, language codes, and mandatory test checklist for future additions — @ori.tabac
+
+## [2026-06-14]
+### Added
+- Language toggle (EN / 日本語) in Demo panel: Japan PII scenario and Prompt Injection scenarios each have an EN/日本語 switcher; selecting Japanese swaps the preview text and loads the Japanese prompt into chat/compare; toggle only appears on scenarios that carry a Japanese translation in their metadata — @ori.tabac
+### Changed
+- Japan PII demo prompt updated with Japanese identifier types: bank account number, driver's license, corporate number, personal number (マイナンバー), passport, residence card (在留カード), resident register number (住民票コード), and social insurance number; both English and Japanese variants stored in scenario metadata — @ori.tabac
+
 ## [2026-05-28]
 ### Removed
 - `PUBLIC_API_ENABLED` feature and `POST /v1/responses` endpoint removed entirely: env vars (`PUBLIC_API_ENABLED`, `PUBLIC_API_MAX_PROMPT_TOKENS`, `PUBLIC_API_MAX_OUTPUT_TOKENS`, `PUBLIC_API_ALLOW_SYSTEM_PROMPT`), the endpoint handler, the `_ensure_public_api_enabled()` helper, and the four `PublicResponse*` Pydantic schemas (`PublicResponseRequest`, `PublicResponseOutput`, `PublicResponseUsage`, `PublicResponseOut`) have all been deleted; README documentation for the public test API has been removed — @pj.norris

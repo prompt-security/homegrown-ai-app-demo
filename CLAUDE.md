@@ -74,3 +74,62 @@ Tests use SQLite in-memory via `conftest.py` — no running Postgres or LiteLLM 
 - `MAX_FILE_SIZE_MB` — upload size limit (default 10 MB)
 - `SANITIZE_MAX_PER_MINUTE` — rate limit for file scans per user (default 5)
 - `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` / `PERPLEXITY_API_KEY` / `OPENROUTER_API_KEY` — shared provider keys (can also be set via Admin → Settings)
+
+---
+
+## Demo Scenario Translations
+
+The demo panel supports multi-language PII prompts via a language picker (`<select>`) shown per country when translations exist. Translations use a **dual-write** pattern so existing deployments pick them up without DB reload.
+
+### Architecture
+
+| Layer | Where | How loaded |
+|---|---|---|
+| DB seed | `app/data/scenarios.json` — `meta.prompt_XX` keys | Fresh seed only (count == 0) |
+| Frontend hardcode | `_SCENARIO_TRANSLATIONS` in `app/static/index.html` | Merged at runtime by `_applyBuiltinTranslations()` |
+| Registry | `app/data/translations.py` | Imported by tests |
+
+### Language codes (LANG_NAMES)
+
+| Code | Language | Countries |
+|---|---|---|
+| `en` | English | All |
+| `hi` | हिन्दी | IN |
+| `he` | עברית | IL |
+| `zh` | 中文 | SG |
+| `de` | Deutsch | DE |
+| `ja` | 日本語 | JP |
+| `pt` | Português | BR |
+| `ms` | Bahasa Malaysia | MY |
+
+### Adding a translation to an existing country
+
+1. Add `meta.prompt_XX` to the scenario in `app/data/scenarios.json`
+2. Add the same entry to `_SCENARIO_TRANSLATIONS[key]` in `app/static/index.html`
+3. **Add a PS API test** to `tests/test_pii_translations.py` — parametrize with `(key, lang, expected_entities)`. Also add `(key, lang)` to `_registered_translations()`. **CI fails if a `prompt_XX` key exists without a test.**
+4. Entity types to expect: see `tests/fixtures/ps_policy_reference.json` per country code.
+5. Source of truth for entity names: `~/Documents/git/prompt_repos/ps-ai-engine/apps/ps-sensitive-data/`
+
+### Adding a new country with translations
+
+Same checklist as above, plus:
+- Add `LANG_NAMES[code]` entry to both `app/static/index.html` **and** `app/data/translations.py`
+- For injection-type scenarios: assert `action == "block"`; for PII: assert `action == "modify"`
+- Countries with English-only (US, AU, GB): no translation needed, no picker shown
+
+### Running PS API tests locally
+
+```bash
+export PS_BASE_URL=https://your-tenant.promptsecurity.ai
+export PS_APP_ID=your-app-id
+pytest tests/test_pii_translations.py -v
+```
+
+Without credentials: all PS tests skip (yellow in CI), none fail.
+
+---
+
+## Session Log
+
+- **2026-06-09** — Session log section added; CLAUDE.md pre-existed.
+- **2026-06-15** — Multi-country language picker feature: `<select>` dropdowns for 7 PII countries + Prompt Injection; real PS API tests with coverage guard; CLAUDE.md translation guide.
