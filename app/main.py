@@ -174,7 +174,6 @@ ALLOWED_SANITIZE_TYPES = {
     # Other
     "application/epub+zip",
     "application/zip",
-    "application/octet-stream",  # catch-all for unknown but extension-allowed files
 }
 ALLOWED_SANITIZE_EXTENSIONS = (
     # Documents
@@ -2625,7 +2624,8 @@ async def validate_llm_key(
                 else:
                     return {"valid": True, "provider": provider}  # non-401 likely means key is valid but other issue
         except Exception as e:
-            return {"valid": False, "provider": provider, "error": str(e)}
+            logger.warning("LLM key validation error (%s): %s", provider, e)
+            return {"valid": False, "provider": provider, "error": "Could not reach the provider. Check your network connection."}
 
     url = urls.get(provider)
     if not url:
@@ -2644,7 +2644,8 @@ async def validate_llm_key(
             else:
                 return {"valid": False, "provider": provider, "error": f"HTTP {resp.status_code}"}
     except Exception as e:
-        return {"valid": False, "provider": provider, "error": str(e)}
+        logger.warning("LLM key validation error (%s): %s", provider, e)
+        return {"valid": False, "provider": provider, "error": "Could not reach the provider. Check your network connection."}
 
 
 # ── Admin: Activity log ───────────────────────────────────────────────────────
@@ -2882,7 +2883,16 @@ async def update_encryption_key(
     if not validate_fernet_key(body.key):
         raise HTTPException(status_code=422, detail="Invalid Fernet key — must be a URL-safe base64-encoded 32-byte value")
 
-    write_encryption_key_override(body.key)
+    try:
+        write_encryption_key_override(body.key)
+    except OSError as exc:
+        logger.error("Failed to write encryption key override file: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not persist key to disk: {exc.strerror} ({exc.filename}). "
+                   "Ensure the app/data/ directory is writable by the container user.",
+        )
+
     set_encryption_key(body.key)
 
     await _log_audit(db, admin.id, admin.email, "encryption_key_changed", "Fernet encryption key updated via admin UI")
@@ -3213,7 +3223,8 @@ async def get_ollama_service_status(admin: User = Depends(require_admin)):
         c.reload()
         return {"status": c.status, "container_name": c.name, "id": c.short_id}
     except Exception as exc:
-        return {"status": "error", "detail": str(exc)}
+        logger.warning("Ollama status check error: %s", exc)
+        return {"status": "error", "detail": "Could not retrieve Ollama container status."}
 
 
 @app.post("/admin/ollama/service/start")
@@ -4467,14 +4478,21 @@ async def validate_scenarios_url(
     admin: User = Depends(require_admin),
 ):
     """Fetch the given URL and confirm it is a valid scenarios JSON array."""
+    from urllib.parse import urlparse
+    _ALLOWED_HOST = "raw.githubusercontent.com"
     url = (body.get("url") or "").strip()
     if not url:
         return {"ok": False, "error": "Please enter a URL."}
-    if not url.startswith(("http://", "https://")):
+    if not url.startswith("https://"):
         return {"ok": False, "error": "The URL doesn't look right — it should start with https://"}
+    parsed = urlparse(url)
+    if parsed.hostname != _ALLOWED_HOST:
+        return {"ok": False, "error": f"Only URLs from {_ALLOWED_HOST} are supported."}
+    # Reconstruct URL from validated components — never pass raw user input to httpx
+    safe_url = f"https://{_ALLOWED_HOST}{parsed.path}"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(url)
+            resp = await client.get(safe_url)
     except Exception:
         return {"ok": False, "error": "Couldn't reach that URL. Check the address is correct and the server is accessible."}
     if resp.status_code == 404:
@@ -4507,17 +4525,26 @@ async def sync_scenarios_from_url(
         url = _DEFAULT_SYNC_URL
     branch_row = await db.get(AppSetting, "scenarios_sync_branch")
     branch = (branch_row.value or "").strip() if branch_row else "main"
-    # For raw.githubusercontent.com URLs, substitute the branch segment
-    # URL format: https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}
-    if branch and "raw.githubusercontent.com" in url:
-        parts = url.split("/")
-        if len(parts) >= 6:  # https: + '' + domain + owner + repo + branch + path...
-            parts[5] = branch
-            url = "/".join(parts)
+    # Substitute branch by parsing the URL properly — never use substring matching
+    from urllib.parse import urlparse as _up
+    _parsed_url = _up(url)
+    if branch and _parsed_url.hostname == "raw.githubusercontent.com":
+        # path: /{owner}/{repo}/{branch}/{rest...}
+        path_parts = _parsed_url.path.split("/")  # ['', owner, repo, branch, ...]
+        if len(path_parts) >= 4:
+            path_parts[3] = branch
+            url = f"https://raw.githubusercontent.com{'/'.join(path_parts)}"
 
+    from urllib.parse import urlparse as _urlparse
+    _sync_host = "raw.githubusercontent.com"
+    _parsed = _urlparse(url)
+    if _parsed.hostname != _sync_host:
+        raise HTTPException(status_code=400, detail="Sync URL must point to raw.githubusercontent.com.")
+    # Reconstruct URL from validated components — never pass raw user input to httpx
+    _safe_url = f"https://{_sync_host}{_parsed.path}"
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.get(url)
+            resp = await client.get(_safe_url)
             resp.raise_for_status()
             remote = resp.json()
     except Exception as exc:

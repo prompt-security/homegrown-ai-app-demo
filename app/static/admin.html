@@ -2183,10 +2183,18 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     }
 
     btn.disabled = true; btn.textContent = 'Saving…';
-    const res = await api('/admin/encryption-key', {
-      method: 'POST',
-      body: JSON.stringify({ key }),
-    });
+    let res;
+    try {
+      res = await api('/admin/encryption-key', {
+        method: 'POST',
+        body: JSON.stringify({ key }),
+      });
+    } catch (networkErr) {
+      btn.disabled = false; btn.textContent = 'Save';
+      errEl.textContent   = '✗ Network error — ' + networkErr.message;
+      errEl.style.display = 'block';
+      return;
+    }
     btn.disabled = false;
     if (res.ok) {
       clearPaneDirty('sp-security');
@@ -2195,8 +2203,11 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
       setTimeout(() => btn.textContent = 'Save', 2000);
       await loadConfigChecklist();
     } else {
-      const d = await res.json().catch(() => ({}));
-      errEl.textContent   = '✗ ' + (d.detail || 'Failed to save key');
+      const raw  = await res.text().catch(() => '');
+      let detail = '';
+      try { detail = JSON.parse(raw).detail; } catch (_) { detail = raw.slice(0, 120) || `HTTP ${res.status}`; }
+      if (Array.isArray(detail)) detail = detail.map(e => e.msg || JSON.stringify(e)).join('; ');
+      errEl.textContent   = `✗ ${res.status}: ${detail || 'unexpected error'}`;
       errEl.style.display = 'block';
       btn.textContent = 'Save';
     }

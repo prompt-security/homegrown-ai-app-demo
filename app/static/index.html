@@ -969,7 +969,7 @@ reply = await client.chat.completions.create(
     <div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:4px">
       <button class="stab active" id="stab-ps"  onclick="switchSettingsTab('ps')">🔒 Prompt Security</button>
       <button class="stab"        id="stab-llm" onclick="switchSettingsTab('llm')" style="display:none">🤖 LLM API Keys</button>
-      <button class="stab" id="stab-api" disabled>🎯 Redteaming <span class="soon-badge">soon</span></button>
+      <button class="stab" id="stab-api" onclick="switchSettingsTab('api')">🗝️ App API Keys</button>
     </div>
     <!-- PS tab -->
     <div id="settingsPs">
@@ -1053,7 +1053,7 @@ reply = await client.chat.completions.create(
       </div>
     </div>
     <div id="settingsApi" style="display:none">
-      <p style="font-size:12px;color:var(--text-muted);margin:6px 0 10px">Create an app-issued API key for authenticated API access. The plaintext key is shown only once when created.</p>
+      <p style="font-size:12px;color:var(--text-muted);margin:6px 0 10px">Create a narrow app-issued key for the public <code>/v1/responses</code> test endpoint. The plaintext key is shown only once when created.</p>
       <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:12px">
         <div style="flex:1">
           <label for="apiKeyNameInput" style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px">Key name</label>
@@ -1070,6 +1070,16 @@ reply = await client.chat.completions.create(
       </div>
       <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Existing Keys</div>
       <div id="apiKeyList" style="display:flex;flex-direction:column;gap:8px"></div>
+      <div style="margin-top:12px">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">cURL Template</div>
+        <pre style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;overflow:auto;font-size:11px;line-height:1.6;white-space:pre-wrap;color:var(--text-muted)">curl http://localhost:9000/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer &lt;your_app_api_key&gt;" \
+  -d '{
+    "model": "meta-llama/llama-3.1-8b-instruct:free",
+    "input": "Hello from ngrok"
+  }'</pre>
+      </div>
     </div>
     <div class="modal-actions" style="margin-top:12px">
       <button class="btn btn-secondary" id="psCancelBtn">Cancel</button>
