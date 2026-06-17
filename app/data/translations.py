@@ -24,8 +24,7 @@ SCENARIO_TRANSLATIONS: dict[str, dict[str, str]] = {
     "pii_IN": {"lang": "hi"},
     # Israel — Hebrew
     "pii_IL": {"lang": "he"},
-    # Singapore — Mandarin
-    "pii_SG": {"lang": "zh"},
+    # Singapore — English-only (primary working language is English; no native picker shown)
     # Germany — German
     "pii_DE": {"lang": "de"},
     # Japan — Japanese

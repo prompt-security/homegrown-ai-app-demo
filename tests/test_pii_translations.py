@@ -74,7 +74,7 @@ COUNTRY_ENTITIES = {
     ],
     "IN": ["INDIA_AADHAAR_NUMBER", "INDIA_PAN_NUMBER"],
     "IL": ["IL_ID_NUMBER", "IL_PASSPORT_RE", "IL_BANK_NUMBER", "IBAN_CODE"],
-    "SG": ["SG_NRIC_FIN", "SINGAPORE_PASSPORT_NUMBER", "SINGAPORE_DRIVER_LICENSE_NUMBER"],
+    "SG": ["SG_NRIC_FIN", "SINGAPORE_PASSPORT_NUMBER", "SINGAPORE_DRIVER_LICENSE_NUMBER"],  # English-only, no native lang picker
     "BR": ["BR_CPF_NUMBER", "BRAZIL_CNPJ_NUMBER"],
     "MY": ["MALAYSIA_ID_NUMBER"],
 }
@@ -165,8 +165,7 @@ _INJ_LANGS = ["ja", "hi", "he", "zh", "de", "pt", "ms"]
 def _registered_translations():
     pairs = {
         ("pii_JP", "ja"), ("pii_DE", "de"), ("pii_IN", "hi"),
-        ("pii_IL", "he"), ("pii_SG", "zh"), ("pii_BR", "pt"),
-        ("pii_MY", "ms"),
+        ("pii_IL", "he"), ("pii_BR", "pt"), ("pii_MY", "ms"),
     }
     for lang in _INJ_LANGS:
         pairs.add(("injection", lang))
@@ -261,16 +260,10 @@ async def test_pii_israel_hebrew(ps_client, scenarios, base_policy):
 
 @pytest.mark.asyncio
 async def test_pii_singapore_english(ps_client, scenarios, base_policy):
+    # Singapore is English-only — no native language picker (primary working language is English)
     policy = _pii_policy(base_policy, "SG")
     detected = await _assert_pii_modify(ps_client, scenarios, "pii_SG", "en", policy)
     print(f"\npii_SG/en detected: {detected}")
-
-
-@pytest.mark.asyncio
-async def test_pii_singapore_mandarin(ps_client, scenarios, base_policy):
-    policy = _pii_policy(base_policy, "SG")
-    detected = await _assert_pii_modify(ps_client, scenarios, "pii_SG", "zh", policy)
-    print(f"\npii_SG/zh detected: {detected}")
 
 
 # ── Brazil ────────────────────────────────────────────────────────────────────

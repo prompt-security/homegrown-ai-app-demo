@@ -1,5 +1,11 @@
 # Changelog
 
+## [2026-06-17]
+### Changed
+- Singapore (`pii_SG`) is now English-only — removed Mandarin (`prompt_zh`) translation and language picker; Singapore's primary working language is English, and Simplified Chinese differs from Traditional Chinese (Taiwan) — @ori.tabac
+- Added multilang translations to `injection` and `injSoft` scenarios: Hindi, Hebrew, Mandarin, German, Portuguese, Malay (Japanese was already present); injection tests restructured to parametrize over all 8 languages — @ori.tabac
+- CLAUDE.md language table updated: `zh` row removed, note added clarifying SG English-only and Indonesia (`id`) vs Malaysia (`ms`) distinction — @ori.tabac
+
 ## [2026-06-15]
 ### Fixed
 - PS API tests now return `action=modify` for PII: isolated each test to a single detector (PII tests enable only Sensitive Data; injection tests enable only Prompt Injection Engine); previously the full policy's Data Privacy Guidelines, Natural Language Guardrails, and Topics Detector fired on financial/HR content in test prompts and returned `action=block` instead of `action=modify` — @ori.tabac

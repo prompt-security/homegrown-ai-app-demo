@@ -93,14 +93,15 @@ The demo panel supports multi-language PII prompts via a language picker (`<sele
 
 | Code | Language | Countries |
 |---|---|---|
-| `en` | English | All |
+| `en` | English | All (US, AU, GB, SG are English-only — no picker shown) |
 | `hi` | हिन्दी | IN |
 | `he` | עברית | IL |
-| `zh` | 中文 | SG |
 | `de` | Deutsch | DE |
 | `ja` | 日本語 | JP |
 | `pt` | Português | BR |
 | `ms` | Bahasa Malaysia | MY |
+
+**Note:** Singapore (`pii_SG`) is English-only. Though Mandarin is spoken in Singapore, the primary working language is English and Simplified Chinese differs from Traditional Chinese (used in Taiwan). No `zh` picker is shown for SG. If Indonesia is ever added, use `id` (Indonesian) — distinct from Bahasa Malaysia (`ms`).
 
 ### Adding a translation to an existing country
 
