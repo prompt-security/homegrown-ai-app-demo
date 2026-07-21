@@ -136,6 +136,26 @@ A LiteLLM proxy runs as a separate Docker service on port 4000. Models listed in
 | `ollama/*` | Ollama (local) | See [Ollama](#ollama-local-models) |
 | `huggingface/Qwen3VL-8B-Instruct-F16` | Local OpenAI-compatible | See [Local endpoint](#local-openai-compatible-endpoint) |
 
+### LiteLLM master key
+
+By default the LiteLLM proxy runs without authentication — it accepts any request, including direct calls to port 4000. This is fine for local installs where the port is not exposed externally.
+
+> **Note:** The LiteLLM UI at `http://localhost:4000/ui` requires a master key to log in. Without one set, you cannot access the UI.
+
+To enable the UI and lock down the proxy, set the key in **both** places — they must match:
+
+1. `litellm/config.yaml` — tells LiteLLM to require the key:
+   ```yaml
+   general_settings:
+     master_key: sk-your-secret-key
+   ```
+2. `docker-compose.yml` (or `.env`) — tells the app what key to send:
+   ```yaml
+   LITELLM_MASTER_KEY: sk-your-secret-key
+   ```
+
+Setting only one of the two will either break the app (key required but app sends none) or do nothing useful (app sends a key but proxy ignores it).
+
 To add or remove models, edit `litellm/config.yaml` and restart the `litellm` service:
 
 ```bash

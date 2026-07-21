@@ -1,5 +1,9 @@
 # Changelog
 
+## [2026-07-21]
+### Changed
+- README: documented LiteLLM master key setup — explains that both `litellm/config.yaml` and `LITELLM_MASTER_KEY` env var must be set together, and that the LiteLLM UI requires a master key to log in — @pj.norris
+
 ## [2026-06-15]
 ### Fixed
 - PS API tests now return `action=modify` for PII: isolated each test to a single detector (PII tests enable only Sensitive Data; injection tests enable only Prompt Injection Engine); previously the full policy's Data Privacy Guidelines, Natural Language Guardrails, and Topics Detector fired on financial/HR content in test prompts and returned `action=block` instead of `action=modify` — @ori.tabac
