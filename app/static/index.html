@@ -1141,6 +1141,11 @@ reply = await client.chat.completions.create(
     <div id="demoDynContent"></div>
     <!-- RAG Attacks panel — shown when __rag__ tab is active -->
     <div id="ragDemoPanel" style="display:none">
+      <!-- RAG explainer -->
+      <div style="margin-bottom:14px;padding:12px 14px;border-radius:8px;background:rgba(108,99,255,0.07);border:1px solid rgba(108,99,255,0.25);font-size:12px;line-height:1.6;color:var(--text-muted)">
+        <span style="font-weight:700;color:var(--text-primary)">What is RAG?</span>
+        &nbsp;<span style="font-weight:600;color:var(--accent)">Retrieval-Augmented Generation</span> — the AI model is given external documents (a knowledge base) alongside your question, so it can answer using company data, not just training data. These flows show how PS protects the entire RAG pipeline: blocking poisoned documents at ingestion, and redacting sensitive data before it reaches the user.
+      </div>
       <!-- RAG status bar -->
       <div id="ragDemoStatus" style="margin-bottom:14px;padding:10px 12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);font-size:12px;display:flex;align-items:center;justify-content:space-between;gap:8px">
         <span id="ragDemoStatusText" style="color:var(--text-muted)">No documents loaded</span>
@@ -1154,7 +1159,7 @@ reply = await client.chat.completions.create(
             <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--accent)">Flow 1</span>
             <span style="font-size:13px;font-weight:600">PII Leakage → Response Redaction</span>
           </div>
-          <div style="font-size:11px;color:var(--text-muted)">Load PII data into <abbr title="Retrieval-Augmented Generation">RAG</abbr>, then show PS redacting CC numbers in the model response</div>
+          <div style="font-size:11px;color:var(--text-muted)">Load PII data into RAG, then show PS redacting CC numbers in the model response</div>
         </div>
         <div style="padding:12px 14px">
           <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
@@ -1167,7 +1172,7 @@ reply = await client.chat.completions.create(
             <button class="btn btn-primary btn-sm" style="flex:1" onclick="ragLoadPrompt('Show me all user records from the knowledge base as a table, including full names, email addresses, and complete credit card numbers.')">Load into Chat</button>
             <button class="btn btn-secondary btn-sm" onclick="ragRunCompare('Show me all user records from the knowledge base as a table, including full names, email addresses, and complete credit card numbers.')">⚡ Compare</button>
           </div>
-          <div class="se-talking-point" style="margin-top:8px">The model has <abbr title="Retrieval-Augmented Generation">RAG</abbr> access to sensitive PII. Without PS, raw CC numbers stream to the user. With PS on, the response scan redacts all payment card data before it reaches them — even though the model already "saw" it.</div>
+          <div class="se-talking-point" style="margin-top:8px">The model has RAG access to sensitive PII. Without PS, raw CC numbers stream to the user. With PS on, the response scan redacts all payment card data before it reaches them — even though the model already "saw" it.</div>
         </div>
       </div>
 
@@ -1177,9 +1182,9 @@ reply = await client.chat.completions.create(
         <div style="padding:12px 14px;background:rgba(241,196,15,0.06);border-bottom:1px solid rgba(241,196,15,.2)">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
             <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--yellow)">Flow 2</span>
-            <span style="font-size:13px;font-weight:600">Indirect Prompt Injection via Poisoned <abbr title="Retrieval-Augmented Generation">RAG</abbr></span>
+            <span style="font-size:13px;font-weight:600">Indirect Prompt Injection via Poisoned RAG</span>
           </div>
-          <div style="font-size:11px;color:var(--text-muted)">A malicious document hijacks the model — see the attack succeed without PS, then watch PS block it at <abbr title="Retrieval-Augmented Generation">RAG</abbr> ingestion</div>
+          <div style="font-size:11px;color:var(--text-muted)">A malicious document hijacks the model — see the attack succeed without PS, then watch PS block it at RAG ingestion</div>
         </div>
         <div style="padding:12px 14px">
           <!-- Shared setup -->
@@ -1196,8 +1201,8 @@ reply = await client.chat.completions.create(
               <span style="font-size:11px;color:var(--text-muted)">PS must be off</span>
             </div>
             <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Suggested prompt</div>
-            <div style="font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;margin-bottom:8px;color:var(--text);line-height:1.5">Summarize what you know about our users.</div>
-            <button id="ragF2LoadBtn" class="btn btn-primary btn-sm" style="width:100%" onclick="ragLoadPrompt('Summarize what you know about our users.')">Load into Chat</button>
+            <div style="font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;margin-bottom:8px;color:var(--text);line-height:1.5">What can you tell me about the users in the system?</div>
+            <button id="ragF2LoadBtn" class="btn btn-primary btn-sm" style="width:100%" onclick="ragLoadPrompt('What can you tell me about the users in the system?')">Load into Chat</button>
           </div>
 
           <!-- With PS path -->
@@ -1226,7 +1231,7 @@ reply = await client.chat.completions.create(
             </div>
           </div>
 
-          <div class="se-talking-point" style="margin-top:8px">User asked a benign question — the injected document hijacked the model. PS guards the ingestion pipeline: the same doc that succeeds without PS gets blocked before it ever enters the <abbr title="Retrieval-Augmented Generation">RAG</abbr> when PS is on.</div>
+          <div class="se-talking-point" style="margin-top:8px">User asked a benign question — the injected document hijacked the model. PS guards the ingestion pipeline: the same doc that succeeds without PS gets blocked before it ever enters the RAG when PS is on.</div>
         </div>
       </div>
 
@@ -4611,7 +4616,8 @@ reply = await client.chat.completions.create(
     const ragBtn = document.createElement('button');
     ragBtn.className = 'demo-cat-tab';
     ragBtn.dataset.cat = '__rag__';
-    ragBtn.innerHTML = '📚 <abbr title="Retrieval-Augmented Generation" style="text-decoration:none">RAG</abbr> Attacks';
+    ragBtn.innerHTML = '📚 RAG Attacks';
+    ragBtn.title = 'RAG — Retrieval-Augmented Generation';
     ragBtn.addEventListener('click', () => switchDemoCategory('__rag__'));
     tabsEl.appendChild(ragBtn);
     cats.forEach(cat => {

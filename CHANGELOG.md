@@ -19,6 +19,9 @@
 - Sample user dataset reduced to 5 records (Luhn-valid Visa/MC/Discover/Amex mix) — @ori.tabac
 ### Fixed
 - Violation chips in Flow 3/4 block alerts rendered `[object Object]`; now correctly display `v.type` — @ori.tabac
+- RAG explainer box added at top of RAG Attacks panel ("What is RAG? Retrieval-Augmented Generation...") — replaces unreliable `abbr` tooltip approach — @ori.tabac
+- Flow 2 poisoned doc now pre-embeds user records in the injection so model just copies pre-formatted output; fixes deflection on small models (e.g. gemma3:270m) — @ori.tabac
+- Flow 2 suggested prompt updated to "What can you tell me about the users in the system?" — @ori.tabac
 
 ## [2026-07-21]
 ### Changed
