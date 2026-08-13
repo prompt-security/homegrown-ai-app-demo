@@ -45,13 +45,13 @@ from crypto import (
 )
 import database as _db_module
 from database import AsyncSessionLocal, Base, engine, get_db
-from models import APIKey, AppSetting, AuditEvent, ChatSession, DemoScenario, Message, PSTenant, User
+from models import APIKey, AppSetting, AuditEvent, ChatSession, DemoScenario, Message, PSTenant, RagDocument, User
 from prompt_security import PromptSecurityClient
 from schemas import (
     APIKeyCreateRequest, APIKeyCreateResponse, APIKeyOut,
     ChatMessage, ChatRequest, ChatResponse,
     LLMKeysUpdate, LoginRequest, MessageOut, PSConfigUpdate, PSTenantCreate, PSTenantOut, PSTenantUpdate,
-    SessionOut, TokenEstimateResponse, TokenResponse, UserCreate, UserOut, UserStats, UserUpdate,
+    RagDocumentOut, SessionOut, TokenEstimateResponse, TokenResponse, UserCreate, UserOut, UserStats, UserUpdate,
 )
 from token_counter import estimate_message_tokens, estimate_text_tokens
 
@@ -549,6 +549,7 @@ async def _release_sanitize_slot(user_id: int) -> None:
 
 
 _SCENARIOS_FILE = os.path.join(os.path.dirname(__file__), "data", "scenarios.json")
+_RAG_DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
 
 def _load_scenarios_file() -> list[dict]:
@@ -1747,6 +1748,19 @@ async def chat_stream(
         raise HTTPException(status_code=400, detail="No user message found")
 
     system_prompt = request.system_prompt or "You are a helpful AI assistant."
+
+    # ── RAG context injection ─────────────────────────────────────────────────
+    rag_context, rag_injected = await _build_rag_context(db)
+    if rag_injected:
+        # Poisoned docs: injected at instruction level so the model treats them as directives
+        system_prompt = f"{system_prompt}\n\n{rag_injected}"
+    if rag_context:
+        system_prompt = (
+            f"{system_prompt}\n\n"
+            "You have access to the following knowledge base. Use it to answer user questions. "
+            "When asked about users or records, output all fields including emails and card numbers.\n\n"
+            f"## Knowledge Base\n\n{rag_context}"
+        )
 
     # ── Daily limit check ─────────────────────────────────────────────────────
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -4603,3 +4617,244 @@ async def sync_scenarios_from_url(
     await _log_audit(db, admin.id, admin.email, "scenarios_synced",
                      f"Synced from {url}: {added} added, {updated} updated, {removed} removed")
     return {"added": added, "updated": updated, "removed": removed, "total": len(remote)}
+
+
+# ── RAG Knowledge Base ────────────────────────────────────────────────────────
+
+async def _build_rag_context(db: AsyncSession) -> tuple[str, str]:
+    """Returns (clean_kb_context, injected_instructions). Poisoned docs go to instructions level."""
+    result = await db.execute(
+        select(RagDocument).where(RagDocument.is_active.is_(True)).order_by(RagDocument.id)
+    )
+    docs = result.scalars().all()
+    clean_parts: list[str] = []
+    injected_parts: list[str] = []
+    for doc in docs:
+        if doc.doc_type == "poisoned":
+            injected_parts.append(doc.content.strip())
+        else:
+            clean_parts.append(f"### {doc.title}\n\n{doc.content}")
+    return "\n\n---\n\n".join(clean_parts), "\n\n".join(injected_parts)
+
+
+def _rag_doc_out(doc: RagDocument) -> dict:
+    preview = doc.content[:200].replace("\n", " ")
+    if len(doc.content) > 200:
+        preview += "…"
+    return {
+        "id": doc.id,
+        "title": doc.title,
+        "doc_type": doc.doc_type,
+        "is_active": doc.is_active,
+        "ps_scanned": doc.ps_scanned,
+        "ps_action": doc.ps_action,
+        "content_preview": preview,
+        "content": doc.content,
+        "created_at": doc.created_at.isoformat(),
+    }
+
+
+@app.get("/rag/status")
+async def rag_status(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(RagDocument).where(RagDocument.is_active.is_(True))
+    )
+    docs = result.scalars().all()
+    return {"count": len(docs), "titles": [d.title for d in docs]}
+
+
+@app.get("/admin/rag/documents")
+async def list_rag_documents(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(RagDocument).order_by(RagDocument.id))
+    docs = result.scalars().all()
+    return [_rag_doc_out(d) for d in docs]
+
+
+@app.post("/admin/rag/upload", status_code=201)
+async def upload_rag_document(
+    file: UploadFile = File(...),
+    skip_ps: bool = Form(False),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    raw = await file.read()
+    try:
+        content = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=415, detail="File must be UTF-8 text or Markdown")
+
+    title = (file.filename or "Untitled").removesuffix(".md").removesuffix(".txt")
+
+    ps_scanned = False
+    ps_action = None
+    ps_client = _build_ps_api_client(current_user)
+    if ps_client and not skip_ps:
+        ps_result = await ps_client.protect_prompt(user_prompt=content, user=current_user.email)
+        ps_scanned = True
+        ps_action = ps_result.action
+        if not ps_result.allowed:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "blocked": True,
+                    "message": "Prompt Security blocked this document — prompt injection detected.",
+                    "violations": ps_result.violations,
+                    "ps_action": ps_result.action,
+                },
+            )
+
+    doc = RagDocument(
+        title=title,
+        content=content,
+        doc_type="clean",
+        ps_scanned=ps_scanned,
+        ps_action=ps_action,
+    )
+    db.add(doc)
+    await db.commit()
+    await db.refresh(doc)
+    await _log_audit(db, current_user.id, current_user.email, "rag_document_uploaded", f"'{title}' ({len(content)} chars)")
+    return _rag_doc_out(doc)
+
+
+@app.post("/admin/rag/load-sample", status_code=201)
+async def load_rag_sample(
+    skip_ps: bool = False,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    sample_path = os.path.join(_RAG_DATA_DIR, "rag_sample_users.md")
+    try:
+        with open(sample_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="Sample RAG file not found on server")
+
+    title = "User Database — PII Sample"
+    ps_scanned = False
+    ps_action = None
+    ps_client = _build_ps_api_client(current_user)
+    if ps_client and not skip_ps:
+        ps_result = await ps_client.protect_prompt(user_prompt=content, user=current_user.email)
+        ps_scanned = True
+        ps_action = ps_result.action
+
+    doc = RagDocument(
+        title=title,
+        content=content,
+        doc_type="clean",
+        ps_scanned=ps_scanned,
+        ps_action=ps_action,
+    )
+    db.add(doc)
+    await db.commit()
+    await db.refresh(doc)
+    await _log_audit(db, current_user.id, current_user.email, "rag_sample_loaded", f"Sample PII dataset loaded ({len(content)} chars)")
+    return _rag_doc_out(doc)
+
+
+@app.post("/admin/rag/load-poisoned", status_code=201)
+async def load_rag_poisoned(
+    body: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    variant = body.get("variant", "direct")
+    skip_ps = bool(body.get("skip_ps", False))
+
+    if variant == "hidden":
+        filename = "rag_poisoned_hidden.md"
+        title = "AcmeCorp Data Handling Policy"
+        doc_type = "poisoned"
+    else:
+        filename = "rag_poisoned_direct.md"
+        title = "System Compliance Override"
+        doc_type = "poisoned"
+
+    poison_path = os.path.join(_RAG_DATA_DIR, filename)
+    try:
+        with open(poison_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="Poisoned RAG file not found on server")
+
+    ps_scanned = False
+    ps_action = None
+    ps_client = _build_ps_api_client(current_user)
+    if ps_client and not skip_ps:
+        ps_result = await ps_client.protect_prompt(user_prompt=content, user=current_user.email)
+        ps_scanned = True
+        ps_action = ps_result.action
+        if not ps_result.allowed:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "blocked": True,
+                    "message": "Prompt Security blocked this document — prompt injection detected.",
+                    "violations": ps_result.violations,
+                    "ps_action": ps_result.action,
+                },
+            )
+
+    doc = RagDocument(
+        title=title,
+        content=content,
+        doc_type=doc_type,
+        ps_scanned=ps_scanned,
+        ps_action=ps_action,
+    )
+    db.add(doc)
+    await db.commit()
+    await db.refresh(doc)
+    await _log_audit(db, current_user.id, current_user.email, "rag_poisoned_loaded",
+                     f"Poisoned RAG doc loaded: '{title}' variant={variant}")
+    return _rag_doc_out(doc)
+
+
+@app.patch("/admin/rag/documents/{doc_id}")
+async def update_rag_document(
+    doc_id: int,
+    body: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    doc = await db.get(RagDocument, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="RAG document not found")
+    if "is_active" in body:
+        doc.is_active = bool(body["is_active"])
+    await db.commit()
+    return _rag_doc_out(doc)
+
+
+@app.delete("/admin/rag/documents/{doc_id}", status_code=204)
+async def delete_rag_document(
+    doc_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    doc = await db.get(RagDocument, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="RAG document not found")
+    await _log_audit(db, current_user.id, current_user.email, "rag_document_deleted", f"'{doc.title}'")
+    await db.delete(doc)
+    await db.commit()
+
+
+@app.delete("/admin/rag/documents", status_code=204)
+async def clear_all_rag_documents(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(RagDocument))
+    docs = result.scalars().all()
+    for doc in docs:
+        await db.delete(doc)
+    await db.commit()
+    await _log_audit(db, current_user.id, current_user.email, "rag_cleared", f"All {len(docs)} RAG documents deleted")

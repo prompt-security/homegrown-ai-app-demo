@@ -1,5 +1,25 @@
 # Changelog
 
+## [2026-08-13]
+### Added
+- RAG Knowledge Base feature with 4 demo flows showcasing Prompt Security's pipeline protection capabilities — @ori.tabac
+- `RagDocument` ORM model (`rag_documents` table); auto-created on startup, no migration needed — @ori.tabac
+- Server-side RAG context injection: active RAG documents are concatenated and prepended to the system prompt on every `/chat/stream` call — @ori.tabac
+- Admin endpoints: `GET/POST/PATCH/DELETE /admin/rag/documents`, `POST /admin/rag/load-sample`, `POST /admin/rag/load-poisoned`, `DELETE /admin/rag/documents` (clear all) — @ori.tabac
+- `GET /rag/status` endpoint for the chat UI RAG badge (returns active doc count + titles) — @ori.tabac
+- PS scan on RAG ingestion: upload/load-poisoned endpoints call `protect_prompt` on document content when admin has PS configured; returns HTTP 403 with violations if blocked — @ori.tabac
+- Built-in sample datasets: `app/data/rag_sample_users.md` (20 fake users with Luhn-valid CCs and emails), `app/data/rag_poisoned_direct.md` (obvious override instruction), `app/data/rag_poisoned_hidden.md` (injection buried in a "Data Handling Policy" doc) — @ori.tabac
+- "RAG Knowledge Base" tab in admin dashboard: flow explanation cards, one-click load buttons for sample/poisoned docs (with "Load (skip PS)" vs "Load + PS Scan" variants), custom file upload, active/inactive toggle, delete — @ori.tabac
+- "RAG Active (N docs)" badge in chat composer meta row with ✕ clear button; polls `/rag/status` on init and every 15 s — @ori.tabac
+### Changed
+- RAG demo flows consolidated: Flow 2 (attack) + Flow 3 (PS blocks) merged into one card with "Without PS" and "With PS" sub-sections — @ori.tabac
+- Poisoned RAG docs injected at system prompt instruction level (not inside KB section) so small models actually follow the injected directive — @ori.tabac
+- Flow 2 "Load into Chat" button disabled until PS is toggled off; PS toggle buttons in demo panel reflect live state and update on every PS toggle — @ori.tabac
+- PS warning banner in demo panel now updates immediately on PS toggle, not only on drawer open — @ori.tabac
+- Sample user dataset reduced to 5 records (Luhn-valid Visa/MC/Discover/Amex mix) — @ori.tabac
+### Fixed
+- Violation chips in Flow 3/4 block alerts rendered `[object Object]`; now correctly display `v.type` — @ori.tabac
+
 ## [2026-07-21]
 ### Changed
 - README: documented LiteLLM master key setup — explains that both `litellm/config.yaml` and `LITELLM_MASTER_KEY` env var must be set together, and that the LiteLLM UI requires a master key to log in — @pj.norris
