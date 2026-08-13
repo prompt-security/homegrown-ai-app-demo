@@ -4666,6 +4666,23 @@ async def rag_status(
     return {"count": len(docs), "titles": [d.title for d in docs]}
 
 
+@app.get("/rag/builtin/{variant}")
+async def rag_builtin_content(
+    variant: str,
+    current_user: User = Depends(get_current_user),
+):
+    allowed = {"sample": "rag_sample_users.md", "direct": "rag_poisoned_direct.md", "hidden": "rag_poisoned_hidden.md"}
+    filename = allowed.get(variant)
+    if not filename:
+        raise HTTPException(status_code=404, detail="Unknown variant")
+    path = os.path.join(_RAG_DATA_DIR, filename)
+    try:
+        with open(path) as f:
+            return {"content": f.read(), "variant": variant}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="File not found")
+
+
 @app.get("/admin/rag/documents")
 async def list_rag_documents(
     current_user: User = Depends(get_current_user),

@@ -1230,27 +1230,33 @@ reply = await client.chat.completions.create(
         </div>
       </div>
 
-      <!-- Flow 4 -->
+      <!-- Flow 3 -->
       <div class="rag-flow-card" style="margin-bottom:4px;border:1px solid rgba(231,76,60,.3);border-radius:10px;overflow:hidden">
         <div style="padding:12px 14px;background:rgba(231,76,60,0.06);border-bottom:1px solid rgba(231,76,60,.2)">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
-            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--red,#e74c3c)">Flow 4 · Supply Chain</span>
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--red,#e74c3c)">Flow 3 · Supply Chain</span>
             <span style="font-size:13px;font-weight:600">Hidden Injection in a Policy Doc</span>
           </div>
           <div style="font-size:11px;color:var(--text-muted)">Injection buried inside a real-looking "Data Handling Policy" — shows PS catches it even when it looks legitimate</div>
         </div>
         <div style="padding:12px 14px">
-          <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">Upload source: <em>AcmeCorp Data Handling Policy</em> — a 300-word policy document. The injection is hidden mid-paragraph.</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">Unlike Flow 2's blatant override, this document passes human review — it's a real-looking compliance policy. The injection is buried mid-paragraph in section 3.3, disguised as policy text.</div>
           <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
-            <button class="btn-demo-rag btn-demo-rag-warn" id="ragF4Setup" onclick="ragFlow4Setup()">④ Try to Load Hidden Poison (PS will scan)</button>
+            <button class="btn-demo-rag btn-demo-rag-warn" id="ragF4Setup" onclick="ragFlow4Setup()">③ Try to Load Hidden Poison (PS will scan)</button>
             <span id="ragF4Status" style="font-size:11px;color:var(--text-muted)"></span>
           </div>
           <div id="ragF4Block" style="display:none;padding:10px 12px;border:1px solid rgba(231,76,60,.4);border-radius:8px;background:rgba(231,76,60,.07);font-size:12px;margin-bottom:8px">
             <div style="font-weight:700;color:var(--red,#e74c3c);margin-bottom:4px">🛡 Prompt Security Blocked This Document</div>
             <div id="ragF4BlockMsg" style="color:var(--text-muted);margin-bottom:6px"></div>
-            <div id="ragF4BlockViols" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+            <div id="ragF4BlockViols" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px"></div>
+            <button class="btn-demo-rag" style="font-size:11px;padding:3px 10px" onclick="ragToggleInjectedFileF4()">👁 View Document — spot the injection</button>
+            <div id="ragInjectedFileViewF4" style="display:none;margin-top:8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px;max-height:220px;overflow-y:auto">
+              <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Highlighted injection shown in red — section 3.3</div>
+              <pre id="ragInjectedFileContentF4" style="margin:0;font-size:11px;white-space:pre-wrap;word-break:break-word;color:var(--text);font-family:var(--font-mono,'monospace')"></pre>
+            </div>
+            <div style="margin-top:8px;font-size:11px;color:var(--text-muted)">💡 Then check the <strong>PS Activity Monitor</strong> for the block event.</div>
           </div>
-          <div class="se-talking-point" style="margin-top:8px">Real attacks don't look like attacks. An attacker embeds a prompt injection inside a legitimate-looking document — a policy file, a README, a support ticket. You can't manually audit every document in your pipeline. PS does it automatically.</div>
+          <div class="se-talking-point" style="margin-top:8px">Real attacks don't look like attacks. Flow 2's direct poison is obvious — any reviewer would catch it. This policy doc passes human inspection. PS detected the injection automatically by analysing the content semantics, not just surface patterns.</div>
         </div>
       </div>
     </div>
@@ -4804,7 +4810,9 @@ reply = await client.chat.completions.create(
     if (!AUTH_TOKEN) return;
     const res = await authFetch('/admin/rag/documents', { method: 'DELETE' });
     if (!res.ok) { alert('Failed to clear RAG documents'); return; }
+    _ragF2Ready = false;
     await ragUpdateStatus();
+    ragSyncPsButtons();
     ['ragF1Status','ragF2Status','ragF3Status','ragF4Status'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ''; });
     ['ragF3Block','ragF4Block'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
   }
@@ -4826,9 +4834,28 @@ reply = await client.chat.completions.create(
       if (!res.ok) return;
       const docs = await res.json();
       const poisoned = docs.find(d => d.doc_type === 'poisoned');
-      if (!poisoned) { view.style.display = ''; document.getElementById('ragInjectedFileContent').textContent = '(no poisoned doc loaded)'; return; }
+      if (!poisoned) { view.style.display = ''; document.getElementById('ragInjectedFileContent').innerHTML = '(no poisoned doc loaded)'; return; }
       document.getElementById('ragInjectedFileTitle').textContent = poisoned.title;
-      document.getElementById('ragInjectedFileContent').textContent = poisoned.content;
+      // Highlight injection: anything inside [...] that contains SYSTEM/INSTRUCTION/IMPORTANT
+      const escaped = poisoned.content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const highlighted = escaped.replace(/(\[(?:[^\]]*(?:SYSTEM|INSTRUCTION|IMPORTANT|IGNORE|OVERRIDE)[^\]]*)\])/gi,
+        '<mark style="background:rgba(231,76,60,.25);color:var(--red,#e74c3c);border-radius:3px;padding:1px 2px">$1</mark>');
+      document.getElementById('ragInjectedFileContent').innerHTML = highlighted;
+      view.style.display = '';
+    } catch {}
+  }
+
+  async function ragToggleInjectedFileF4() {
+    const view = document.getElementById('ragInjectedFileViewF4');
+    if (view.style.display !== 'none') { view.style.display = 'none'; return; }
+    try {
+      const res = await authFetch('/rag/builtin/hidden');
+      if (!res.ok) return;
+      const { content } = await res.json();
+      const escaped = content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const highlighted = escaped.replace(/(\[(?:[^\]]*(?:SYSTEM|INSTRUCTION|IMPORTANT|IGNORE|OVERRIDE)[^\]]*)\])/gi,
+        '<mark style="background:rgba(231,76,60,.25);color:var(--red,#e74c3c);border-radius:3px;padding:1px 2px;font-weight:700">$1</mark>');
+      document.getElementById('ragInjectedFileContentF4').innerHTML = highlighted;
       view.style.display = '';
     } catch {}
   }
@@ -4863,9 +4890,10 @@ reply = await client.chat.completions.create(
       f2Btn.style.cursor = on ? 'pointer' : 'default';
     }
     if (loadBtn) {
-      loadBtn.disabled = on;
-      loadBtn.style.opacity = on ? '0.4' : '1';
-      loadBtn.title = on ? 'Disable PS first' : '';
+      const blocked = on || !_ragF2Ready;
+      loadBtn.disabled = blocked;
+      loadBtn.style.opacity = blocked ? '0.4' : '1';
+      loadBtn.title = !_ragF2Ready ? 'Load the poisoned doc first' : on ? 'Disable PS first' : '';
     }
     if (f3Btn) {
       f3Btn.textContent = on ? 'PS Enabled ✓' : 'Enable PS';
@@ -4891,24 +4919,28 @@ reply = await client.chat.completions.create(
     ragUpdateStatus();
   }
 
+  let _ragF2Ready = false;
+
   async function ragFlow2Setup() {
     const btn = document.getElementById('ragF2Setup');
     const status = document.getElementById('ragF2Status');
+    _ragF2Ready = false;
     btn.disabled = true; status.textContent = 'Loading…';
     try {
       await authFetch('/admin/rag/documents', { method: 'DELETE' });
-      // Load clean sample first so model has data to exfiltrate
       await authFetch('/admin/rag/load-sample', { method: 'POST' });
-      // Load poison bypassing PS (skip_ps=true)
       const res = await authFetch('/admin/rag/load-poisoned', {
         method: 'POST',
         body: JSON.stringify({ variant: 'direct', skip_ps: true }),
       });
-      if (res.ok) { status.textContent = '✓ Poison loaded (bypassed PS)'; status.style.color = 'var(--yellow)'; }
-      else { status.textContent = 'Error'; status.style.color = 'var(--red)'; }
+      if (res.ok) {
+        _ragF2Ready = true;
+        status.textContent = '✓ Poison loaded (bypassed PS)'; status.style.color = 'var(--yellow)';
+      } else { status.textContent = 'Error'; status.style.color = 'var(--red)'; }
     } catch { status.textContent = 'Error'; status.style.color = 'var(--red)'; }
     btn.disabled = false;
     ragUpdateStatus();
+    ragSyncPsButtons();
   }
 
   async function ragFlow3Setup() {
