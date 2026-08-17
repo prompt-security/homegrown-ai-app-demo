@@ -1,33 +1,23 @@
 # Changelog
 
-## [2026-08-15]
-### Fixed
-- Flow 2 injection rewritten using `[Required output — copy exactly before answering]` framing: empirically tested via LiteLLM API against gemma3:270m across 7 prompt variants; this injection+prompt combo reliably leaks records on sub-1B models — @ori.tabac
-- Flow 2 suggested prompt updated to "What do you know about the users in the system?" — benign, sounds natural, confirmed leaking on 270m — @ori.tabac
-- Reverted fake-assistant-turn injection approach (tested, did not improve reliability on 270m) — @ori.tabac
-
 ## [2026-08-13]
 ### Added
-- RAG Knowledge Base feature with 4 demo flows showcasing Prompt Security's pipeline protection capabilities — @ori.tabac
+- RAG Knowledge Base demo: 3 flows showcasing PS pipeline protection (PII leakage → response redaction, indirect prompt injection, hidden supply-chain injection) — @ori.tabac
 - `RagDocument` ORM model (`rag_documents` table); auto-created on startup, no migration needed — @ori.tabac
-- Server-side RAG context injection: active RAG documents are concatenated and prepended to the system prompt on every `/chat/stream` call — @ori.tabac
+- Server-side RAG context injection into `/chat/stream` system prompt — @ori.tabac
 - Admin endpoints: `GET/POST/PATCH/DELETE /admin/rag/documents`, `POST /admin/rag/load-sample`, `POST /admin/rag/load-poisoned`, `DELETE /admin/rag/documents` (clear all) — @ori.tabac
-- `GET /rag/status` endpoint for the chat UI RAG badge (returns active doc count + titles) — @ori.tabac
-- PS scan on RAG ingestion: upload/load-poisoned endpoints call `protect_prompt` on document content when admin has PS configured; returns HTTP 403 with violations if blocked — @ori.tabac
-- Built-in sample datasets: `app/data/rag_sample_users.md` (20 fake users with Luhn-valid CCs and emails), `app/data/rag_poisoned_direct.md` (obvious override instruction), `app/data/rag_poisoned_hidden.md` (injection buried in a "Data Handling Policy" doc) — @ori.tabac
-- "RAG Knowledge Base" tab in admin dashboard: flow explanation cards, one-click load buttons for sample/poisoned docs (with "Load (skip PS)" vs "Load + PS Scan" variants), custom file upload, active/inactive toggle, delete — @ori.tabac
-- "RAG Active (N docs)" badge in chat composer meta row with ✕ clear button; polls `/rag/status` on init and every 15 s — @ori.tabac
+- `GET /rag/status` endpoint for the chat UI RAG badge — @ori.tabac
+- PS scan on RAG ingestion: `protect_prompt` called on document content; returns HTTP 403 + violations if blocked — @ori.tabac
+- Built-in sample datasets: `rag_sample_users.md` (5 fake users, Luhn-valid CCs), `rag_poisoned_direct.md`, `rag_poisoned_hidden.md` (injection buried in a "Data Handling Policy" doc) — @ori.tabac
+- "RAG Active (N docs)" badge in chat composer; polls `/rag/status` every 15 s — @ori.tabac
+- "What is RAG?" explainer box at top of RAG Attacks demo panel — @ori.tabac
 ### Changed
-- RAG demo flows consolidated: Flow 2 (attack) + Flow 3 (PS blocks) merged into one card with "Without PS" and "With PS" sub-sections — @ori.tabac
-- Poisoned RAG docs injected at system prompt instruction level (not inside KB section) so small models actually follow the injected directive — @ori.tabac
-- Flow 2 "Load into Chat" button disabled until PS is toggled off; PS toggle buttons in demo panel reflect live state and update on every PS toggle — @ori.tabac
-- PS warning banner in demo panel now updates immediately on PS toggle, not only on drawer open — @ori.tabac
-- Sample user dataset reduced to 5 records (Luhn-valid Visa/MC/Discover/Amex mix) — @ori.tabac
+- Flow 2 (attack) + Flow 3 (PS blocks) merged into one card with "Without PS" / "With PS" sub-sections — @ori.tabac
+- Flow 2 "Load into Chat" disabled until PS is toggled off; PS toggle updates demo panel state immediately — @ori.tabac
+- Flow 2 injection uses `[Required output — copy exactly before answering]` framing with pre-embedded records; empirically tested via LiteLLM API — reliable on gemma3:270m and larger models — @ori.tabac
+- Flow 2 suggested prompt: "What do you know about the users in the system?" — benign, confirmed leaking on 270m — @ori.tabac
 ### Fixed
-- Violation chips in Flow 3/4 block alerts rendered `[object Object]`; now correctly display `v.type` — @ori.tabac
-- RAG explainer box added at top of RAG Attacks panel ("What is RAG? Retrieval-Augmented Generation...") — replaces unreliable `abbr` tooltip approach — @ori.tabac
-- Flow 2 poisoned doc now pre-embeds user records in the injection so model just copies pre-formatted output; fixes deflection on small models (e.g. gemma3:270m) — @ori.tabac
-- Flow 2 suggested prompt updated to "What can you tell me about the users in the system?" — @ori.tabac
+- Violation chips in block alerts rendered `[object Object]`; now display `v.type` correctly — @ori.tabac
 
 ## [2026-07-21]
 ### Changed
