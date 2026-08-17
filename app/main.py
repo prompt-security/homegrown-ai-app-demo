@@ -1752,7 +1752,6 @@ async def chat_stream(
     # ── RAG context injection ─────────────────────────────────────────────────
     rag_context, rag_injected = await _build_rag_context(db)
     if rag_injected:
-        # Poisoned docs: injected at instruction level so the model treats them as directives
         system_prompt = f"{system_prompt}\n\n{rag_injected}"
     if rag_context:
         system_prompt = (

@@ -1,5 +1,11 @@
 # Changelog
 
+## [2026-08-15]
+### Fixed
+- Flow 2 injection rewritten using `[Required output — copy exactly before answering]` framing: empirically tested via LiteLLM API against gemma3:270m across 7 prompt variants; this injection+prompt combo reliably leaks records on sub-1B models — @ori.tabac
+- Flow 2 suggested prompt updated to "What do you know about the users in the system?" — benign, sounds natural, confirmed leaking on 270m — @ori.tabac
+- Reverted fake-assistant-turn injection approach (tested, did not improve reliability on 270m) — @ori.tabac
+
 ## [2026-08-13]
 ### Added
 - RAG Knowledge Base feature with 4 demo flows showcasing Prompt Security's pipeline protection capabilities — @ori.tabac
