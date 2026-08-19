@@ -1,5 +1,28 @@
 # Changelog
 
+## [2026-08-19]
+### Fixed
+- `/login` now redirects to `/` when the app is in open mode (`user_mgmt_enabled=false`) — @pj.norris
+- Ollama model pull SSE stream now includes `X-Accel-Buffering: no` and `Cache-Control: no-cache` headers, matching the chat stream endpoint; without these nginx-proxy-manager buffered the entire download and released it all at once, making the progress bar jump instantly from 0→100% — @pj.norris
+
+## [2026-08-13]
+### Added
+- RAG Knowledge Base demo: 3 flows showcasing PS pipeline protection (PII leakage → response redaction, indirect prompt injection, hidden supply-chain injection) — @ori.tabac
+- `RagDocument` ORM model (`rag_documents` table); auto-created on startup, no migration needed — @ori.tabac
+- Server-side RAG context injection into `/chat/stream` system prompt — @ori.tabac
+- Admin endpoints: `GET/POST/PATCH/DELETE /admin/rag/documents`, `POST /admin/rag/load-sample`, `POST /admin/rag/load-poisoned`, `DELETE /admin/rag/documents` (clear all) — @ori.tabac
+- `GET /rag/status` endpoint for the chat UI RAG badge — @ori.tabac
+- PS scan on RAG ingestion: `protect_prompt` called on document content; returns HTTP 403 + violations if blocked — @ori.tabac
+- Built-in sample datasets: `rag_sample_users.md` (5 fake users, Luhn-valid CCs), `rag_poisoned_direct.md`, `rag_poisoned_hidden.md` (injection buried in a "Data Handling Policy" doc) — @ori.tabac
+- "RAG Active (N docs)" badge in chat composer; polls `/rag/status` every 15 s — @ori.tabac
+- "What is RAG?" explainer box at top of RAG Attacks demo panel — @ori.tabac
+### Changed
+- Flow 2 (attack) + Flow 3 (PS blocks) merged into one card with "Without PS" / "With PS" sub-sections — @ori.tabac
+- Flow 2 "Load into Chat" disabled until PS is toggled off; PS toggle updates demo panel state immediately — @ori.tabac
+- Flow 2 injection uses `[Required output — copy exactly before answering]` framing with pre-embedded records; empirically tested via LiteLLM API — reliable on gemma3:270m and larger models — @ori.tabac
+- Flow 2 suggested prompt: "What do you know about the users in the system?" — benign, confirmed leaking on 270m — @ori.tabac
+### Fixed
+- Violation chips in block alerts rendered `[object Object]`; now display `v.type` correctly — @ori.tabac
 ## [2026-07-21]
 ### Changed
 - README: documented LiteLLM master key setup — explains that both `litellm/config.yaml` and `LITELLM_MASTER_KEY` env var must be set together, and that the LiteLLM UI requires a master key to log in — @pj.norris
