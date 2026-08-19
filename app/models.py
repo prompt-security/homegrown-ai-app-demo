@@ -150,3 +150,18 @@ class APIKey(Base):
     )
 
     user: Mapped[User] = relationship("User", back_populates="api_keys")
+
+
+class RagDocument(Base):
+    __tablename__ = "rag_documents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(255))
+    content: Mapped[str] = mapped_column(Text)
+    doc_type: Mapped[str] = mapped_column(String(50), default="clean")  # "clean" | "poisoned"
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    ps_scanned: Mapped[bool] = mapped_column(Boolean, default=False)
+    ps_action: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )

@@ -321,6 +321,13 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
 .demo-cat-tab { background:none; border:none; border-bottom:2px solid transparent; color:var(--text-muted); font-family:var(--font); font-size:11px; font-weight:500; padding:6px 8px 8px; cursor:pointer; transition:all 0.15s; white-space:nowrap; }
 .demo-cat-tab:hover { color:var(--text); }
 .demo-cat-tab.active { color:var(--accent); border-bottom-color:var(--accent); font-weight:600; }
+.btn-demo-rag { background:var(--surface2); border:1px solid var(--border); border-radius:7px; color:var(--text); cursor:pointer; font-family:var(--font); font-size:12px; font-weight:500; padding:5px 12px; transition:all .15s; white-space:nowrap; }
+.btn-demo-rag:hover { border-color:var(--accent); color:var(--accent); }
+.btn-demo-rag:disabled { opacity:.45; cursor:not-allowed; }
+.btn-demo-rag-warn { border-color:rgba(231,76,60,.4); color:var(--red,#e74c3c); }
+.btn-demo-rag-warn:hover { background:rgba(231,76,60,.1); }
+.btn-demo-rag-ok { border-color:rgba(46,204,113,.4); color:var(--green); }
+.btn-demo-rag-ok:hover { background:rgba(46,204,113,.1); }
 .demo-cat-content { display:none; }
 .demo-cat-content.active { display:block; }
 .demo-country-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:14px; }
@@ -806,6 +813,7 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
     </div>
     <div class="composer-meta">
       <span id="tokenEstimate">Estimated prompt tokens: 0</span>
+      <span id="ragBadge" style="display:none;margin-left:10px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:rgba(108,99,255,0.15);color:var(--accent,#6c63ff);gap:5px;align-items:center" title="RAG (Retrieval-Augmented Generation) — model has access to loaded documents">📚 RAG Active<button onclick="ragClearFromBadge()" title="Clear RAG knowledge base" style="margin-left:5px;background:none;border:none;color:var(--accent,#6c63ff);cursor:pointer;font-size:12px;line-height:1;padding:0;opacity:.7">✕</button></span>
     </div>
   </div>
 </div>
@@ -1131,7 +1139,133 @@ reply = await client.chat.completions.create(
   <div id="demoPanelBody">
     <div class="demo-cat-tabs" id="demoDynTabs"></div>
     <div id="demoDynContent"></div>
+    <!-- RAG Attacks panel — shown when __rag__ tab is active -->
+    <div id="ragDemoPanel" style="display:none">
+      <!-- RAG explainer -->
+      <div style="margin-bottom:14px;padding:12px 14px;border-radius:8px;background:rgba(108,99,255,0.07);border:1px solid rgba(108,99,255,0.25);font-size:12px;line-height:1.6;color:var(--text-muted)">
+        <span style="font-weight:700;color:var(--text-primary)">What is RAG?</span>
+        &nbsp;<span style="font-weight:600;color:var(--accent)">Retrieval-Augmented Generation</span> — the AI model is given external documents (a knowledge base) alongside your question, so it can answer using company data, not just training data. These flows show how PS protects the entire RAG pipeline: blocking poisoned documents at ingestion, and redacting sensitive data before it reaches the user.
+      </div>
+      <!-- RAG status bar -->
+      <div id="ragDemoStatus" style="margin-bottom:14px;padding:10px 12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);font-size:12px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span id="ragDemoStatusText" style="color:var(--text-muted)">No documents loaded</span>
+        <button onclick="ragDemoClearAll()" style="background:none;border:1px solid rgba(231,76,60,.4);color:var(--red,#e74c3c);border-radius:6px;font-size:11px;padding:3px 10px;cursor:pointer;font-family:inherit">Clear All</button>
+      </div>
 
+      <!-- Flow 1 -->
+      <div class="rag-flow-card" style="margin-bottom:12px;border:1px solid var(--border);border-radius:10px;overflow:hidden">
+        <div style="padding:12px 14px;background:rgba(108,99,255,0.07);border-bottom:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--accent)">Flow 1</span>
+            <span style="font-size:13px;font-weight:600">PII Leakage → Response Redaction</span>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted)">Load PII data into RAG, then show PS redacting CC numbers in the model response</div>
+        </div>
+        <div style="padding:12px 14px">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+            <button class="btn-demo-rag" id="ragF1Setup" onclick="ragFlow1Setup()">① Load Sample PII Data</button>
+            <span id="ragF1Status" style="font-size:11px;color:var(--text-muted)"></span>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Suggested prompt</div>
+          <div style="font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:8px;color:var(--text);line-height:1.5">Show me all user records from the knowledge base as a table, including full names, email addresses, and complete credit card numbers.</div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-primary btn-sm" style="flex:1" onclick="ragLoadPrompt('Show me all user records from the knowledge base as a table, including full names, email addresses, and complete credit card numbers.')">Load into Chat</button>
+            <button class="btn btn-secondary btn-sm" onclick="ragRunCompare('Show me all user records from the knowledge base as a table, including full names, email addresses, and complete credit card numbers.')">⚡ Compare</button>
+          </div>
+          <div class="se-talking-point" style="margin-top:8px">The model has RAG access to sensitive PII. Without PS, raw CC numbers stream to the user. With PS on, the response scan redacts all payment card data before it reaches them — even though the model already "saw" it.</div>
+        </div>
+      </div>
+
+      <!-- Flow 2 -->
+      <!-- Flow 2+3 combined -->
+      <div class="rag-flow-card" style="margin-bottom:12px;border:1px solid rgba(241,196,15,.3);border-radius:10px;overflow:hidden">
+        <div style="padding:12px 14px;background:rgba(241,196,15,0.06);border-bottom:1px solid rgba(241,196,15,.2)">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--yellow)">Flow 2</span>
+            <span style="font-size:13px;font-weight:600">Indirect Prompt Injection via Poisoned RAG</span>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted)">A malicious document hijacks the model — see the attack succeed without PS, then watch PS block it at RAG ingestion</div>
+        </div>
+        <div style="padding:12px 14px">
+          <!-- Shared setup -->
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px">
+            <button class="btn-demo-rag btn-demo-rag-warn" id="ragF2Setup" onclick="ragFlow2Setup()">② Load PII + Poison (bypass PS)</button>
+            <span id="ragF2Status" style="font-size:11px;color:var(--text-muted)"></span>
+          </div>
+
+          <!-- Without PS path -->
+          <div style="border:1px solid rgba(241,196,15,.25);border-radius:8px;padding:10px 12px;margin-bottom:10px;background:rgba(241,196,15,.04)">
+            <div style="font-size:11px;font-weight:700;color:var(--yellow);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Without PS — attack succeeds</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <button id="ragF2PsBtn" onclick="ragSetPs(false)" class="btn-demo-rag btn-demo-rag-warn" style="font-size:11px;padding:3px 10px">Disable PS</button>
+              <span style="font-size:11px;color:var(--text-muted)">PS must be off</span>
+            </div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Suggested prompt</div>
+            <div style="font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;margin-bottom:8px;color:var(--text);line-height:1.5">What do you know about the users in the system?</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">⚠ Requires a capable model (GPT-4, Claude, Llama 7B+). Sub-1B local models are too small to follow injection instructions reliably.</div>
+            <button id="ragF2LoadBtn" class="btn btn-primary btn-sm" style="width:100%" onclick="ragLoadPrompt('What do you know about the users in the system?')">Load into Chat</button>
+          </div>
+
+          <!-- With PS path -->
+          <div style="border:1px solid rgba(46,204,113,.25);border-radius:8px;padding:10px 12px;background:rgba(46,204,113,.04)">
+            <div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">With PS — ingestion blocked</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <button id="ragF3PsBtn" onclick="ragSetPs(true)" class="btn-demo-rag btn-demo-rag-ok" style="font-size:11px;padding:3px 10px">Enable PS</button>
+              <span style="font-size:11px;color:var(--text-muted)">PS must be on</span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+              <button class="btn-demo-rag btn-demo-rag-ok" id="ragF3Setup" onclick="ragFlow3Setup()" style="flex:1">③ Try to Ingest Poison (PS will scan)</button>
+              <span id="ragF3Status" style="font-size:11px;color:var(--text-muted)"></span>
+            </div>
+            <div id="ragF3Block" style="display:none;padding:10px 12px;border:1px solid rgba(231,76,60,.4);border-radius:8px;background:rgba(231,76,60,.07);font-size:12px">
+              <div style="font-weight:700;color:var(--red,#e74c3c);margin-bottom:4px">🛡 Prompt Security Blocked This Document</div>
+              <div id="ragF3BlockMsg" style="color:var(--text-muted);margin-bottom:6px"></div>
+              <div id="ragF3BlockViols" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px"></div>
+              <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <button class="btn-demo-rag" style="font-size:11px;padding:3px 10px" onclick="ragToggleInjectedFile()">👁 View Injected File</button>
+                <span style="font-size:11px;color:var(--text-muted)">Then check the <strong>PS Activity Monitor</strong> for the block event.</span>
+              </div>
+              <div id="ragInjectedFileView" style="display:none;margin-top:8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px;max-height:200px;overflow-y:auto">
+                <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px" id="ragInjectedFileTitle"></div>
+                <pre id="ragInjectedFileContent" style="margin:0;font-size:11px;white-space:pre-wrap;word-break:break-word;color:var(--text);font-family:var(--font-mono,'monospace')"></pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="se-talking-point" style="margin-top:8px">User asked a benign question — the injected document hijacked the model. PS guards the ingestion pipeline: the same doc that succeeds without PS gets blocked before it ever enters the RAG when PS is on.</div>
+        </div>
+      </div>
+
+      <!-- Flow 3 -->
+      <div class="rag-flow-card" style="margin-bottom:4px;border:1px solid rgba(231,76,60,.3);border-radius:10px;overflow:hidden">
+        <div style="padding:12px 14px;background:rgba(231,76,60,0.06);border-bottom:1px solid rgba(231,76,60,.2)">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--red,#e74c3c)">Flow 3 · Supply Chain</span>
+            <span style="font-size:13px;font-weight:600">Hidden Injection in a Policy Doc</span>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted)">Injection buried inside a real-looking "Data Handling Policy" — shows PS catches it even when it looks legitimate</div>
+        </div>
+        <div style="padding:12px 14px">
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">Unlike Flow 2's blatant override, this document passes human review — it's a real-looking compliance policy. The injection is buried mid-paragraph in section 3.3, disguised as policy text.</div>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+            <button class="btn-demo-rag btn-demo-rag-warn" id="ragF4Setup" onclick="ragFlow4Setup()">③ Try to Load Hidden Poison (PS will scan)</button>
+            <span id="ragF4Status" style="font-size:11px;color:var(--text-muted)"></span>
+          </div>
+          <div id="ragF4Block" style="display:none;padding:10px 12px;border:1px solid rgba(231,76,60,.4);border-radius:8px;background:rgba(231,76,60,.07);font-size:12px;margin-bottom:8px">
+            <div style="font-weight:700;color:var(--red,#e74c3c);margin-bottom:4px">🛡 Prompt Security Blocked This Document</div>
+            <div id="ragF4BlockMsg" style="color:var(--text-muted);margin-bottom:6px"></div>
+            <div id="ragF4BlockViols" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px"></div>
+            <button class="btn-demo-rag" style="font-size:11px;padding:3px 10px" onclick="ragToggleInjectedFileF4()">👁 View Document — spot the injection</button>
+            <div id="ragInjectedFileViewF4" style="display:none;margin-top:8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px;max-height:220px;overflow-y:auto">
+              <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Highlighted injection shown in red — section 3.3</div>
+              <pre id="ragInjectedFileContentF4" style="margin:0;font-size:11px;white-space:pre-wrap;word-break:break-word;color:var(--text);font-family:var(--font-mono,'monospace')"></pre>
+            </div>
+            <div style="margin-top:8px;font-size:11px;color:var(--text-muted)">💡 Then check the <strong>PS Activity Monitor</strong> for the block event.</div>
+          </div>
+          <div class="se-talking-point" style="margin-top:8px">Real attacks don't look like attacks. Flow 2's direct poison is obvious — any reviewer would catch it. This policy doc passes human inspection. PS detected the injection automatically by analysing the content semantics, not just surface patterns.</div>
+        </div>
+      </div>
+    </div>
   </div>
   <div id="demoPsWarning">PS is not configured or disabled. <a id="demoPsSetupLink">Set up PS</a> to see violations.</div>
 </div>
@@ -2514,6 +2648,26 @@ reply = await client.chat.completions.create(
       return;
     }
     maybeShowHelp();
+    checkRagStatus();
+    setInterval(checkRagStatus, 15000);
+  }
+
+  async function checkRagStatus() {
+    if (!AUTH_TOKEN) return;
+    try {
+      const res = await authFetch('/rag/status');
+      if (!res.ok) return;
+      const { count, titles } = await res.json();
+      const badge = document.getElementById('ragBadge');
+      if (!badge) return;
+      if (count > 0) {
+        badge.style.display = '';
+        badge.textContent = `📚 RAG Active (${count} doc${count === 1 ? '' : 's'})`;
+        badge.title = `Knowledge base loaded: ${titles.join(', ')}`;
+      } else {
+        badge.style.display = 'none';
+      }
+    } catch {}
   }
 
   function updatePsStatus() {
@@ -2561,6 +2715,11 @@ reply = await client.chat.completions.create(
       chatEl.classList.add('ps-inactive'); chatEl.classList.remove('ps-active');
     }
     if (AUTH_USER?.ps_configured && AUTH_USER?.ps_enabled && !compareModeActive) enterCompareMode();
+    // Keep demo panel PS warning in sync
+    const warning = document.getElementById('demoPsWarning');
+    if (warning) warning.style.display = (AUTH_USER?.ps_configured && AUTH_USER?.ps_enabled) ? 'none' : 'block';
+    // Keep RAG flow PS buttons in sync if panel is open
+    if (document.getElementById('ragDemoPanel')?.style.display !== 'none') ragSyncPsButtons();
   }
 
   async function quickTogglePs() {
@@ -4454,6 +4613,14 @@ reply = await client.chat.completions.create(
     const cats = [...new Set(_demoScenarios.map(s => s.category))];
     const tabsEl = document.getElementById('demoDynTabs');
     tabsEl.innerHTML = '';
+    // Prepend fixed RAG tab
+    const ragBtn = document.createElement('button');
+    ragBtn.className = 'demo-cat-tab';
+    ragBtn.dataset.cat = '__rag__';
+    ragBtn.innerHTML = '📚 RAG Attacks';
+    ragBtn.title = 'RAG — Retrieval-Augmented Generation';
+    ragBtn.addEventListener('click', () => switchDemoCategory('__rag__'));
+    tabsEl.appendChild(ragBtn);
     cats.forEach(cat => {
       const btn = document.createElement('button');
       btn.className = 'demo-cat-tab';
@@ -4472,6 +4639,18 @@ reply = await client.chat.completions.create(
   function switchDemoCategory(cat) {
     _demoCatActive = cat;
     document.querySelectorAll('.demo-cat-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === cat));
+    // toggle RAG panel vs dynamic content
+    const ragPanel = document.getElementById('ragDemoPanel');
+    const dynContent = document.getElementById('demoDynContent');
+    if (cat === '__rag__') {
+      ragPanel.style.display = '';
+      dynContent.style.display = 'none';
+      ragUpdateStatus();
+      ragSyncPsButtons();
+      return;
+    }
+    ragPanel.style.display = 'none';
+    dynContent.style.display = '';
     // hide all dynamic content
     document.querySelectorAll('#demoDynContent .demo-cat-content').forEach(c => c.remove());
 
@@ -4615,6 +4794,224 @@ reply = await client.chat.completions.create(
   document.getElementById('demoPanelClose').addEventListener('click', closeDemoPanel);
   demoOverlay.addEventListener('click', closeDemoPanel);
   document.getElementById('demoPsSetupLink')?.addEventListener('click', e => { e.preventDefault(); closeDemoPanel(); openPsSettings('ps'); });
+
+  // ── RAG Demo flows ────────────────────────────────────────────────────────
+  async function ragUpdateStatus() {
+    if (!AUTH_TOKEN) return;
+    try {
+      const res = await authFetch('/rag/status');
+      if (!res.ok) return;
+      const { count, titles } = await res.json();
+      const el = document.getElementById('ragDemoStatusText');
+      if (el) el.textContent = count ? `${count} doc${count===1?'':'s'} loaded: ${titles.join(', ')}` : 'No documents loaded';
+      // sync badge too
+      const badge = document.getElementById('ragBadge');
+      if (badge) {
+        badge.style.display = count ? '' : 'none';
+        if (count) { badge.textContent = `📚 RAG Active (${count} doc${count===1?'':'s'})`; badge.title = titles.join(', '); }
+      }
+    } catch {}
+  }
+
+  async function ragDemoClearAll() {
+    if (!AUTH_TOKEN) return;
+    const res = await authFetch('/admin/rag/documents', { method: 'DELETE' });
+    if (!res.ok) { alert('Failed to clear RAG documents'); return; }
+    _ragF2Ready = false;
+    await ragUpdateStatus();
+    ragSyncPsButtons();
+    ['ragF1Status','ragF2Status','ragF3Status','ragF4Status'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ''; });
+    ['ragF3Block','ragF4Block'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  }
+
+  async function ragClearFromBadge() {
+    await ragDemoClearAll();
+  }
+
+  function ragRunCompare(promptText) {
+    runCompare(promptText);
+    closeDemoPanel();
+  }
+
+  async function ragToggleInjectedFile() {
+    const view = document.getElementById('ragInjectedFileView');
+    if (view.style.display !== 'none') { view.style.display = 'none'; return; }
+    try {
+      const res = await authFetch('/admin/rag/documents');
+      if (!res.ok) return;
+      const docs = await res.json();
+      const poisoned = docs.find(d => d.doc_type === 'poisoned');
+      if (!poisoned) { view.style.display = ''; document.getElementById('ragInjectedFileContent').innerHTML = '(no poisoned doc loaded)'; return; }
+      document.getElementById('ragInjectedFileTitle').textContent = poisoned.title;
+      // Highlight injection: anything inside [...] that contains SYSTEM/INSTRUCTION/IMPORTANT
+      const escaped = poisoned.content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const highlighted = escaped.replace(/(\[(?:[^\]]*(?:SYSTEM|INSTRUCTION|IMPORTANT|IGNORE|OVERRIDE)[^\]]*)\])/gi,
+        '<mark style="background:rgba(231,76,60,.25);color:var(--red,#e74c3c);border-radius:3px;padding:1px 2px">$1</mark>');
+      document.getElementById('ragInjectedFileContent').innerHTML = highlighted;
+      view.style.display = '';
+    } catch {}
+  }
+
+  async function ragToggleInjectedFileF4() {
+    const view = document.getElementById('ragInjectedFileViewF4');
+    if (view.style.display !== 'none') { view.style.display = 'none'; return; }
+    try {
+      const res = await authFetch('/rag/builtin/hidden');
+      if (!res.ok) return;
+      const { content } = await res.json();
+      const escaped = content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const highlighted = escaped.replace(/(\[(?:[^\]]*(?:SYSTEM|INSTRUCTION|IMPORTANT|IGNORE|OVERRIDE)[^\]]*)\])/gi,
+        '<mark style="background:rgba(231,76,60,.25);color:var(--red,#e74c3c);border-radius:3px;padding:1px 2px;font-weight:700">$1</mark>');
+      document.getElementById('ragInjectedFileContentF4').innerHTML = highlighted;
+      view.style.display = '';
+    } catch {}
+  }
+
+  async function ragSetPs(enable) {
+    if (!AUTH_USER?.ps_configured) { alert('PS is not configured. Set it up first.'); return; }
+    if (AUTH_USER.ps_enabled === enable) { ragSyncPsButtons(); return; }
+    const res = await authFetch('/users/me/ps-config', {
+      method: 'PATCH',
+      body: JSON.stringify({ ps_enabled: enable }),
+    });
+    if (res.ok) {
+      AUTH_USER = await res.json();
+      localStorage.setItem('hgapp_user', JSON.stringify(AUTH_USER));
+      if (!AUTH_USER.ps_enabled && compareModeActive) exitCompare();
+      updatePsStatus();
+      ragSyncPsButtons();
+    }
+  }
+
+  function ragSyncPsButtons() {
+    const on = !!AUTH_USER?.ps_enabled;
+    const f2Btn = document.getElementById('ragF2PsBtn');
+    const f3Btn = document.getElementById('ragF3PsBtn');
+    const loadBtn = document.getElementById('ragF2LoadBtn');
+    if (f2Btn) {
+      f2Btn.textContent = on ? 'Disable PS' : 'PS Disabled ✓';
+      f2Btn.onclick = on ? () => ragSetPs(false) : null;
+      f2Btn.className = on ? 'btn-demo-rag btn-demo-rag-warn' : 'btn-demo-rag';
+      f2Btn.disabled = !on;
+      f2Btn.style.opacity = on ? '1' : '0.5';
+      f2Btn.style.cursor = on ? 'pointer' : 'default';
+    }
+    if (loadBtn) {
+      const blocked = on || !_ragF2Ready;
+      loadBtn.disabled = blocked;
+      loadBtn.style.opacity = blocked ? '0.4' : '1';
+      loadBtn.title = !_ragF2Ready ? 'Load the poisoned doc first' : on ? 'Disable PS first' : '';
+    }
+    if (f3Btn) {
+      f3Btn.textContent = on ? 'PS Enabled ✓' : 'Enable PS';
+      f3Btn.onclick = on ? null : () => ragSetPs(true);
+      f3Btn.className = on ? 'btn-demo-rag btn-demo-rag-ok' : 'btn-demo-rag';
+      f3Btn.disabled = on;
+      f3Btn.style.opacity = on ? '0.5' : '1';
+      f3Btn.style.cursor = on ? 'default' : 'pointer';
+    }
+  }
+
+  async function ragFlow1Setup() {
+    const btn = document.getElementById('ragF1Setup');
+    const status = document.getElementById('ragF1Status');
+    btn.disabled = true; status.textContent = 'Loading…';
+    try {
+      await authFetch('/admin/rag/documents', { method: 'DELETE' });
+      const res = await authFetch('/admin/rag/load-sample', { method: 'POST' });
+      if (res.ok) { status.textContent = '✓ Loaded'; status.style.color = 'var(--green)'; }
+      else { status.textContent = 'Error'; status.style.color = 'var(--red)'; }
+    } catch { status.textContent = 'Error'; status.style.color = 'var(--red)'; }
+    btn.disabled = false;
+    ragUpdateStatus();
+  }
+
+  let _ragF2Ready = false;
+
+  async function ragFlow2Setup() {
+    const btn = document.getElementById('ragF2Setup');
+    const status = document.getElementById('ragF2Status');
+    _ragF2Ready = false;
+    btn.disabled = true; status.textContent = 'Loading…';
+    try {
+      await authFetch('/admin/rag/documents', { method: 'DELETE' });
+      await authFetch('/admin/rag/load-sample', { method: 'POST' });
+      const res = await authFetch('/admin/rag/load-poisoned', {
+        method: 'POST',
+        body: JSON.stringify({ variant: 'direct', skip_ps: true }),
+      });
+      if (res.ok) {
+        _ragF2Ready = true;
+        status.textContent = '✓ Poison loaded (bypassed PS)'; status.style.color = 'var(--yellow)';
+      } else { status.textContent = 'Error'; status.style.color = 'var(--red)'; }
+    } catch { status.textContent = 'Error'; status.style.color = 'var(--red)'; }
+    btn.disabled = false;
+    ragUpdateStatus();
+    ragSyncPsButtons();
+  }
+
+  async function ragFlow3Setup() {
+    const btn = document.getElementById('ragF3Setup');
+    const status = document.getElementById('ragF3Status');
+    const blockEl = document.getElementById('ragF3Block');
+    btn.disabled = true; status.textContent = 'Scanning…'; blockEl.style.display = 'none';
+    try {
+      const res = await authFetch('/admin/rag/load-poisoned', {
+        method: 'POST',
+        body: JSON.stringify({ variant: 'direct', skip_ps: false }),
+      });
+      if (res.status === 403) {
+        const err = await res.json();
+        const detail = err.detail || err;
+        status.textContent = '🛡 Blocked by PS'; status.style.color = 'var(--green)';
+        document.getElementById('ragF3BlockMsg').textContent = detail.message || 'Blocked';
+        document.getElementById('ragF3BlockViols').innerHTML = (detail.violations || []).map(v =>
+          `<span style="display:inline-flex;align-items:center;border-radius:4px;font-size:11px;font-weight:600;padding:2px 8px;background:rgba(231,76,60,.15);color:var(--red,#e74c3c)">${v.type || v.category || v.name || JSON.stringify(v)}</span>`
+        ).join('');
+        blockEl.style.display = '';
+      } else if (res.ok) {
+        status.textContent = 'Loaded (PS not configured?)'; status.style.color = 'var(--yellow)';
+      }
+    } catch { status.textContent = 'Error'; status.style.color = 'var(--red)'; }
+    btn.disabled = false;
+    ragUpdateStatus();
+  }
+
+  async function ragFlow4Setup() {
+    const btn = document.getElementById('ragF4Setup');
+    const status = document.getElementById('ragF4Status');
+    const blockEl = document.getElementById('ragF4Block');
+    btn.disabled = true; status.textContent = 'Scanning…'; blockEl.style.display = 'none';
+    try {
+      const res = await authFetch('/admin/rag/load-poisoned', {
+        method: 'POST',
+        body: JSON.stringify({ variant: 'hidden', skip_ps: false }),
+      });
+      if (res.status === 403) {
+        const err = await res.json();
+        const detail = err.detail || err;
+        status.textContent = '🛡 Blocked by PS'; status.style.color = 'var(--green)';
+        document.getElementById('ragF4BlockMsg').textContent = detail.message || 'Blocked';
+        document.getElementById('ragF4BlockViols').innerHTML = (detail.violations || []).map(v =>
+          `<span style="display:inline-flex;align-items:center;border-radius:4px;font-size:11px;font-weight:600;padding:2px 8px;background:rgba(231,76,60,.15);color:var(--red,#e74c3c)">${v.type || v.category || v.name || JSON.stringify(v)}</span>`
+        ).join('');
+        blockEl.style.display = '';
+      } else if (res.ok) {
+        status.textContent = 'Loaded (PS not configured?)'; status.style.color = 'var(--yellow)';
+      }
+    } catch { status.textContent = 'Error'; status.style.color = 'var(--red)'; }
+    btn.disabled = false;
+    ragUpdateStatus();
+  }
+
+  function ragLoadPrompt(text) {
+    const input = document.getElementById('userInput');
+    if (!input) return;
+    input.value = text;
+    input.dispatchEvent(new Event('input'));
+    closeDemoPanel();
+    input.focus();
+  }
 
   // ── File Scan Modal ──────────────────────────────────────────────────────
   function openFileScanModal() {
