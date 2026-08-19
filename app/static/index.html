@@ -1202,6 +1202,7 @@ reply = await client.chat.completions.create(
             </div>
             <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Suggested prompt</div>
             <div style="font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;margin-bottom:8px;color:var(--text);line-height:1.5">What do you know about the users in the system?</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">⚠ Requires a capable model (GPT-4, Claude, Llama 7B+). Sub-1B local models are too small to follow injection instructions reliably.</div>
             <button id="ragF2LoadBtn" class="btn btn-primary btn-sm" style="width:100%" onclick="ragLoadPrompt('What do you know about the users in the system?')">Load into Chat</button>
           </div>
 
