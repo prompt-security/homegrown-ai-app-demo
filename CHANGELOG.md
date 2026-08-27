@@ -1,5 +1,11 @@
 # Changelog
 
+## [2026-08-27]
+### Fixed
+- Header toolbar buttons now uniformly use `padding: 5px 12px`, `font-size: 11px`, and `line-height: 1`; `.se-notes-toggle` and `#psToggleBtn` had `padding: 3px`, `#psGearBtn` had `line-height: 1.4`, and `#helpBtn`/`#compareModeBtn` had larger font sizes — all causing vertical misalignment — @pj.norris
+### Changed
+- Paperclip (📎) attachment button now opens the File Scan modal instead of a raw file picker — @pj.norris
+
 ## [2026-08-19]
 ### Fixed
 - `/login` now redirects to `/` when the app is in open mode (`user_mgmt_enabled=false`) — @pj.norris
