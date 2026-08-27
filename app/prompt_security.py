@@ -41,12 +41,15 @@ class PromptSecurityClient:
         user_prompt: str,
         system_prompt: Optional[str] = None,
         user: Optional[str] = None,
+        policy: Optional[dict] = None,
     ) -> PromptSecurityResult:
         payload: dict = {"prompt": user_prompt}
         if system_prompt:
             payload["system_prompt"] = system_prompt
         if user:
             payload["user"] = user
+        if policy:
+            payload["policy"] = policy
         return await self._call(payload, scan_type="prompt")
 
     async def protect_response(

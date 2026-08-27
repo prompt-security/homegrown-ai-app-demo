@@ -1,10 +1,11 @@
-name: CI
+name: Tests (Unit + PS API Integration)
 
 on:
   pull_request:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -38,4 +39,6 @@ jobs:
       - name: Run tests
         env:
           PYTHONPATH: app
-        run: pytest -q
+          PS_BASE_URL: ${{ secrets.PS_BASE_URL }}
+          PS_APP_ID: ${{ secrets.PS_APP_ID }}
+        run: pytest -q -s
