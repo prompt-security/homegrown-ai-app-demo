@@ -1,5 +1,9 @@
 # Changelog
 
+## [2026-09-04]
+### Removed
+- Integration Mode selector (API vs Gateway) removed from PS settings panel, guest wizard, and user wizard — Gateway mode is sunsetted; all sessions now default to API mode — @pj.norris
+
 ## [2026-08-27]
 ### Fixed
 - Header toolbar buttons now uniformly use `padding: 5px 12px`, `font-size: 11px`, and `line-height: 1`; `.se-notes-toggle` and `#psToggleBtn` had `padding: 3px`, `#psGearBtn` had `line-height: 1.4`, and `#helpBtn`/`#compareModeBtn` had larger font sizes — all causing vertical misalignment — @pj.norris
