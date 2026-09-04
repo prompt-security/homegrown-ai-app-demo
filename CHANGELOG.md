@@ -3,6 +3,7 @@
 ## [2026-09-04]
 ### Removed
 - Integration Mode selector (API vs Gateway) removed from PS settings panel, guest wizard, and user wizard — Gateway mode is sunsetted; all sessions now default to API mode — @pj.norris
+- "API vs Gateway" tab removed from the Intro modal (tab button and comparison content div) — @pj.norris
 
 ## [2026-08-27]
 ### Fixed
