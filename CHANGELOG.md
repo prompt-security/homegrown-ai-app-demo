@@ -1,5 +1,9 @@
 # Changelog
 
+## [2026-09-17]
+### Fixed
+- RAG demo setup buttons ("Load Sample PII Data" etc.) now work in open mode: `authFetch` falls back to the admin token (`hgapp_admin_token`) for `/admin/` paths when no chat-user token is present, and suppresses the 401→login redirect for admin-token fallback calls — @pj.norris
+
 ## [2026-09-04]
 ### Removed
 - Integration Mode selector (API vs Gateway) removed from PS settings panel, guest wizard, and user wizard — Gateway mode is sunsetted; all sessions now default to API mode — @pj.norris

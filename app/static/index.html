@@ -2360,19 +2360,25 @@ reply = await client.chat.completions.create(
   }
 
   function authFetch(url, opts = {}) {
+    // For /admin/ paths in open mode (no chat AUTH_TOKEN), fall back to the admin token so
+    // RAG demo setup functions work without requiring a chat-user login.
+    const token = AUTH_TOKEN || (url.startsWith('/admin/') ? localStorage.getItem('hgapp_admin_token') : null);
     return fetch(url, {
       ...opts,
       headers: {
         ...(opts.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
-        'Authorization': `Bearer ${AUTH_TOKEN}`,
+        'Authorization': `Bearer ${token}`,
         ...(opts.headers || {}),
       },
     }).then(res => {
       if (res.status === 401) {
-        clearAuthSession();
-        fetch('/setup/status').then(r => r.json()).then(({ needs_setup }) => {
-          window.location.replace(needs_setup ? '/admin' : '/login');
-        }).catch(() => window.location.replace('/login'));
+        // Only redirect to login if this was a chat-user authenticated request (not an admin fallback)
+        if (AUTH_TOKEN) {
+          clearAuthSession();
+          fetch('/setup/status').then(r => r.json()).then(({ needs_setup }) => {
+            window.location.replace(needs_setup ? '/admin' : '/login');
+          }).catch(() => window.location.replace('/login'));
+        }
       }
       return res;
     });
