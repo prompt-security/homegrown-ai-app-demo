@@ -77,6 +77,57 @@ Tests use SQLite in-memory via `conftest.py` — no running Postgres or LiteLLM 
 
 ---
 
+## Open Mode vs User Mode — Development Checklist
+
+The app runs in two modes controlled by the `user_mgmt_enabled` AppSetting:
+
+| | **Open Mode** (`user_mgmt_enabled=false`) | **User Mode** (`user_mgmt_enabled=true`) |
+|---|---|---|
+| Auth token | None (`AUTH_TOKEN` is null in frontend) | JWT from `/auth/login`, stored as `hgapp_token` |
+| PS config | Client-side only — `hgapp_open_ps_config` in localStorage | Server-side — `User.ps_api_key_enc` + `User.ps_tenant` in DB |
+| API calls | `authFetch` rewrites `/admin/rag/` → `/guest/rag/`; no auth header | `authFetch` sends `Authorization: Bearer <token>` |
+| Secrets | Encrypted client-side via `_psEncrypt` / `_psDecrypt` | Fernet-encrypted server-side via `crypto.py` |
+
+**Rule: always verify new features work in both modes before committing.**
+
+### Common pitfalls
+
+- **`authFetch` 401 → redirect loop**: In open mode `AUTH_TOKEN` is null. Any `authFetch` call to an auth-required endpoint sends `Bearer null`, gets 401, and the handler redirects to `/login` — which itself redirects back to `/` in open mode. If a feature calls an auth endpoint, add a guest equivalent or an open-mode branch.
+- **PS config source mismatch**: Backend endpoints that call `_build_ps_api_client(user)` read the **server-side** PS config. In open mode the guest's PS config is in localStorage, not the DB. Guest endpoints must accept `ps_base_url` + `ps_app_id` in the request body (see `/guest/rag/load-poisoned`) and use them when present.
+- **State mutations via API in open mode**: Anything that PATCHes user state (`/users/me/ps-config`, etc.) requires a logged-in user. In open mode, mirror the mutation locally: update `AUTH_USER` in memory and persist to the relevant localStorage key (`hgapp_open_ps_config`, `hgapp_user`, etc.).
+- **Guest endpoint gating**: All `/guest/` endpoints that mutate state must call `_require_open_mode(db)` at the top to return 403 in user mode — prevents unauthenticated writes on user-mode deployments.
+
+### Guest endpoint pattern
+
+```python
+@app.post("/guest/rag/some-action", status_code=201)
+async def guest_some_action(body: dict, db: AsyncSession = Depends(get_db)):
+    await _require_open_mode(db)           # 403 if not open mode
+    admin = await _get_admin_user(db)      # for audit logging
+    ps_base_url = (body.get("ps_base_url") or "").strip()
+    ps_app_id   = (body.get("ps_app_id")   or "").strip()
+    ps_client = (PromptSecurityClient(base_url=ps_base_url, app_id=ps_app_id)
+                 if ps_base_url and ps_app_id else _build_ps_api_client(admin))
+    ...
+```
+
+### Frontend open-mode branch pattern
+
+```javascript
+if (OPEN_MODE) {
+    // update AUTH_USER and localStorage directly — no API call
+    AUTH_USER = { ...AUTH_USER, ps_enabled: enable };
+    const cfg = JSON.parse(localStorage.getItem('hgapp_open_ps_config') || '{}');
+    localStorage.setItem('hgapp_open_ps_config', JSON.stringify({ ...cfg, enabled: enable }));
+    updatePsStatus();
+    return;
+}
+// user mode — call the API
+const res = await authFetch('/users/me/ps-config', { method: 'PATCH', body: JSON.stringify({ ps_enabled: enable }) });
+```
+
+---
+
 ## Demo Scenario Translations
 
 The demo panel supports multi-language PII prompts via a language picker (`<select>`) shown per country when translations exist. Translations use a **dual-write** pattern so existing deployments pick them up without DB reload.
