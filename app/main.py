@@ -4901,6 +4901,29 @@ async def _get_admin_user(db: AsyncSession) -> User:
     return admin
 
 
+@app.get("/guest/rag/status")
+async def guest_rag_status(db: AsyncSession = Depends(get_db)):
+    await _require_open_mode(db)
+    result = await db.execute(select(RagDocument).where(RagDocument.is_active.is_(True)))
+    docs = result.scalars().all()
+    return {"count": len(docs), "titles": [d.title for d in docs]}
+
+
+@app.get("/guest/rag/builtin/{variant}")
+async def guest_rag_builtin_content(variant: str, db: AsyncSession = Depends(get_db)):
+    await _require_open_mode(db)
+    allowed = {"sample": "rag_sample_users.md", "direct": "rag_poisoned_direct.md", "hidden": "rag_poisoned_hidden.md"}
+    filename = allowed.get(variant)
+    if not filename:
+        raise HTTPException(status_code=404, detail="Unknown variant")
+    path = os.path.join(_RAG_DATA_DIR, filename)
+    try:
+        with open(path) as f:
+            return {"content": f.read(), "variant": variant}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="File not found")
+
+
 @app.get("/guest/rag/documents")
 async def guest_list_rag_documents(db: AsyncSession = Depends(get_db)):
     await _require_open_mode(db)
