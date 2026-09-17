@@ -4921,7 +4921,7 @@ async def guest_clear_all_rag_documents(db: AsyncSession = Depends(get_db)):
 
 
 @app.post("/guest/rag/load-sample", status_code=201)
-async def guest_load_rag_sample(db: AsyncSession = Depends(get_db)):
+async def guest_load_rag_sample(body: dict = {}, db: AsyncSession = Depends(get_db)):
     await _require_open_mode(db)
     admin = await _get_admin_user(db)
     sample_path = os.path.join(_RAG_DATA_DIR, "rag_sample_users.md")
@@ -4933,7 +4933,11 @@ async def guest_load_rag_sample(db: AsyncSession = Depends(get_db)):
 
     ps_scanned = False
     ps_action = None
-    ps_client = _build_ps_api_client(admin)
+    # Prefer PS config supplied by the client (open-mode guest config); fall back to admin's server-side config
+    ps_base_url = (body.get("ps_base_url") or "").strip()
+    ps_app_id   = (body.get("ps_app_id")   or "").strip()
+    ps_client = (PromptSecurityClient(base_url=ps_base_url, app_id=ps_app_id)
+                 if ps_base_url and ps_app_id else _build_ps_api_client(admin))
     if ps_client:
         ps_result = await ps_client.protect_prompt(user_prompt=content, user=admin.email)
         ps_scanned = True
@@ -4970,7 +4974,10 @@ async def guest_load_rag_poisoned(body: dict, db: AsyncSession = Depends(get_db)
 
     ps_scanned = False
     ps_action = None
-    ps_client = _build_ps_api_client(admin)
+    ps_base_url = (body.get("ps_base_url") or "").strip()
+    ps_app_id   = (body.get("ps_app_id")   or "").strip()
+    ps_client = (PromptSecurityClient(base_url=ps_base_url, app_id=ps_app_id)
+                 if ps_base_url and ps_app_id else _build_ps_api_client(admin))
     if ps_client and not skip_ps:
         ps_result = await ps_client.protect_prompt(user_prompt=content, user=admin.email)
         ps_scanned = True

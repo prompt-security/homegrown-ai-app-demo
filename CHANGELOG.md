@@ -3,6 +3,7 @@
 ## [2026-09-17]
 ### Fixed
 - RAG demo "Enable PS" / "Disable PS" buttons now work in open mode: toggle PS state locally (`AUTH_USER` + `hgapp_open_ps_config`) instead of calling `PATCH /users/me/ps-config` which requires a user session — @pj.norris
+- Guest RAG load endpoints now receive the guest's PS config (`ps_base_url` + `ps_app_id`) from the client so PS scanning in Flows 3/4 uses the configured tenant rather than the admin's server-side config; fixes "Loaded (PS not configured?)" appearing when PS was actually configured — @pj.norris
 
 
 ### Added
