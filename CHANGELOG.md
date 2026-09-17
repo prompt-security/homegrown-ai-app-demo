@@ -1,8 +1,10 @@
 # Changelog
 
 ## [2026-09-17]
+### Added
+- Guest RAG endpoints (`/guest/rag/documents` GET/DELETE, `/guest/rag/load-sample`, `/guest/rag/load-poisoned`) — open-mode equivalents that require no auth; only available when `user_mgmt_enabled=false`; use the admin user's PS config for scanning — @pj.norris
 ### Fixed
-- RAG demo setup buttons ("Load Sample PII Data" etc.) now work in open mode: `authFetch` falls back to the admin token (`hgapp_admin_token`) for `/admin/` paths when no chat-user token is present, and suppresses the 401→login redirect for admin-token fallback calls — @pj.norris
+- RAG demo setup buttons ("Load Sample PII Data" etc.) now work in open mode without requiring any login: `authFetch` rewrites `/admin/rag/` calls to `/guest/rag/` when `OPEN_MODE` is true and omits the auth header; the 401→login redirect is suppressed for unauthenticated guest paths — @pj.norris
 
 ## [2026-09-04]
 ### Removed
