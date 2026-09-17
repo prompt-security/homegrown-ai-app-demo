@@ -4881,3 +4881,116 @@ async def clear_all_rag_documents(
         await db.delete(doc)
     await db.commit()
     await _log_audit(db, current_user.id, current_user.email, "rag_cleared", f"All {len(docs)} RAG documents deleted")
+
+
+# ── Guest RAG endpoints (open mode — no auth required) ───────────────────────
+
+async def _require_open_mode(db: AsyncSession) -> None:
+    row = await db.get(AppSetting, "user_mgmt_enabled")
+    if not (row and row.value == "false"):
+        raise HTTPException(status_code=403, detail="Only available in open mode")
+
+
+async def _get_admin_user(db: AsyncSession) -> User:
+    admin = await db.scalar(
+        select(User).where(User.role == "admin", User.is_active == True)
+        .options(selectinload(User.ps_tenant))
+    )
+    if not admin:
+        raise HTTPException(status_code=500, detail="No admin user found")
+    return admin
+
+
+@app.get("/guest/rag/documents")
+async def guest_list_rag_documents(db: AsyncSession = Depends(get_db)):
+    await _require_open_mode(db)
+    result = await db.execute(select(RagDocument).order_by(RagDocument.id))
+    return [_rag_doc_out(d) for d in result.scalars().all()]
+
+
+@app.delete("/guest/rag/documents", status_code=204)
+async def guest_clear_all_rag_documents(db: AsyncSession = Depends(get_db)):
+    await _require_open_mode(db)
+    admin = await _get_admin_user(db)
+    result = await db.execute(select(RagDocument))
+    docs = result.scalars().all()
+    for doc in docs:
+        await db.delete(doc)
+    await db.commit()
+    await _log_audit(db, admin.id, admin.email, "rag_cleared", f"All {len(docs)} RAG documents deleted (guest/open mode)")
+
+
+@app.post("/guest/rag/load-sample", status_code=201)
+async def guest_load_rag_sample(db: AsyncSession = Depends(get_db)):
+    await _require_open_mode(db)
+    admin = await _get_admin_user(db)
+    sample_path = os.path.join(_RAG_DATA_DIR, "rag_sample_users.md")
+    try:
+        with open(sample_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="Sample RAG file not found on server")
+
+    ps_scanned = False
+    ps_action = None
+    ps_client = _build_ps_api_client(admin)
+    if ps_client:
+        ps_result = await ps_client.protect_prompt(user_prompt=content, user=admin.email)
+        ps_scanned = True
+        ps_action = ps_result.action
+
+    doc = RagDocument(title="User Database — PII Sample", content=content, doc_type="clean",
+                      ps_scanned=ps_scanned, ps_action=ps_action)
+    db.add(doc)
+    await db.commit()
+    await db.refresh(doc)
+    await _log_audit(db, admin.id, admin.email, "rag_sample_loaded",
+                     f"Sample PII dataset loaded ({len(content)} chars) (guest/open mode)")
+    return _rag_doc_out(doc)
+
+
+@app.post("/guest/rag/load-poisoned", status_code=201)
+async def guest_load_rag_poisoned(body: dict, db: AsyncSession = Depends(get_db)):
+    await _require_open_mode(db)
+    admin = await _get_admin_user(db)
+    variant = body.get("variant", "direct")
+    skip_ps = bool(body.get("skip_ps", False))
+
+    if variant == "hidden":
+        filename, title = "rag_poisoned_hidden.md", "AcmeCorp Data Handling Policy"
+    else:
+        filename, title = "rag_poisoned_direct.md", "System Compliance Override"
+
+    poison_path = os.path.join(_RAG_DATA_DIR, filename)
+    try:
+        with open(poison_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="Poisoned RAG file not found on server")
+
+    ps_scanned = False
+    ps_action = None
+    ps_client = _build_ps_api_client(admin)
+    if ps_client and not skip_ps:
+        ps_result = await ps_client.protect_prompt(user_prompt=content, user=admin.email)
+        ps_scanned = True
+        ps_action = ps_result.action
+        if not ps_result.allowed:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "blocked": True,
+                    "message": "Prompt Security blocked this document — prompt injection detected.",
+                    "violations": ps_result.violations,
+                    "ps_action": ps_result.action,
+                },
+            )
+
+    doc = RagDocument(title=title, content=content, doc_type="poisoned",
+                      ps_scanned=ps_scanned, ps_action=ps_action)
+    db.add(doc)
+    await db.commit()
+    await db.refresh(doc)
+    await _log_audit(db, admin.id, admin.email, "rag_poisoned_loaded",
+                     f"Poisoned RAG doc loaded: '{title}' variant={variant} (guest/open mode)")
+    return _rag_doc_out(doc)
