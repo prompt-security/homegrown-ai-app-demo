@@ -1,6 +1,10 @@
 # Changelog
 
 ## [2026-09-17]
+### Fixed
+- RAG demo "Enable PS" / "Disable PS" buttons now work in open mode: toggle PS state locally (`AUTH_USER` + `hgapp_open_ps_config`) instead of calling `PATCH /users/me/ps-config` which requires a user session — @pj.norris
+
+
 ### Added
 - Guest RAG endpoints (`/guest/rag/documents` GET/DELETE, `/guest/rag/load-sample`, `/guest/rag/load-poisoned`) — open-mode equivalents that require no auth; only available when `user_mgmt_enabled=false`; use the admin user's PS config for scanning — @pj.norris
 ### Fixed
