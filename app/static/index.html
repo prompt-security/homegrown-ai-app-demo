@@ -4732,6 +4732,15 @@ reply = await client.chat.completions.create(
   async function ragSetPs(enable) {
     if (!AUTH_USER?.ps_configured) { alert('PS is not configured. Set it up first.'); return; }
     if (AUTH_USER.ps_enabled === enable) { ragSyncPsButtons(); return; }
+    if (OPEN_MODE) {
+      AUTH_USER = { ...AUTH_USER, ps_enabled: enable };
+      const cfg = JSON.parse(localStorage.getItem('hgapp_open_ps_config') || '{}');
+      localStorage.setItem('hgapp_open_ps_config', JSON.stringify({ ...cfg, enabled: enable }));
+      if (!enable && compareModeActive) exitCompare();
+      updatePsStatus();
+      ragSyncPsButtons();
+      return;
+    }
     const res = await authFetch('/users/me/ps-config', {
       method: 'PATCH',
       body: JSON.stringify({ ps_enabled: enable }),
