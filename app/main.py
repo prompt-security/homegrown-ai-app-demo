@@ -693,7 +693,10 @@ async def root():
     return HTMLResponse(open("static/index.html").read())
 
 @app.get("/login", response_class=HTMLResponse)
-async def login_page():
+async def login_page(db: AsyncSession = Depends(get_db)):
+    row = await db.get(AppSetting, "user_mgmt_enabled")
+    if row and row.value == "false":
+        return RedirectResponse(url="/", status_code=302)
     return HTMLResponse(open("static/login.html").read())
 
 @app.get("/admin", response_class=HTMLResponse)
@@ -3392,7 +3395,11 @@ async def pull_ollama_model(
 
         yield 'data: {"status":"done"}\n\n'
 
-    return StreamingResponse(_stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        _stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.delete("/admin/ollama/pull")

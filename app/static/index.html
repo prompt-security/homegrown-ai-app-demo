@@ -59,11 +59,11 @@ header .spacer { flex: 1; }
 .icon-btn:hover { color: var(--text); background: var(--surface2); }
 .icon-btn.active { color: var(--accent); }
 #psWidget { display: flex; align-items: center; gap: 2px; }
-#psToggleBtn { font-size: 11px; padding: 3px 10px; border-radius: 12px 0 0 12px; font-weight: 600; white-space: nowrap; cursor: pointer; border: 1px solid; border-right: none; transition: all 0.2s; }
+#psToggleBtn { font-size: 11px; padding: 5px 10px; border-radius: 12px 0 0 12px; font-weight: 600; white-space: nowrap; cursor: pointer; border: 1px solid; border-right: none; transition: all 0.2s; line-height: 1; }
 #psToggleBtn.on  { background: rgba(46,204,113,0.1); color: var(--green); border-color: rgba(46,204,113,0.3); }
 #psToggleBtn.off { background: rgba(122,125,142,0.1); color: var(--text-muted); border-color: var(--border); }
 #psToggleBtn:hover { filter: brightness(1.2); }
-#psGearBtn { font-size: 12px; padding: 3px 7px; border-radius: 0 12px 12px 0; border: 1px solid; border-left: none; cursor: pointer; background: rgba(122,125,142,0.1); color: var(--text-muted); border-color: var(--border); transition: all 0.2s; line-height: 1.4; }
+#psGearBtn { font-size: 12px; padding: 5px 7px; border-radius: 0 12px 12px 0; border: 1px solid; border-left: none; cursor: pointer; background: rgba(122,125,142,0.1); color: var(--text-muted); border-color: var(--border); transition: all 0.2s; line-height: 1; }
 #psGearBtn:hover { background: var(--surface2); color: var(--text); }
 #psGearBtn.on { border-color: rgba(46,204,113,0.3); }
 #userMenuBtn { display: flex; align-items: center; gap: 6px; background: none; border: 1px solid var(--border); border-radius: 8px; color: var(--text-muted); font-family: var(--font); font-size: 12px; padding: 5px 10px; cursor: pointer; transition: all 0.15s; position: relative; }
@@ -102,7 +102,7 @@ header .spacer { flex: 1; }
 .cmp-bot-bubble { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px 14px 14px 14px; padding: 10px 14px; font-size: 14px; max-width: 85%; word-wrap: break-word; }
 .cmp-bot-bubble.blocked-bubble { background: rgba(220,53,69,0.12); border-color: var(--red); color: var(--red); }
 .cmp-footer { margin-left: 36px; margin-top: 4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-#compareModeBtn { font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer; transition: all 0.2s; }
+#compareModeBtn { font-size: 11px; font-weight: 600; padding: 5px 12px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer; transition: all 0.2s; line-height: 1; }
 #compareModeBtn:hover { background: var(--surface2); color: var(--text); }
 #compareModeBtn.active { background: #3a3510; border-color: #f0c060; color: #f0c060; }
 .message { display: flex; gap: 10px; max-width: 760px; animation: fadeIn 0.22s ease-out; }
@@ -156,7 +156,7 @@ header .spacer { flex: 1; }
 body.demo-mode .se-talking-point { display:none; }
 body.hide-exp-notes .ps-why-section { display:none; }
 /* ── SE Notes toggle ── */
-.se-notes-toggle { font-size:11px; padding:3px 10px; border-radius:6px; border:1px solid var(--border); background:transparent; color:var(--text-muted); cursor:pointer; transition:all 0.15s; white-space:nowrap; display:flex; align-items:center; gap:5px; }
+.se-notes-toggle { font-size:11px; padding:5px 12px; border-radius:6px; border:1px solid var(--border); background:transparent; color:var(--text-muted); cursor:pointer; transition:all 0.15s; white-space:nowrap; display:flex; align-items:center; gap:5px; line-height:1; }
 .se-notes-toggle:hover { background:var(--surface2); }
 .se-notes-toggle .tog-dot { width:7px; height:7px; border-radius:50%; background:var(--border); transition:background 0.15s; }
 .se-notes-toggle.active { color:#f0c060; border-color:rgba(240,192,96,0.5); background:rgba(240,192,96,0.08); }
@@ -346,13 +346,13 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
 #demoCountryDetail { display:none; }
 .retry-btn { background:none; border:1px solid var(--border); color:var(--text-muted); font-family:var(--font); font-size:10px; padding:2px 8px; border-radius:6px; cursor:pointer; margin-top:4px; transition:all 0.15s; }
 .retry-btn:hover { color:var(--accent); border-color:var(--accent); background:rgba(108,99,255,0.08); }
-#demoBtn { font-size:11px; font-weight:600; padding:5px 12px; border:1px solid var(--accent); border-radius:8px; color:var(--accent); background:rgba(108,99,255,0.08); cursor:pointer; transition:all 0.15s; white-space:nowrap; }
+#demoBtn { font-size:11px; font-weight:600; padding:5px 12px; border:1px solid var(--accent); border-radius:8px; color:var(--accent); background:rgba(108,99,255,0.08); cursor:pointer; transition:all 0.15s; white-space:nowrap; line-height:1; }
 #demoBtn:hover { background:rgba(108,99,255,0.18); }
 .demo-lang-picker { display:flex; align-items:center; gap:6px; margin-bottom:10px; }
 .demo-lang-picker-label { font-size:11px; font-weight:600; color:var(--text-muted); }
 .demo-lang-select { font-size:11px; font-weight:600; padding:2px 7px; border-radius:6px; border:1px solid var(--border); background:var(--surface2); color:var(--text-muted); cursor:pointer; font-family:var(--font); outline:none; }
 .demo-lang-select:hover, .demo-lang-select:focus { border-color:var(--accent); color:var(--accent); }
-#fileScanToolbarBtn { font-size:11px; font-weight:600; padding:5px 12px; border:1px solid rgba(46,204,113,0.5); border-radius:8px; color:var(--green); background:rgba(46,204,113,0.07); cursor:pointer; transition:all 0.15s; white-space:nowrap; }
+#fileScanToolbarBtn { font-size:11px; font-weight:600; padding:5px 12px; border:1px solid rgba(46,204,113,0.5); border-radius:8px; color:var(--green); background:rgba(46,204,113,0.07); cursor:pointer; transition:all 0.15s; white-space:nowrap; line-height:1; }
 #fileScanToolbarBtn:hover { background:rgba(46,204,113,0.15); }
 @media (max-width:480px) { #demoPanel { width:100vw; right:-100vw; } }
 
@@ -391,7 +391,7 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
 .intro-content { display:none; flex:1; overflow-y:auto; padding:24px; animation:introFadeIn 0.25s ease; }
 .intro-content.active { display:block; }
 @keyframes introFadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
-#introBtn { font-size:11px; font-weight:600; padding:5px 12px; border:1px solid var(--green); border-radius:8px; color:var(--green); background:rgba(46,204,113,0.08); cursor:pointer; transition:all 0.15s; white-space:nowrap; }
+#introBtn { font-size:11px; font-weight:600; padding:5px 12px; border:1px solid var(--green); border-radius:8px; color:var(--green); background:rgba(46,204,113,0.08); cursor:pointer; transition:all 0.15s; white-space:nowrap; line-height:1; }
 #introBtn:hover { background:rgba(46,204,113,0.18); }
 
 /* ── Architecture Diagram ── */
@@ -686,7 +686,7 @@ pre.cv-code { background: var(--surface2); border: 1px solid var(--border); bord
 .help-nav .help-next:hover:not(:disabled) { background:var(--accent-hover,#5a52e0); }
 .help-hide-wrap { display:flex; align-items:center; gap:7px; font-size:12px; color:var(--text-muted); cursor:pointer; user-select:none; }
 .help-hide-wrap input { accent-color:var(--accent); cursor:pointer; }
-#helpBtn { font-size:13px; font-weight:600; padding:5px 10px; border-radius:8px; border:1px solid var(--border); background:transparent; color:var(--text-muted); cursor:pointer; transition:all 0.15s; line-height:1; }
+#helpBtn { font-size:11px; font-weight:600; padding:5px 10px; border-radius:8px; border:1px solid var(--border); background:transparent; color:var(--text-muted); cursor:pointer; transition:all 0.15s; line-height:1; }
 #helpBtn:hover { background:var(--surface2); color:var(--text); }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -993,38 +993,6 @@ reply = await client.chat.completions.create(
           <span id="psEnabledLabel" style="font-size:12px;color:var(--text-muted)">On</span>
         </label>
       </div>
-      <div>
-        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px">Integration Mode</label>
-        <div style="display:flex;gap:8px">
-          <label style="flex:1;display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;cursor:pointer;transition:border-color 0.15s" id="modeApiLabel">
-            <input type="radio" name="psMode" id="modeApi" value="api" style="accent-color:var(--accent)">
-            <span>
-              <span style="font-size:13px;font-weight:600">API</span><br>
-              <span style="font-size:10px;color:var(--text-muted)">Explicit scan — shows violation details</span>
-            </span>
-          </label>
-          <label style="flex:1;display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;cursor:pointer;transition:border-color 0.15s" id="modeGwLabel">
-            <input type="radio" name="psMode" id="modeGw" value="gateway" style="accent-color:var(--accent)">
-            <span>
-              <span style="font-size:13px;font-weight:600">Gateway</span><br>
-              <span style="font-size:10px;color:var(--text-muted)">Proxy — Prompt Security scans transparently</span>
-            </span>
-          </label>
-        </div>
-        <div id="gwUrlNote" style="display:none;margin-top:6px;font-size:11px;color:var(--text-muted);padding:6px 10px;background:rgba(108,99,255,0.07);border-radius:6px;border:1px solid rgba(108,99,255,0.2)">
-          Gateway URL: <span id="gwUrlDisplay" style="color:var(--accent)">—</span>
-        </div>
-        <div id="gwMissingNote" style="display:none;margin-top:6px;font-size:11px;color:var(--red);padding:6px 10px;background:rgba(231,76,60,0.07);border-radius:6px;border:1px solid rgba(231,76,60,0.2)">
-          ⚠️ Selected tenant has no Gateway URL configured. Ask your admin to add one.
-        </div>
-        <div id="gwKeyWarning" style="display:none;margin-top:8px;font-size:11px;color:var(--yellow);padding:6px 10px;background:rgba(230,184,0,0.07);border-radius:6px;border:1px solid rgba(230,184,0,0.2)">
-          ⚠️ No LLM API key configured. Gateway mode requires your LLM provider key — <a href="#" style="color:var(--accent);text-decoration:none" onclick="event.preventDefault();switchSettingsTab('llm')">add it in LLM API Keys</a>.
-        </div>
-        <div id="gwProviderGuide" style="display:none;margin-top:12px">
-          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:8px">Proxy Mapping — set these in your LLM client</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="gwProviderCards"></div>
-        </div>
-      </div>
       <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:4px">
           <label style="font-size:12px;font-weight:600;color:var(--text-muted)">Chat history retention</label>
@@ -1242,7 +1210,6 @@ reply = await client.chat.completions.create(
     <div class="intro-tabs">
       <button class="intro-tab active" data-intro="arch">AI GW Architecture</button>
       <button class="intro-tab" data-intro="apiflow">API Flow</button>
-      <button class="intro-tab" data-intro="compare">API vs Gateway</button>
       <button class="intro-tab" data-intro="integ">Integration Guide</button>
       <button class="intro-tab" data-intro="walkthrough">Walkthrough</button>
     </div>
@@ -1812,77 +1779,6 @@ reply = await client.chat.completions.create(
           <span style="margin-left:auto;font-size:9px;color:var(--green);opacity:0.7">+ Prompt Security &rarr; 1st Party LLMs (scan)</span>
         </div>
         <div style="text-align:right;margin-top:8px;font-size:11px;color:var(--accent);cursor:pointer" onclick="document.querySelector('[data-intro=integ]').click()">See Integration Guide →</div>
-      </div>
-    </div>
-
-    <!-- API vs Gateway Comparison tab -->
-    <div id="introCompare" class="intro-content">
-      <div style="max-width:900px">
-        <p style="font-size:13px;color:var(--text-muted);line-height:1.7;margin-bottom:20px">
-          When implementing Prompt Security, choose between two integration approaches based on your team's development resources and security requirements.
-        </p>
-
-        <!-- Side-by-side cards -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
-          <!-- API card -->
-          <div class="compare-card" style="background:var(--surface2);border:1px solid rgba(108,99,255,0.3);border-radius:12px;padding:20px;display:flex;flex-direction:column;transition:border-color 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease;">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-              <div style="width:36px;height:36px;border-radius:8px;background:rgba(108,99,255,0.1);border:1px solid rgba(108,99,255,0.25);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6c63ff" stroke-width="2"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
-              </div>
-              <div>
-                <div style="font-size:14px;font-weight:700;color:var(--accent)">API Integration</div>
-                <div style="font-size:10px;color:var(--text-muted);font-family:monospace;letter-spacing:0.5px">POST /api/protect</div>
-              </div>
-            </div>
-            <div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;line-height:1.5">Direct API calls to inspect prompts and responses. Each LLM interaction requires separate calls &mdash; one for the prompt, one for the response.</div>
-            <div style="font-size:11px;line-height:1.8">
-              <div style="color:var(--green);margin-bottom:2px">&#10003; Greater flexibility &amp; control over security</div>
-              <div style="color:var(--green);margin-bottom:2px">&#10003; Different code areas can call API differently</div>
-              <div style="color:var(--green);margin-bottom:2px">&#10003; Parallel execution in monitor-only mode (zero latency)</div>
-              <div style="color:var(--green);margin-bottom:2px">&#10003; Programmatic policy switching per request</div>
-              <div style="color:var(--green);margin-bottom:10px">&#10003; Rich metadata: user country, IP, user groups</div>
-              <div style="color:var(--red);margin-bottom:2px">&#10007; More development work to implement</div>
-              <div style="color:var(--red)">&#10007; Needs integration throughout the codebase</div>
-            </div>
-            <div style="margin-top:auto;padding-top:12px;border-top:1px solid var(--border);font-size:10px;color:var(--text-muted)">Best for: teams needing granular control and rich analytics</div>
-          </div>
-          <!-- Gateway card -->
-          <div class="compare-card" style="background:var(--surface2);border:1px solid rgba(46,204,113,0.3);border-radius:12px;padding:20px;display:flex;flex-direction:column;transition:border-color 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease;">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-              <div style="width:36px;height:36px;border-radius:8px;background:rgba(46,204,113,0.1);border:1px solid rgba(46,204,113,0.25);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2ecc71" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              </div>
-              <div>
-                <div style="font-size:14px;font-weight:700;color:var(--green)">AI Gateway (Reverse Proxy)</div>
-                <div style="font-size:10px;color:var(--text-muted);font-family:monospace;letter-spacing:0.5px">base_url swap</div>
-              </div>
-            </div>
-            <div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;line-height:1.5">Prompt Security acts as man-in-the-middle. Route all traffic through Prompt Security by changing your LLM base URL. All input/output is processed automatically.</div>
-            <div style="font-size:11px;line-height:1.8">
-              <div style="color:var(--green);margin-bottom:2px">&#10003; Minimal effort &mdash; one line of code change</div>
-              <div style="color:var(--green);margin-bottom:2px">&#10003; Seamless with existing auth methods</div>
-              <div style="color:var(--green);margin-bottom:10px">&#10003; Automatic processing of all input/output</div>
-              <div style="color:var(--red);margin-bottom:2px">&#10007; Less granular control, fewer customization options</div>
-              <div style="color:var(--red);margin-bottom:2px">&#10007; No programmatic policy switching per connector</div>
-              <div style="color:var(--red);margin-bottom:2px">&#10007; No advanced options (e.g. immediate_response)</div>
-              <div style="color:var(--red)">&#10007; Limited to supported LLM providers</div>
-            </div>
-            <div style="margin-top:auto;padding-top:12px;border-top:1px solid var(--border);font-size:10px;color:var(--text-muted)">Best for: fast integration with minimal code changes</div>
-          </div>
-        </div>
-
-        <!-- Gateway limitations detail -->
-        <div style="background:rgba(230,184,0,0.04);border:1px solid rgba(230,184,0,0.15);border-radius:10px;padding:16px 20px;margin-bottom:20px">
-          <div style="font-size:12px;font-weight:700;color:var(--yellow);margin-bottom:10px">AI Gateway Limitations vs API</div>
-          <div style="font-size:11px;color:var(--text-muted);line-height:1.8">
-            <div style="margin-bottom:6px"><strong style="color:var(--text)">Programmatic Policy Management</strong> &mdash; Cannot switch policies per request on the same connector.<br>
-            <span style="font-size:10px;color:var(--text-muted);padding-left:12px"><em>Workaround:</em> Create multiple connectors with different policies, switch the app-id per request.</span></div>
-            <div style="margin-bottom:6px"><strong style="color:var(--text)">Advanced Configurations</strong> &mdash; No support for <code style="font-size:10px;background:var(--surface2);padding:1px 5px;border-radius:3px">immediate_response</code> or asynchronous inspection.</div>
-            <div><strong style="color:var(--text)">Analytics Metadata</strong> &mdash; Cannot include user country, IP address, or user group information.</div>
-          </div>
-        </div>
-
       </div>
     </div>
 
@@ -2541,9 +2437,8 @@ reply = await client.chat.completions.create(
     }
     const gear = document.getElementById('psGearBtn');
     if (AUTH_USER?.ps_configured && AUTH_USER?.ps_enabled) {
-      const mode = AUTH_USER.ps_mode === 'gateway' ? 'GW' : 'API';
       psStatusEl.className = 'on';
-      psStatusEl.innerHTML = `<img src="/static/favicon.png" alt="" style="width:13px;height:13px;vertical-align:middle;margin-right:5px;border-radius:3px;opacity:0.9"> Prompt Security [${mode}]`;
+      psStatusEl.innerHTML = `<img src="/static/favicon.png" alt="" style="width:13px;height:13px;vertical-align:middle;margin-right:5px;border-radius:3px;opacity:0.9"> Prompt Security [API]`;
       psStatusEl.title = 'Click to pause PS scanning';
       gear.className = 'on';
       chatEl.classList.add('ps-active'); chatEl.classList.remove('ps-inactive');
@@ -3034,57 +2929,6 @@ reply = await client.chat.completions.create(
     await loadApiKeys();
   }
 
-  function _updateGwHint() {
-    const tenantId = parseInt(document.getElementById('psTenantSel').value) || null;
-    const mode = document.querySelector('input[name="psMode"]:checked')?.value || 'api';
-    const tenant = _psTenants.find(t => t.id === tenantId);
-    const gwNote     = document.getElementById('gwUrlNote');
-    const gwMissing  = document.getElementById('gwMissingNote');
-    const gwKeyWarn  = document.getElementById('gwKeyWarning');
-    const gwGuide    = document.getElementById('gwProviderGuide');
-    gwNote.style.display = 'none'; gwMissing.style.display = 'none';
-    gwKeyWarn.style.display = 'none'; gwGuide.style.display = 'none';
-    if (mode !== 'gateway') return;
-    if (tenant) {
-      if (tenant.gateway_url) {
-        document.getElementById('gwUrlDisplay').textContent = tenant.gateway_url;
-        gwNote.style.display = 'block';
-      } else {
-        gwMissing.style.display = 'block';
-      }
-    }
-    // Key warning — show when LLM keys are visible but none configured
-    const keysVisible = AUTH_USER?.llm_key_settings_visible;
-    const keysConfigured = AUTH_USER?.llm_keys_configured?.length > 0;
-    if (keysVisible && !keysConfigured) gwKeyWarn.style.display = 'block';
-    // Provider guide
-    const baseUrl = tenant?.gateway_url || tenant?.base_url || '';
-    let region = '[REGION]';
-    try { region = new URL(baseUrl).hostname.split('.')[0]; } catch {}
-    const ps = `https://${region}.prompt.security`;
-    const providers = [
-      { name: 'OpenAI',       llm: 'api.openai.com',                        psUrl: `${ps}/v1` },
-      { name: 'Perplexity',   llm: 'api.perplexity.ai',                     psUrl: `${ps}/v1` },
-      { name: 'Anthropic',    llm: 'api.anthropic.com',                     psUrl: ps },
-      { name: 'Azure OpenAI', llm: '{resource}.openai.azure.com',           psUrl: ps },
-      { name: 'Gemini',       llm: 'generativelanguage.googleapis.com',     psUrl: `${ps}/v1beta/models/{model}:generateContent`, note: 'Add header: forward-domain: generativelanguage.googleapis.com' },
-      { name: 'Ollama',       llm: 'localhost:11434 (or your Ollama host)', psUrl: `${ps}/v1/ollama` },
-    ];
-    const cards = document.getElementById('gwProviderCards');
-    cards.innerHTML = providers.map(p => `
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:11px">
-        <div style="font-weight:700;color:var(--text);margin-bottom:6px">${p.name}</div>
-        <div style="color:var(--text-muted);margin-bottom:2px;font-size:10px">LLM endpoint</div>
-        <div style="color:var(--text);font-family:monospace;font-size:10px;margin-bottom:6px;word-break:break-all">${p.llm}</div>
-        <div style="color:var(--text-muted);margin-bottom:2px;font-size:10px">Prompt Security proxy URL</div>
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:${p.note ? '6px' : '0'}">
-          <code style="flex:1;color:var(--accent);font-size:10px;word-break:break-all">${p.psUrl}</code>
-          <button onclick="navigator.clipboard.writeText('${p.psUrl.replace(/'/g, "\\'")}')" style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:9px;padding:2px 6px;cursor:pointer;flex-shrink:0">Copy</button>
-        </div>
-        ${p.note ? `<div style="font-size:9px;color:var(--yellow);opacity:0.8">${p.note}</div>` : ''}
-      </div>`).join('');
-    gwGuide.style.display = 'block';
-  }
 
   async function openPsSettings(tab = 'ps') {
     userDropdown.classList.remove('open');
@@ -3107,9 +2951,6 @@ reply = await client.chat.completions.create(
       const enabled = cfg.enabled !== false;
       document.getElementById('psEnabledToggle').checked = enabled;
       document.getElementById('psEnabledLabel').textContent = enabled ? 'On' : 'Off';
-      const currentMode = cfg.mode || 'api';
-      document.getElementById(currentMode === 'gateway' ? 'modeGw' : 'modeApi').checked = true;
-      _updateGwHint();
       document.getElementById('stab-llm').style.display = 'none';
       document.getElementById('apiKeyNameInput').value = '';
       document.getElementById('apiKeyFlash').style.display = 'none';
@@ -3129,10 +2970,6 @@ reply = await client.chat.completions.create(
     const enabled = AUTH_USER?.ps_enabled !== false;
     document.getElementById('psEnabledToggle').checked = enabled;
     document.getElementById('psEnabledLabel').textContent = enabled ? 'On' : 'Off';
-    // Set mode radio
-    const currentMode = AUTH_USER?.ps_mode || 'api';
-    document.getElementById(currentMode === 'gateway' ? 'modeGw' : 'modeApi').checked = true;
-    _updateGwHint();
     document.getElementById('stab-llm').style.display = AUTH_USER?.llm_key_settings_visible ? '' : 'none';
     if (AUTH_USER?.llm_key_settings_visible) {
       ['openai','anthropic','google','perplexity','openrouter'].forEach(p => {
@@ -3150,8 +2987,6 @@ reply = await client.chat.completions.create(
     psBackdrop.classList.add('open');
   }
 
-  document.getElementById('psTenantSel').addEventListener('change', _updateGwHint);
-  document.querySelectorAll('input[name="psMode"]').forEach(r => r.addEventListener('change', _updateGwHint));
 
   document.getElementById('psToggleBtn').addEventListener('click', quickTogglePs);
   document.getElementById('psGearBtn').addEventListener('click', () => openPsSettings('ps'));
@@ -3178,7 +3013,7 @@ reply = await client.chat.completions.create(
       if (OPEN_MODE) {
         const tenantId = parseInt(document.getElementById('psTenantSel').value) || null;
         const key = document.getElementById('psKeyInput').value.trim() || null;
-        const mode = document.querySelector('input[name="psMode"]:checked')?.value || 'api';
+        const mode = 'api';
         const enabled = document.getElementById('psEnabledToggle').checked;
         const tenant = _psTenants.find(t => t.id === tenantId);
         const existingCfg = JSON.parse(localStorage.getItem('hgapp_open_ps_config') || '{}');
@@ -3195,8 +3030,7 @@ reply = await client.chat.completions.create(
       }
       const tenantId = parseInt(document.getElementById('psTenantSel').value) || null;
       const key = document.getElementById('psKeyInput').value.trim() || null;
-      const mode = document.querySelector('input[name="psMode"]:checked')?.value || 'api';
-      const body = { ps_mode: mode, ps_enabled: document.getElementById('psEnabledToggle').checked };
+      const body = { ps_mode: 'api', ps_enabled: document.getElementById('psEnabledToggle').checked };
       if (tenantId) body.ps_tenant_id = tenantId;
       if (key) body.ps_api_key = key;
       const res = await authFetch('/users/me/ps-config', { method: 'PATCH', body: JSON.stringify(body) });
@@ -3449,7 +3283,7 @@ reply = await client.chat.completions.create(
     document.getElementById('fileInput').value = '';
     scheduleTokenEstimate();
   }
-  document.getElementById('attachBtn').addEventListener('click', () => document.getElementById('fileInput').click());
+  document.getElementById('attachBtn').addEventListener('click', openFileScanModal);
   document.getElementById('attRemoveBtn').addEventListener('click', clearAttachment);
   document.getElementById('fileInput').addEventListener('change', async e => {
     const file = e.target.files[0]; if (!file) return;
@@ -6165,7 +5999,7 @@ if (evt.type === 'done') {
     errEl.textContent = '';
     if (!tenantId) { errEl.textContent = 'Please select a Prompt Security region.'; return; }
     if (!key) { errEl.textContent = 'Please enter your Deployment API Key.'; return; }
-    const mode = document.querySelector('input[name="umwMode"]:checked')?.value || 'api';
+    const mode = 'api';
     const btn = document.getElementById('umwNext2');
     btn.disabled = true; btn.textContent = 'Saving…';
     try {
@@ -6256,27 +6090,6 @@ if (evt.type === 'done') {
     }
     // Disable Next on step 2 when no regions are configured — user is blocked until admin adds one
     document.getElementById('umwNext2').disabled = !hasRegions;
-    // Reset mode selector
-    document.getElementById('umwModeApi').checked = true;
-    document.getElementById('umwGwUrlNote').style.display = 'none';
-    document.getElementById('umwGwMissingNote').style.display = 'none';
-
-    function _umwUpdateGwHint() {
-      const isGw = document.getElementById('umwModeGw').checked;
-      const tenantId = parseInt(document.getElementById('umwRegionSelect')?.value) || null;
-      const tenant = (_psTenants || []).find(t => t.id === tenantId);
-      document.getElementById('umwGwUrlNote').style.display = 'none';
-      document.getElementById('umwGwMissingNote').style.display = 'none';
-      if (!isGw) return;
-      if (tenant?.gateway_url) {
-        document.getElementById('umwGwUrlDisplay').textContent = tenant.gateway_url;
-        document.getElementById('umwGwUrlNote').style.display = 'block';
-      } else {
-        document.getElementById('umwGwMissingNote').style.display = 'block';
-      }
-    }
-    document.querySelectorAll('input[name="umwMode"]').forEach(r => r.onchange = _umwUpdateGwHint);
-    document.getElementById('umwRegionSelect').onchange = _umwUpdateGwHint;
 
     // Wire buttons here — elements exist after full HTML parse (called async)
     document.getElementById('umwNext1').onclick   = () => _umwSetStep(2);
@@ -6578,31 +6391,9 @@ if (evt.type === 'done') {
       document.getElementById('wizardApiKeyInput').style.borderColor = '';
       wizardGoTo(3);
     };
-    // Reset mode selector on open
-    document.getElementById('wizModeApi').checked = true;
-    document.getElementById('wizGwUrlNote').style.display = 'none';
-    document.getElementById('wizGwMissingNote').style.display = 'none';
-
-    function _wizUpdateGwHint() {
-      const isGw = document.getElementById('wizModeGw').checked;
-      const tenantId = parseInt(document.getElementById('wizardTenantSelect').value) || null;
-      const tenant = (_psTenants || []).find(t => t.id === tenantId);
-      document.getElementById('wizGwUrlNote').style.display = 'none';
-      document.getElementById('wizGwMissingNote').style.display = 'none';
-      if (!isGw) return;
-      if (tenant?.gateway_url) {
-        document.getElementById('wizGwUrlDisplay').textContent = tenant.gateway_url;
-        document.getElementById('wizGwUrlNote').style.display = 'block';
-      } else {
-        document.getElementById('wizGwMissingNote').style.display = 'block';
-      }
-    }
-    document.querySelectorAll('input[name="wizMode"]').forEach(r => r.onchange = _wizUpdateGwHint);
-
     document.getElementById('wizardTenantSelect').addEventListener('change', () => {
       document.getElementById('wizardTenantSelect').style.borderColor = '';
       document.getElementById('wizardStep2Error').textContent = '';
-      _wizUpdateGwHint();
     });
     document.getElementById('wizardApiKeyInput').addEventListener('input', () => {
       document.getElementById('wizardApiKeyInput').style.borderColor = '';
@@ -6667,7 +6458,6 @@ if (evt.type === 'done') {
     }
 
     // 3. PS config (step 2 data)
-    const wizSelectedMode = document.querySelector('input[name="wizMode"]:checked')?.value || 'api';
     if (tenantId && apiKey) {
       const tenant = (_psTenants || []).find(t => String(t.id) === String(tenantId));
       if (tenant) {
@@ -6675,7 +6465,7 @@ if (evt.type === 'done') {
         localStorage.setItem('hgapp_open_ps_config', JSON.stringify({
           tenant_id: tenantId,
           app_id_enc,
-          mode: wizSelectedMode,
+          mode: 'api',
           enabled: true,
           base_url: tenant.base_url,
           gateway_url: tenant.gateway_url
@@ -6865,25 +6655,6 @@ if (evt.type === 'done') {
         <label class="wiz-field-label" for="wizardApiKeyInput">Deployment API Key</label>
         <input class="wiz-input" type="password" id="wizardApiKeyInput" placeholder="Paste your API key here" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other">
       </div>
-      <div style="margin-bottom:4px">
-        <label class="wiz-field-label">Integration Mode</label>
-        <div style="display:flex;gap:8px">
-          <label style="flex:1;display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;cursor:pointer" id="wizModeApiLabel">
-            <input type="radio" name="wizMode" id="wizModeApi" value="api" checked style="accent-color:var(--accent)">
-            <span><span style="font-size:13px;font-weight:600">API</span><br><span style="font-size:10px;color:var(--text-muted)">Explicit scan — shows violation details</span></span>
-          </label>
-          <label style="flex:1;display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;cursor:pointer" id="wizModeGwLabel">
-            <input type="radio" name="wizMode" id="wizModeGw" value="gateway" style="accent-color:var(--accent)">
-            <span><span style="font-size:13px;font-weight:600">Gateway</span><br><span style="font-size:10px;color:var(--text-muted)">Proxy — PS scans transparently</span></span>
-          </label>
-        </div>
-        <div id="wizGwUrlNote" style="display:none;margin-top:6px;font-size:11px;color:var(--text-muted);padding:6px 10px;background:rgba(108,99,255,0.07);border-radius:6px;border:1px solid rgba(108,99,255,0.2)">
-          Gateway URL: <span id="wizGwUrlDisplay" style="color:var(--accent)">—</span>
-        </div>
-        <div id="wizGwMissingNote" style="display:none;margin-top:6px;font-size:11px;color:var(--red);padding:6px 10px;background:rgba(231,76,60,0.07);border-radius:6px;border:1px solid rgba(231,76,60,0.2)">
-          ⚠️ Selected region has no Gateway URL configured. Ask your admin to add one.
-        </div>
-      </div>
       <div id="wizardStep2Error" style="font-size:12px;color:var(--red);min-height:16px;margin-top:8px"></div>
       <div class="wiz-footer" style="margin-top:12px">
         <button class="btn btn-outline" id="wizardBack2">← Back</button>
@@ -7056,25 +6827,6 @@ if (evt.type === 'done') {
         <div style="margin-bottom:12px">
           <label class="wiz-field-label" for="umwApiKey">Deployment API Key</label>
           <input class="wiz-input" type="password" id="umwApiKey" placeholder="Paste your API key here" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other">
-        </div>
-        <div>
-          <label class="wiz-field-label">Integration Mode</label>
-          <div style="display:flex;gap:8px">
-            <label style="flex:1;display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;cursor:pointer" id="umwModeApiLabel">
-              <input type="radio" name="umwMode" id="umwModeApi" value="api" checked style="accent-color:var(--accent)">
-              <span><span style="font-size:13px;font-weight:600">API</span><br><span style="font-size:10px;color:var(--text-muted)">Explicit scan — shows violation details</span></span>
-            </label>
-            <label style="flex:1;display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;cursor:pointer" id="umwModeGwLabel">
-              <input type="radio" name="umwMode" id="umwModeGw" value="gateway" style="accent-color:var(--accent)">
-              <span><span style="font-size:13px;font-weight:600">Gateway</span><br><span style="font-size:10px;color:var(--text-muted)">Proxy — PS scans transparently</span></span>
-            </label>
-          </div>
-          <div id="umwGwUrlNote" style="display:none;margin-top:6px;font-size:11px;color:var(--text-muted);padding:6px 10px;background:rgba(108,99,255,0.07);border-radius:6px;border:1px solid rgba(108,99,255,0.2)">
-            Gateway URL: <span id="umwGwUrlDisplay" style="color:var(--accent)">—</span>
-          </div>
-          <div id="umwGwMissingNote" style="display:none;margin-top:6px;font-size:11px;color:var(--red);padding:6px 10px;background:rgba(231,76,60,0.07);border-radius:6px;border:1px solid rgba(231,76,60,0.2)">
-            ⚠️ Selected region has no Gateway URL configured. Ask your admin to add one.
-          </div>
         </div>
       </div>
       <div id="umwNoRegions" style="display:none">
