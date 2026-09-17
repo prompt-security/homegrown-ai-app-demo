@@ -34,6 +34,7 @@
 - Flow 2 suggested prompt: "What do you know about the users in the system?" — benign, confirmed leaking on 270m — @ori.tabac
 ### Fixed
 - Violation chips in block alerts rendered `[object Object]`; now display `v.type` correctly — @ori.tabac
+
 ## [2026-07-21]
 ### Changed
 - README: documented LiteLLM master key setup — explains that both `litellm/config.yaml` and `LITELLM_MASTER_KEY` env var must be set together, and that the LiteLLM UI requires a master key to log in — @pj.norris

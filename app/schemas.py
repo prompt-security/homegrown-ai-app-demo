@@ -188,3 +188,16 @@ class MessageOut(BaseModel):
 class UserStats(BaseModel):
     messages_today: int
     daily_limit: Optional[int]
+
+
+# ── RAG ───────────────────────────────────────────────────────────────────────
+class RagDocumentOut(BaseModel):
+    id: int
+    title: str
+    doc_type: str
+    is_active: bool
+    ps_scanned: bool
+    ps_action: Optional[str]
+    content_preview: str
+    created_at: datetime
+    model_config = {"from_attributes": True}

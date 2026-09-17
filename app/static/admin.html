@@ -270,6 +270,10 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
       <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 8h6M5 5h6M5 11h3"/></svg>
       Demo Scenarios
     </button>
+    <button class="nav-item" id="nav-rag" onclick="showTab('rag',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M4 8h8M6 12h4"/><circle cx="13" cy="4" r="2" fill="currentColor" stroke="none" opacity=".6"/></svg>
+      RAG Knowledge Base
+    </button>
     <button class="nav-item" id="nav-settings" onclick="showTab('settings',this)">
       <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M8 5a3 3 0 1 0 0 6A3 3 0 0 0 8 5zm0 1.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z"/><path d="M8 0a1 1 0 0 0-1 1v.56a5.9 5.9 0 0 0-1.47.61L5 1.64a1 1 0 0 0-1.41 0l-.95.95A1 1 0 0 0 2.64 4l-.41.53A5.9 5.9 0 0 0 1.56 6H1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h.56c.15.52.37 1.01.65 1.47L1.64 11a1 1 0 0 0 0 1.41l.95.95A1 1 0 0 0 4 13.36l.53.41c.46.28.95.5 1.47.65V15a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-.58c.52-.15 1.01-.37 1.47-.65L11 13.36a1 1 0 0 0 1.41 0l.95-.95A1 1 0 0 0 13.36 11l.41-.53c.28-.46.5-.95.65-1.47H15a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-.58a5.9 5.9 0 0 0-.65-1.47l.41-.53a1 1 0 0 0 0-1.41l-.95-.95A1 1 0 0 0 11 1.64l-.53-.41A5.9 5.9 0 0 0 9 .56V1a1 1 0 0 0-1-1zm0 1.5V1h.01L8 1.5z" opacity=".3"/></svg>
       Settings <span id="dot-nav-settings" style="display:none;font-size:9px;vertical-align:middle;margin-left:2px;color:var(--red,#e74c3c)">●</span>
@@ -465,6 +469,113 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
         </table>
         <div id="scenarioEmpty" class="empty" style="display:none">No scenarios yet.</div>
       </div>
+    </div>
+
+    <!-- ── RAG Knowledge Base tab ── -->
+    <div id="tab-rag" class="tab-panel">
+
+      <!-- Demo flow cards -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:22px">
+        <div class="card blue" style="border-left-color:#6c63ff">
+          <div class="lbl">Flow 1</div>
+          <div class="val" style="font-size:15px;font-weight:600;color:var(--accent)">PII Exposure</div>
+          <div class="sub">Load sample users → ask "list all credit cards" → PS redacts response</div>
+        </div>
+        <div class="card yellow" style="border-left-color:var(--yellow)">
+          <div class="lbl">Flow 2 (PS OFF)</div>
+          <div class="val" style="font-size:15px;font-weight:600;color:var(--yellow)">Indirect Injection</div>
+          <div class="sub">Load poisoned doc → ask benign question → injection hijacks model</div>
+        </div>
+        <div class="card green" style="border-left-color:var(--green)">
+          <div class="lbl">Flow 3 (PS ON)</div>
+          <div class="val" style="font-size:15px;font-weight:600;color:var(--green)">PS Blocks Ingestion</div>
+          <div class="sub">Same upload with PS on → document blocked before entering RAG</div>
+        </div>
+        <div class="card red" style="border-left-color:var(--red)">
+          <div class="lbl">Flow 4</div>
+          <div class="val" style="font-size:15px;font-weight:600;color:var(--red)">Supply Chain Attack</div>
+          <div class="sub">Hidden injection in "policy doc" — looks benign, PS still catches it</div>
+        </div>
+      </div>
+
+      <!-- Quick actions -->
+      <div class="panel" style="margin-bottom:18px">
+        <div class="panel-head">
+          <h3>Load Built-in Documents</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-outline btn-sm" onclick="clearAllRag()" style="color:var(--red);border-color:rgba(231,76,60,.4)">✕ Clear All</button>
+          </div>
+        </div>
+        <div style="padding:16px 18px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface2)">
+            <div>
+              <div style="font-size:13px;font-weight:600">Sample PII Dataset</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px">20 fake users with Luhn-valid credit cards and emails — demonstrates Flow 1</div>
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="loadRagSample()" id="btnLoadSample">Load Sample</button>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid rgba(231,76,60,.3);border-radius:8px;background:rgba(231,76,60,.04)">
+            <div>
+              <div style="font-size:13px;font-weight:600;color:var(--red)">⚠ Direct Poison</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px">Obvious override instruction — demonstrates Flows 2 &amp; 3 (blatant injection)</div>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-sm" style="background:rgba(231,76,60,.15);color:var(--red);border:1px solid rgba(231,76,60,.4)" onclick="loadRagPoisoned('direct',true)" title="Load without PS scan (bypass) — for Flow 2">Load (skip PS)</button>
+              <button class="btn btn-sm" style="background:rgba(231,76,60,.25);color:var(--red);border:1px solid rgba(231,76,60,.5)" onclick="loadRagPoisoned('direct',false)" title="Load with PS scan — for Flow 3">Load + PS Scan</button>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid rgba(231,76,60,.3);border-radius:8px;background:rgba(231,76,60,.04)">
+            <div>
+              <div style="font-size:13px;font-weight:600;color:var(--red)">⚠ Hidden Poison</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px">Injection buried in a "Data Handling Policy" doc — demonstrates Flow 4 (supply chain)</div>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-sm" style="background:rgba(231,76,60,.15);color:var(--red);border:1px solid rgba(231,76,60,.4)" onclick="loadRagPoisoned('hidden',true)" title="Load without PS scan">Load (skip PS)</button>
+              <button class="btn btn-sm" style="background:rgba(231,76,60,.25);color:var(--red);border:1px solid rgba(231,76,60,.5)" onclick="loadRagPoisoned('hidden',false)" title="Load with PS scan">Load + PS Scan</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Upload custom doc -->
+      <div class="panel" style="margin-bottom:18px">
+        <div class="panel-head"><h3>Upload Custom Document</h3></div>
+        <div style="padding:16px 18px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+          <label class="btn btn-outline btn-sm" style="cursor:pointer">
+            Choose file (.md / .txt)
+            <input type="file" id="ragFileInput" accept=".md,.txt" style="display:none" onchange="ragFileSelected(this)">
+          </label>
+          <span id="ragFileName" style="font-size:12px;color:var(--muted);align-self:center">No file selected</span>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-left:auto">
+            <input type="checkbox" id="ragSkipPs"> Skip PS scan
+          </label>
+          <button class="btn btn-primary btn-sm" onclick="uploadRagFile()" id="btnUploadRag" disabled>Upload</button>
+        </div>
+        <div id="ragUploadResult" style="padding:0 18px 14px;display:none"></div>
+      </div>
+
+      <!-- PS blocked alert -->
+      <div id="ragBlockedAlert" style="display:none;margin-bottom:18px;padding:14px 18px;border:1px solid rgba(231,76,60,.5);border-radius:10px;background:rgba(231,76,60,.07)">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="font-size:16px">🛡</span>
+          <strong style="color:var(--red)">Prompt Security Blocked This Document</strong>
+        </div>
+        <div id="ragBlockedMsg" style="font-size:13px;color:var(--muted);margin-bottom:8px"></div>
+        <div id="ragBlockedViolations" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      </div>
+
+      <!-- Document list -->
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Active Knowledge Base</h3>
+          <span id="ragDocCount" style="font-size:12px;color:var(--muted)"></span>
+        </div>
+        <table>
+          <thead><tr><th>Title</th><th>Type</th><th>PS Scan</th><th>Active</th><th></th></tr></thead>
+          <tbody id="ragDocTable"><tr><td colspan="5" class="empty">No documents loaded.</td></tr></tbody>
+        </table>
+      </div>
+
     </div>
 
     <!-- ── Settings tab ── -->
@@ -1155,13 +1266,14 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
     document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
     document.getElementById('tab-' + name).classList.add('active');
     if (el) el.classList.add('active');
-    const titles = { overview:'Overview', ps:'Prompt Security', users:'Users', activity:'Activity Log', scenarios:'Demo Scenarios', settings:'Settings' };
+    const titles = { overview:'Overview', ps:'Prompt Security', users:'Users', activity:'Activity Log', scenarios:'Demo Scenarios', rag:'RAG Knowledge Base', settings:'Settings' };
     document.getElementById('topbarTitle').textContent = titles[name] || name;
     if (name==='overview')  loadOverview();
     if (name==='ps')        loadPs();
     if (name==='users')     loadUsers();
     if (name==='activity')  loadActivity();
     if (name==='scenarios') loadScenarios();
+    if (name==='rag')       loadRag();
     if (name==='settings')  loadSettings();
   }
 
@@ -3928,6 +4040,146 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
 
     _scenarioPreviewId = id;
     document.getElementById('scenarioPreviewBackdrop').classList.add('open');
+  }
+
+  // ── RAG Knowledge Base ────────────────────────────────────────────────────
+  let _ragDocs = [];
+  let _ragFileSelected = null;
+
+  async function loadRag() {
+    const res = await api('/admin/rag/documents');
+    if (!res.ok) return;
+    _ragDocs = await res.json();
+    renderRagTable();
+  }
+
+  function renderRagTable() {
+    const tbody = document.getElementById('ragDocTable');
+    const countEl = document.getElementById('ragDocCount');
+    if (!tbody) return;
+    countEl.textContent = `${_ragDocs.filter(d => d.is_active).length} active`;
+    if (!_ragDocs.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="empty">No documents loaded.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = _ragDocs.map(d => {
+      const typeColor = d.doc_type === 'poisoned' ? 'var(--red)' : 'var(--green)';
+      const typeBg = d.doc_type === 'poisoned' ? 'rgba(231,76,60,.12)' : 'rgba(46,204,113,.12)';
+      const psTag = d.ps_scanned
+        ? `<span class="badge badge-${d.ps_action === 'block' ? 'block' : d.ps_action === 'modify' ? 'modify' : 'pass'}">${d.ps_action || 'pass'}</span>`
+        : '<span style="color:var(--muted);font-size:11px">—</span>';
+      return `<tr>
+        <td style="max-width:280px">
+          <div style="font-weight:600;font-size:13px">${d.title}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${d.content_preview}</div>
+        </td>
+        <td><span class="badge" style="background:${typeBg};color:${typeColor}">${d.doc_type}</span></td>
+        <td>${psTag}</td>
+        <td>
+          <label class="toggle-label" style="cursor:pointer;display:flex;align-items:center;gap:6px">
+            <input type="checkbox" ${d.is_active ? 'checked' : ''} onchange="toggleRagDoc(${d.id}, this.checked)" style="cursor:pointer">
+            <span style="font-size:12px;color:var(--muted)">${d.is_active ? 'On' : 'Off'}</span>
+          </label>
+        </td>
+        <td><button class="btn btn-sm" style="color:var(--red);border-color:rgba(231,76,60,.4);background:none" onclick="deleteRagDoc(${d.id})">Delete</button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function loadRagSample() {
+    const btn = document.getElementById('btnLoadSample');
+    btn.disabled = true; btn.textContent = 'Loading…';
+    hideRagBlockedAlert();
+    const res = await api('/admin/rag/load-sample', { method: 'POST' });
+    btn.disabled = false; btn.textContent = 'Load Sample';
+    if (res.ok) {
+      await loadRag();
+    } else if (res.status === 403) {
+      const err = await res.json();
+      showRagBlockedAlert(err.detail || err);
+    } else {
+      alert('Failed to load sample dataset.');
+    }
+  }
+
+  async function loadRagPoisoned(variant, skipPs) {
+    hideRagBlockedAlert();
+    const body = JSON.stringify({ variant, skip_ps: skipPs });
+    const res = await api('/admin/rag/load-poisoned', { method: 'POST', body });
+    if (res.ok) {
+      await loadRag();
+    } else if (res.status === 403) {
+      const err = await res.json();
+      showRagBlockedAlert(err.detail || err);
+    } else {
+      alert('Failed to load poisoned document.');
+    }
+  }
+
+  function ragFileSelected(input) {
+    _ragFileSelected = input.files[0] || null;
+    document.getElementById('ragFileName').textContent = _ragFileSelected ? _ragFileSelected.name : 'No file selected';
+    document.getElementById('btnUploadRag').disabled = !_ragFileSelected;
+  }
+
+  async function uploadRagFile() {
+    if (!_ragFileSelected) return;
+    hideRagBlockedAlert();
+    const skipPs = document.getElementById('ragSkipPs').checked;
+    const fd = new FormData();
+    fd.append('file', _ragFileSelected);
+    fd.append('skip_ps', skipPs ? 'true' : 'false');
+    const btn = document.getElementById('btnUploadRag');
+    btn.disabled = true; btn.textContent = 'Uploading…';
+    const res = await fetch('/admin/rag/upload', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + TOKEN },
+      body: fd,
+    });
+    btn.disabled = false; btn.textContent = 'Upload';
+    if (res.ok) {
+      document.getElementById('ragFileInput').value = '';
+      _ragFileSelected = null;
+      document.getElementById('ragFileName').textContent = 'No file selected';
+      await loadRag();
+    } else if (res.status === 403) {
+      const err = await res.json();
+      showRagBlockedAlert(err.detail || err);
+    } else {
+      alert('Upload failed.');
+    }
+  }
+
+  function showRagBlockedAlert(detail) {
+    const el = document.getElementById('ragBlockedAlert');
+    const msg = document.getElementById('ragBlockedMsg');
+    const viols = document.getElementById('ragBlockedViolations');
+    el.style.display = '';
+    msg.textContent = detail.message || 'Document blocked by Prompt Security.';
+    viols.innerHTML = (detail.violations || []).map(v =>
+      `<span class="badge badge-block">${v}</span>`
+    ).join('');
+  }
+
+  function hideRagBlockedAlert() {
+    document.getElementById('ragBlockedAlert').style.display = 'none';
+  }
+
+  async function toggleRagDoc(id, active) {
+    await api(`/admin/rag/documents/${id}`, { method: 'PATCH', body: JSON.stringify({ is_active: active }) });
+    await loadRag();
+  }
+
+  async function deleteRagDoc(id) {
+    if (!confirm('Delete this RAG document?')) return;
+    await api(`/admin/rag/documents/${id}`, { method: 'DELETE' });
+    await loadRag();
+  }
+
+  async function clearAllRag() {
+    if (!confirm('Delete ALL RAG documents? This clears the entire knowledge base.')) return;
+    await api('/admin/rag/documents', { method: 'DELETE' });
+    await loadRag();
   }
 
   (async function checkSetup() {
