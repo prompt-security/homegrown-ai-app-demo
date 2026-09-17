@@ -1,5 +1,21 @@
 # Changelog
 
+## [2026-09-04]
+### Removed
+- Integration Mode selector (API vs Gateway) removed from PS settings panel, guest wizard, and user wizard — Gateway mode is sunsetted; all sessions now default to API mode — @pj.norris
+- "API vs Gateway" tab removed from the Intro modal (tab button and comparison content div) — @pj.norris
+
+## [2026-08-27]
+### Fixed
+- Header toolbar buttons now uniformly use `padding: 5px 12px`, `font-size: 11px`, and `line-height: 1`; `.se-notes-toggle` and `#psToggleBtn` had `padding: 3px`, `#psGearBtn` had `line-height: 1.4`, and `#helpBtn`/`#compareModeBtn` had larger font sizes — all causing vertical misalignment — @pj.norris
+### Changed
+- Paperclip (📎) attachment button now opens the File Scan modal instead of a raw file picker — @pj.norris
+
+## [2026-08-19]
+### Fixed
+- `/login` now redirects to `/` when the app is in open mode (`user_mgmt_enabled=false`) — @pj.norris
+- Ollama model pull SSE stream now includes `X-Accel-Buffering: no` and `Cache-Control: no-cache` headers, matching the chat stream endpoint; without these nginx-proxy-manager buffered the entire download and released it all at once, making the progress bar jump instantly from 0→100% — @pj.norris
+
 ## [2026-08-13]
 ### Added
 - RAG Knowledge Base demo: 3 flows showcasing PS pipeline protection (PII leakage → response redaction, indirect prompt injection, hidden supply-chain injection) — @ori.tabac
