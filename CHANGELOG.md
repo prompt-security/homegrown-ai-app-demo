@@ -4,6 +4,7 @@
 ### Fixed
 - RAG demo "Enable PS" / "Disable PS" buttons now work in open mode: toggle PS state locally (`AUTH_USER` + `hgapp_open_ps_config`) instead of calling `PATCH /users/me/ps-config` which requires a user session — @pj.norris
 - Guest RAG load endpoints now receive the guest's PS config (`ps_base_url` + `ps_app_id`) from the client so PS scanning in Flows 3/4 uses the configured tenant rather than the admin's server-side config; fixes "Loaded (PS not configured?)" appearing when PS was actually configured — @pj.norris
+- `openDemoPanel()` now calls `updatePsStatus()` before checking `AUTH_USER.ps_configured`, fixing false "PS is not configured or disabled" warning appearing when PS was actually configured — @pj.norris
 - Added `/guest/rag/status` and `/guest/rag/builtin/{variant}` endpoints for open mode; `authFetch` now rewrites `/rag/status` and `/rag/builtin/` to guest paths in open mode; removed `AUTH_TOKEN` guards from `ragUpdateStatus`, `checkRagStatus`, and `ragDemoClearAll` that silently skipped in open mode — fixes Flow 3 "👁 View Injected File", RAG badge, and "Clear All" button — @pj.norris
 
 

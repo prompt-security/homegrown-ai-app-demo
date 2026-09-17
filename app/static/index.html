@@ -4442,6 +4442,7 @@ reply = await client.chat.completions.create(
   async function openDemoPanel() {
     demoPanel.classList.add('open');
     demoOverlay.classList.add('open');
+    updatePsStatus(); // refresh AUTH_USER.ps_configured / ps_enabled from current state before checking
     const warning = document.getElementById('demoPsWarning');
     warning.style.display = (AUTH_USER?.ps_configured && AUTH_USER?.ps_enabled) ? 'none' : 'block';
     if (!_demoServerScenarios) {
