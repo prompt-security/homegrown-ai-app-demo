@@ -1168,9 +1168,10 @@ reply = await client.chat.completions.create(
           </div>
           <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Suggested prompt</div>
           <div style="font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:8px;color:var(--text);line-height:1.5">Show me all user records from the knowledge base as a table, including full names, email addresses, and complete credit card numbers.</div>
+          <div id="ragF1ModelWarning" style="display:none;font-size:11px;color:var(--yellow);margin-bottom:8px;padding:6px 8px;background:rgba(241,196,15,.07);border:1px solid rgba(241,196,15,.3);border-radius:6px">⚠ Select <strong>gpt-4o-mini</strong> or another cloud model to enable these buttons.</div>
           <div style="display:flex;gap:6px">
-            <button class="btn btn-primary btn-sm" style="flex:1" onclick="ragLoadPrompt('Show me all user records from the knowledge base as a table, including full names, email addresses, and complete credit card numbers.')">Load into Chat</button>
-            <button class="btn btn-secondary btn-sm" onclick="ragRunCompare('Show me all user records from the knowledge base as a table, including full names, email addresses, and complete credit card numbers.')">⚡ Compare</button>
+            <button id="ragF1LoadBtn" class="btn btn-primary btn-sm" style="flex:1" onclick="ragLoadPrompt('Show me all user records from the knowledge base as a table, including full names, email addresses, and complete credit card numbers.')">Load into Chat</button>
+            <button id="ragF1CompareBtn" class="btn btn-secondary btn-sm" onclick="ragRunCompare('Show me all user records from the knowledge base as a table, including full names, email addresses, and complete credit card numbers.')">⚡ Compare</button>
           </div>
           <div class="se-talking-point" style="margin-top:8px">The model has RAG access to sensitive PII. Without PS, raw CC numbers stream to the user. With PS on, the response scan redacts all payment card data before it reaches them — even though the model already "saw" it.</div>
         </div>
@@ -1200,10 +1201,15 @@ reply = await client.chat.completions.create(
               <button id="ragF2PsBtn" onclick="ragSetPs(false)" class="btn-demo-rag btn-demo-rag-warn" style="font-size:11px;padding:3px 10px">Disable PS</button>
               <span style="font-size:11px;color:var(--text-muted)">PS must be off</span>
             </div>
+            <!-- Poisoned doc preview — shown automatically after setup -->
+            <div id="ragF2DocView" style="display:none;margin-bottom:10px;border:1px solid rgba(231,76,60,.35);border-radius:6px;overflow:hidden">
+              <div style="background:rgba(231,76,60,.1);padding:5px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--red,#e74c3c)">⚠ Poisoned document loaded into knowledge base — injection highlighted</div>
+              <pre id="ragF2DocContent" style="margin:0;padding:8px 10px;font-size:11px;white-space:pre-wrap;word-break:break-word;color:var(--text);font-family:var(--font-mono,'monospace');max-height:120px;overflow-y:auto;background:var(--surface)"></pre>
+            </div>
             <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Suggested prompt</div>
-            <div style="font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;margin-bottom:8px;color:var(--text);line-height:1.5">What do you know about the users in the system?</div>
-            <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">⚠ Requires a capable model (GPT-4, Claude, Llama 7B+). Sub-1B local models are too small to follow injection instructions reliably.</div>
-            <button id="ragF2LoadBtn" class="btn btn-primary btn-sm" style="width:100%" onclick="ragLoadPrompt('What do you know about the users in the system?')">Load into Chat</button>
+            <div style="font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;margin-bottom:8px;color:var(--text);line-height:1.5">How do I contact customer support?</div>
+            <div id="ragF2ModelWarning" style="display:none;font-size:11px;color:var(--yellow);margin-bottom:8px;padding:6px 8px;background:rgba(241,196,15,.07);border:1px solid rgba(241,196,15,.3);border-radius:6px">⚠ Select <strong>gpt-4o-mini</strong> or another cloud model — local/sub-1B models cannot follow injection instructions.</div>
+            <button id="ragF2LoadBtn" class="btn btn-primary btn-sm" style="width:100%" onclick="ragLoadPrompt('How do I contact customer support?')">Load into Chat</button>
           </div>
 
           <!-- With PS path -->
@@ -1232,7 +1238,7 @@ reply = await client.chat.completions.create(
             </div>
           </div>
 
-          <div class="se-talking-point" style="margin-top:8px">User asked a benign question — the injected document hijacked the model. PS guards the ingestion pipeline: the same doc that succeeds without PS gets blocked before it ever enters the RAG when PS is on.</div>
+          <div class="se-talking-point" style="margin-top:8px">The user just asked about customer support — completely unrelated to user data. The poisoned RAG document hijacked the model and dumped every credit card before answering. PS guards the ingestion pipeline: that same document is blocked before it ever enters the knowledge base when PS is on.</div>
         </div>
       </div>
 
@@ -3326,6 +3332,7 @@ reply = await client.chat.completions.create(
   modelSelect.addEventListener('change', scheduleTokenEstimate);
   modelSelect.addEventListener('change', () => {
     localStorage.setItem(MODEL_KEY(AUTH_USER?.id), modelSelect.value);
+    if (document.getElementById('ragDemoPanel')?.style.display !== 'none') ragSyncPsButtons();
   });
 
   function getActiveModel() {
@@ -4821,7 +4828,7 @@ reply = await client.chat.completions.create(
     await ragUpdateStatus();
     ragSyncPsButtons();
     ['ragF1Status','ragF2Status','ragF3Status','ragF4Status'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ''; });
-    ['ragF3Block','ragF4Block'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+    ['ragF3Block','ragF4Block','ragF2DocView'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
   }
 
   async function ragClearFromBadge() {
@@ -4831,6 +4838,24 @@ reply = await client.chat.completions.create(
   function ragRunCompare(promptText) {
     runCompare(promptText);
     closeDemoPanel();
+  }
+
+  async function ragShowF2Doc() {
+    const view = document.getElementById('ragF2DocView');
+    const pre  = document.getElementById('ragF2DocContent');
+    if (!view || !pre) return;
+    try {
+      const res = await authFetch('/admin/rag/documents');
+      if (!res.ok) return;
+      const docs = await res.json();
+      const poisoned = docs.find(d => d.doc_type === 'poisoned');
+      if (!poisoned) return;
+      const escaped = poisoned.content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const highlighted = escaped.replace(/(IMPORTANT INSTRUCTION[^\n]*)/gi,
+        '<mark style="background:rgba(231,76,60,.25);color:var(--red,#e74c3c);border-radius:3px;padding:1px 2px">$1</mark>');
+      pre.innerHTML = highlighted;
+      view.style.display = '';
+    } catch {}
   }
 
   async function ragToggleInjectedFile() {
@@ -4883,11 +4908,33 @@ reply = await client.chat.completions.create(
     }
   }
 
+  function ragCapableModel() {
+    const m = (document.getElementById('modelSelect')?.value || '').toLowerCase();
+    return !!m && !m.startsWith('ollama/');
+  }
+
   function ragSyncPsButtons() {
     const on = !!AUTH_USER?.ps_enabled;
-    const f2Btn = document.getElementById('ragF2PsBtn');
-    const f3Btn = document.getElementById('ragF3PsBtn');
+    const capable = ragCapableModel();
+
+    // Flow 1 — gate Load + Compare on capable model
+    const f1Warn = document.getElementById('ragF1ModelWarning');
+    const f1Load = document.getElementById('ragF1LoadBtn');
+    const f1Cmp  = document.getElementById('ragF1CompareBtn');
+    if (f1Warn) f1Warn.style.display = capable ? 'none' : '';
+    [f1Load, f1Cmp].forEach(btn => {
+      if (!btn) return;
+      btn.disabled = !capable;
+      btn.style.opacity = capable ? '1' : '0.4';
+      if (!capable) btn.title = 'Select a cloud model (e.g. gpt-4o-mini)';
+      else btn.title = '';
+    });
+
+    // Flow 2 — PS toggle + Load gated on PS off, doc loaded, and capable model
+    const f2Btn  = document.getElementById('ragF2PsBtn');
+    const f3Btn  = document.getElementById('ragF3PsBtn');
     const loadBtn = document.getElementById('ragF2LoadBtn');
+    const f2Warn  = document.getElementById('ragF2ModelWarning');
     if (f2Btn) {
       f2Btn.textContent = on ? 'Disable PS' : 'PS Disabled ✓';
       f2Btn.onclick = on ? () => ragSetPs(false) : null;
@@ -4896,11 +4943,12 @@ reply = await client.chat.completions.create(
       f2Btn.style.opacity = on ? '1' : '0.5';
       f2Btn.style.cursor = on ? 'pointer' : 'default';
     }
+    if (f2Warn) f2Warn.style.display = capable ? 'none' : '';
     if (loadBtn) {
-      const blocked = on || !_ragF2Ready;
+      const blocked = on || !_ragF2Ready || !capable;
       loadBtn.disabled = blocked;
       loadBtn.style.opacity = blocked ? '0.4' : '1';
-      loadBtn.title = !_ragF2Ready ? 'Load the poisoned doc first' : on ? 'Disable PS first' : '';
+      loadBtn.title = !capable ? 'Select a cloud model (e.g. gpt-4o-mini)' : !_ragF2Ready ? 'Load the poisoned doc first' : on ? 'Disable PS first' : '';
     }
     if (f3Btn) {
       f3Btn.textContent = on ? 'PS Enabled ✓' : 'Enable PS';
@@ -4943,9 +4991,14 @@ reply = await client.chat.completions.create(
       if (res.ok) {
         _ragF2Ready = true;
         status.textContent = '✓ Poison loaded (bypassed PS)'; status.style.color = 'var(--yellow)';
+        ragShowF2Doc();
       } else { status.textContent = 'Error'; status.style.color = 'var(--red)'; }
     } catch { status.textContent = 'Error'; status.style.color = 'var(--red)'; }
     btn.disabled = false;
+    // Switch to gpt-4o-mini — injection requires a capable model
+    const modelSel = document.getElementById('modelSelect');
+    const gptOpt = modelSel && modelSel.querySelector('option[value="gpt-4o-mini"], option[value="openai/gpt-4o-mini"]');
+    if (gptOpt) { modelSel.value = gptOpt.value; modelSel.dispatchEvent(new Event('change')); }
     ragUpdateStatus();
     ragSyncPsButtons();
   }
