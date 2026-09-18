@@ -3368,36 +3368,75 @@ async def pull_ollama_model(
     cancel_event = asyncio.Event()
     _active_pulls[model] = cancel_event
 
+    # _STREAM_END / _STREAM_CANCEL are sentinels passed through the queue.
+    _STREAM_END    = object()
+    _STREAM_CANCEL = object()
+
     async def _stream():
+        q: asyncio.Queue = asyncio.Queue()
+
+        async def _reader():
+            try:
+                async with httpx.AsyncClient(
+                    timeout=httpx.Timeout(600.0, connect=10.0), verify=False
+                ) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{base_url}/api/pull",
+                        json={"model": model, "stream": True},
+                    ) as resp:
+                        logger.info("Ollama pull %s → HTTP %s", model, resp.status_code)
+                        async for line in resp.aiter_lines():
+                            if cancel_event.is_set():
+                                logger.info("Ollama pull %s cancelled by user", model)
+                                await q.put(_STREAM_CANCEL)
+                                return
+                            if not line:
+                                continue
+                            logger.debug("Ollama pull line: %s", line[:120])
+                            # Normalize Ollama error events: Ollama sends {"error":"..."}
+                            # without a "status" field; rewrite to {"status":"error",...}
+                            # so the frontend's error handler fires correctly.
+                            try:
+                                parsed = json.loads(line)
+                                if "error" in parsed and "status" not in parsed:
+                                    parsed["status"] = "error"
+                                    line = json.dumps(parsed)
+                            except Exception:
+                                pass
+                            await q.put(line)
+                        logger.info("Ollama pull stream ended for %s", model)
+            except httpx.ConnectError:
+                await q.put('{"status":"error","error":"Cannot connect to Ollama — is the service running?"}')
+            except Exception as exc:
+                await q.put(f'{{"status":"error","error":"{str(exc)}"}}')
+            finally:
+                _active_pulls.pop(model, None)
+                await q.put(_STREAM_END)
+
+        reader_task = asyncio.ensure_future(_reader())
         cancelled = False
         try:
-            async with httpx.AsyncClient(
-                timeout=httpx.Timeout(600.0, connect=10.0), verify=False
-            ) as client:
-                async with client.stream(
-                    "POST",
-                    f"{base_url}/api/pull",
-                    json={"model": model, "name": model, "stream": True},
-                ) as resp:
-                    logger.info("Ollama pull %s → HTTP %s", model, resp.status_code)
-                    async for line in resp.aiter_lines():
-                        if cancel_event.is_set():
-                            cancelled = True
-                            logger.info("Ollama pull %s cancelled by user", model)
-                            break
-                        if line:
-                            logger.debug("Ollama pull line: %s", line[:120])
-                            yield f"data: {line}\n\n"
-                    if not cancelled:
-                        logger.info("Ollama pull stream ended for %s", model)
-        except httpx.ConnectError:
-            yield 'data: {"status":"error","error":"Cannot connect to Ollama — is the service running?"}\n\n'
-            return
-        except Exception as exc:
-            yield f'data: {{"status":"error","error":"{str(exc)}"}}\n\n'
-            return
+            while True:
+                try:
+                    item = await asyncio.wait_for(asyncio.shield(q.get()), timeout=5.0)
+                except asyncio.TimeoutError:
+                    # Send an SSE comment every 5 s so reverse proxies flush their buffers.
+                    yield ": keepalive\n\n"
+                    continue
+
+                if item is _STREAM_END:
+                    break
+                if item is _STREAM_CANCEL:
+                    cancelled = True
+                    break
+                yield f"data: {item}\n\n"
         finally:
-            _active_pulls.pop(model, None)
+            reader_task.cancel()
+            try:
+                await reader_task
+            except (asyncio.CancelledError, Exception):
+                pass
 
         if cancelled:
             # Ollama stores partial blobs internally — DELETE /api/delete only removes

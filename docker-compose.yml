@@ -69,7 +69,16 @@ services:
       - ./certs/corporate-ca.pem:/certs/corporate-ca.pem:ro
     environment:
       OLLAMA_INSECURE: "true"
-      SSL_CERT_FILE: /certs/corporate-ca.pem
+    # Install the corporate CA before starting Ollama so the Go TLS stack picks
+    # it up at process startup (the cert pool is cached at init time, not lazily).
+    entrypoint: >
+      sh -c "
+        if [ -s /certs/corporate-ca.pem ]; then
+          cp /certs/corporate-ca.pem /usr/local/share/ca-certificates/corporate-ca.crt
+          update-ca-certificates 2>/dev/null || true
+        fi
+        exec /bin/ollama serve
+      "
     networks:
       - default
       - home-grown-app_default   # join the main app network so litellm can reach http://ollama:11434

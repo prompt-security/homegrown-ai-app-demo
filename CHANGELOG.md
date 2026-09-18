@@ -1,5 +1,11 @@
 # Changelog
 
+## [2026-09-18]
+### Fixed
+- Ollama model pull no longer silently shows "✓ pulled successfully" when the download fails: Ollama returns `{"error":"..."}` without a `status` field on failure (e.g. TLS cert errors), which was not caught by the frontend's `evt.status === 'error'` check; backend now normalises bare Ollama error events to `{"status":"error","error":"..."}` before forwarding, and `startModelPull` also gained a fallback check for `evt.error && !evt.status` — @pj.norris
+- Ollama model browser pull now streams progress correctly through reverse proxies: backend sends SSE keepalive comments every 5 s so nginx and other proxies flush their buffer instead of holding all events until the download completes; frontend now waits for the backend's `{"status":"done"}` sentinel before declaring success and exits the reader loop immediately to prevent double-detection — @pj.norris
+- Ollama Docker service now installs the corporate CA certificate before starting so Ollama can reach `registry.ollama.ai` through a Zscaler (or other SSL-inspecting) corporate proxy; `docker-compose.yml` `entrypoint` runs `update-ca-certificates` at startup from the mounted `certs/corporate-ca.pem` file — @pj.norris
+
 ## [2026-09-17]
 ### Fixed
 - RAG demo "Enable PS" / "Disable PS" buttons now work in open mode: toggle PS state locally (`AUTH_USER` + `hgapp_open_ps_config`) instead of calling `PATCH /users/me/ps-config` which requires a user session — @pj.norris
