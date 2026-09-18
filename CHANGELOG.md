@@ -1,9 +1,17 @@
 # Changelog
 
+## [2026-09-18]
+### Fixed
+- Ollama model pull no longer silently shows "✓ pulled successfully" when the download fails: Ollama returns `{"error":"..."}` without a `status` field on failure (e.g. TLS cert errors), which was not caught by the frontend's `evt.status === 'error'` check; backend now normalises bare Ollama error events to `{"status":"error","error":"..."}` before forwarding, and `startModelPull` also gained a fallback check for `evt.error && !evt.status` — @pj.norris
+- Ollama model browser pull now streams progress correctly through reverse proxies: backend sends SSE keepalive comments every 5 s so nginx and other proxies flush their buffer instead of holding all events until the download completes; frontend now waits for the backend's `{"status":"done"}` sentinel before declaring success and exits the reader loop immediately to prevent double-detection — @pj.norris
+- Ollama Docker service now installs the corporate CA certificate before starting so Ollama can reach `registry.ollama.ai` through a Zscaler (or other SSL-inspecting) corporate proxy; `docker-compose.yml` `entrypoint` runs `update-ca-certificates` at startup from the mounted `certs/corporate-ca.pem` file — @pj.norris
+
 ## [2026-09-17]
 ### Fixed
 - RAG demo "Enable PS" / "Disable PS" buttons now work in open mode: toggle PS state locally (`AUTH_USER` + `hgapp_open_ps_config`) instead of calling `PATCH /users/me/ps-config` which requires a user session — @pj.norris
 - Guest RAG load endpoints now receive the guest's PS config (`ps_base_url` + `ps_app_id`) from the client so PS scanning in Flows 3/4 uses the configured tenant rather than the admin's server-side config; fixes "Loaded (PS not configured?)" appearing when PS was actually configured — @pj.norris
+- `openDemoPanel()` now calls `updatePsStatus()` before checking `AUTH_USER.ps_configured`, fixing false "PS is not configured or disabled" warning appearing when PS was actually configured — @pj.norris
+- Added `/guest/rag/status` and `/guest/rag/builtin/{variant}` endpoints for open mode; `authFetch` now rewrites `/rag/status` and `/rag/builtin/` to guest paths in open mode; removed `AUTH_TOKEN` guards from `ragUpdateStatus`, `checkRagStatus`, and `ragDemoClearAll` that silently skipped in open mode — fixes Flow 3 "👁 View Injected File", RAG badge, and "Clear All" button — @pj.norris
 
 
 ### Added

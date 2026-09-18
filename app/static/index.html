@@ -2360,8 +2360,13 @@ reply = await client.chat.completions.create(
   }
 
   function authFetch(url, opts = {}) {
-    // In open mode, rewrite /admin/rag/ calls to /guest/rag/ (no auth required).
-    const resolvedUrl = (OPEN_MODE && url.startsWith('/admin/rag/')) ? url.replace('/admin/rag/', '/guest/rag/') : url;
+    // In open mode, rewrite RAG paths to /guest/rag/ equivalents (no auth required).
+    let resolvedUrl = url;
+    if (OPEN_MODE) {
+      if (url.startsWith('/admin/rag/')) resolvedUrl = url.replace('/admin/rag/', '/guest/rag/');
+      else if (url === '/rag/status') resolvedUrl = '/guest/rag/status';
+      else if (url.startsWith('/rag/builtin/')) resolvedUrl = url.replace('/rag/builtin/', '/guest/rag/builtin/');
+    }
     const needsAuth = !OPEN_MODE || !resolvedUrl.startsWith('/guest/rag/');
     return fetch(resolvedUrl, {
       ...opts,
@@ -2558,7 +2563,7 @@ reply = await client.chat.completions.create(
   }
 
   async function checkRagStatus() {
-    if (!AUTH_TOKEN) return;
+    if (!AUTH_TOKEN && !OPEN_MODE) return;
     try {
       const res = await authFetch('/rag/status');
       if (!res.ok) return;
@@ -4437,6 +4442,7 @@ reply = await client.chat.completions.create(
   async function openDemoPanel() {
     demoPanel.classList.add('open');
     demoOverlay.classList.add('open');
+    updatePsStatus(); // refresh AUTH_USER.ps_configured / ps_enabled from current state before checking
     const warning = document.getElementById('demoPsWarning');
     warning.style.display = (AUTH_USER?.ps_configured && AUTH_USER?.ps_enabled) ? 'none' : 'block';
     if (!_demoServerScenarios) {
@@ -4641,7 +4647,7 @@ reply = await client.chat.completions.create(
 
   // ── RAG Demo flows ────────────────────────────────────────────────────────
   async function ragUpdateStatus() {
-    if (!AUTH_TOKEN) return;
+    if (!AUTH_TOKEN && !OPEN_MODE) return;
     try {
       const res = await authFetch('/rag/status');
       if (!res.ok) return;
@@ -4658,7 +4664,7 @@ reply = await client.chat.completions.create(
   }
 
   async function ragDemoClearAll() {
-    if (!AUTH_TOKEN) return;
+    if (!AUTH_TOKEN && !OPEN_MODE) return;
     const res = await authFetch('/admin/rag/documents', { method: 'DELETE' });
     if (!res.ok) { alert('Failed to clear RAG documents'); return; }
     _ragF2Ready = false;

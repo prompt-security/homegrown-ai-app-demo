@@ -4512,7 +4512,7 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
           if (!raw) continue;
           try {
             const evt = JSON.parse(raw);
-            if (evt.status === 'error') {
+            if (evt.status === 'error' || (evt.error && !evt.status)) {
               txt.textContent = '⚠ ' + (evt.error || 'Pull failed');
               txt.style.color = 'var(--red)';
               finalStatus = 'error';
@@ -4993,9 +4993,11 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
         const lines = buf.split('\n');
         buf = lines.pop() ?? '';
         for (const line of lines) {
+          if (line.startsWith(':')) continue; // SSE keepalive comment
           if (!line.startsWith('data: ')) continue;
           const raw = line.slice(6).trim();
           if (!raw) continue;
+          let done = false;
           try {
             const evt = JSON.parse(raw);
             if (evt.status === 'error') {
@@ -5004,30 +5006,41 @@ select.filter-sel{background:var(--surface2);border:1px solid var(--border);bord
               hideCancelBtn();
               return;
             }
+            if (evt.status === 'cancelled') {
+              statusText.textContent = '⊘ Download cancelled';
+              statusText.style.color = 'var(--text-muted)';
+              bar.style.width = '0%';
+              setTimeout(() => { statusBar.style.display = 'none'; statusText.style.color = ''; }, 2000);
+              hideCancelBtn();
+              return;
+            }
             let pct = 0;
             if (evt.total && evt.completed) {
               pct = Math.min(99, Math.round((evt.completed / evt.total) * 100));
             }
-            if (evt.status === 'success' || evt.status === 'done') pct = 100;
+            if (evt.status === 'done') { pct = 100; done = true; }
             bar.style.width = `${pct}%`;
-            let label = `${fullModel}: ${evt.status || ''}`;
-            if (evt.total && evt.completed) {
-              const mbDone  = (evt.completed / 1048576).toFixed(0);
-              const mbTotal = (evt.total / 1048576).toFixed(0);
-              label += ` — ${mbDone} / ${mbTotal} MB (${pct}%)`;
-            }
-            statusText.textContent = label;
-            statusText.style.color = pct === 100 ? 'var(--green)' : '';
-            if (pct === 100) {
-              bar.style.width = '100%';
-              statusText.textContent = `✓ ${fullModel} pulled successfully`;
-              statusText.style.color = 'var(--green)';
-              hideCancelBtn();
-              setTimeout(() => { statusBar.style.display = 'none'; statusText.style.color = ''; }, 3000);
-              await detectOllamaModels();
-              renderModelBrowser();
+            if (!done) {
+              let label = `${fullModel}: ${evt.status || ''}`;
+              if (evt.total && evt.completed) {
+                const mbDone  = (evt.completed / 1048576).toFixed(0);
+                const mbTotal = (evt.total / 1048576).toFixed(0);
+                label += ` — ${mbDone} / ${mbTotal} MB (${pct}%)`;
+              }
+              statusText.textContent = label;
+              statusText.style.color = '';
             }
           } catch (_) { /* ignore parse errors */ }
+          if (done) {
+            bar.style.width = '100%';
+            statusText.textContent = `✓ ${fullModel} pulled successfully`;
+            statusText.style.color = 'var(--green)';
+            hideCancelBtn();
+            setTimeout(() => { statusBar.style.display = 'none'; statusText.style.color = ''; }, 3000);
+            await detectOllamaModels();
+            renderModelBrowser();
+            return; // stream is finished — exit the reader
+          }
         }
       }
     } catch (e) {
