@@ -1280,10 +1280,6 @@ reply = await client.chat.completions.create(
         </div>
       </div>
       <div class="file-scan-status" id="fileScanStatus"></div>
-      <div style="font-size:11px;color:var(--text-muted);background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;display:flex;align-items:flex-start;gap:7px">
-        <span style="flex-shrink:0;opacity:0.6">ℹ️</span>
-        <span>Files are scanned using the <strong>Default Homegrown App Policy</strong>, not your own configured policy app. Results may differ from your production PS policy.</span>
-      </div>
       <!-- Results (shown below controls) -->
       <div id="fileScanResultBadge"></div>
       <div id="fileScanFindings"></div>
@@ -5652,14 +5648,16 @@ if (evt.type === 'done') {
           const pairs = Object.entries(item).filter(([, v]) => v !== null && v !== undefined && v !== '' && v !== 0);
           html += `<div style="display:flex;flex-wrap:wrap;gap:6px;padding:6px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);margin-bottom:3px">`;
           pairs.forEach(([k, v]) => {
-            html += `<span style="font-size:11px;font-family:monospace;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 7px"><span style="color:var(--text-muted)">${esc(k)}:</span> ${esc(String(v))}</span>`;
+            const displayVal = (v !== null && typeof v === 'object') ? JSON.stringify(v) : String(v);
+            html += `<span style="font-size:11px;font-family:monospace;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 7px"><span style="color:var(--text-muted)">${esc(k)}:</span> ${esc(displayVal)}</span>`;
           });
           html += `</div>`;
           return;
         }
 
         const entityType = item.entity_type || item.type || item.name || '—';
-        const entityVal  = item.entity ?? item.value ?? '—';
+        const entityValRaw = item.entity ?? item.value ?? '—';
+        const entityVal  = (entityValRaw !== null && typeof entityValRaw === 'object') ? JSON.stringify(entityValRaw) : entityValRaw;
         const score      = item.score ?? item.confidence ?? null;
         const sanitized  = item.sanitized_entity ?? item.sanitized ?? item.replacement ?? null;
         const cats       = item.categories?.length ? item.categories.join(', ') : null;

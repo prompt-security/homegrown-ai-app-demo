@@ -1,5 +1,9 @@
 # Changelog
 
+## [2026-10-06]
+### Fixed
+- File scan findings: `[object Object]` no longer appears in TOKEN RATE LIMIT (and similar stat-only) findings rows; PS can return `num_of_tokens` as an object rather than a scalar, which `String()` stringified to `[object Object]`; stat-item values are now serialised with `JSON.stringify` when the value is an object — @pj.norris
+
 ## [2026-09-18]
 ### Fixed
 - Ollama model pull no longer silently shows "✓ pulled successfully" when the download fails: Ollama returns `{"error":"..."}` without a `status` field on failure (e.g. TLS cert errors), which was not caught by the frontend's `evt.status === 'error'` check; backend now normalises bare Ollama error events to `{"status":"error","error":"..."}` before forwarding, and `startModelPull` also gained a fallback check for `evt.error && !evt.status` — @pj.norris
