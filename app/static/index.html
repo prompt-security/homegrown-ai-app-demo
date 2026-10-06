@@ -5599,10 +5599,23 @@ if (evt.type === 'done') {
     return `<span class="fs-score" style="color:${col}">${pct}%</span>`;
   }
 
-  function _renderFindingsSection(raw, entityContexts = {}) {
+  function _renderFindingsSection(raw, entityContexts = {}, violations = []) {
     // PS sanitizeFile wraps findings inside raw.metadata; protect endpoint uses raw.result.*
     const findings = raw?.metadata?.findings || raw?.findings || raw?.result?.findings || raw?.result?.prompt?.findings || {};
     const cats = Object.entries(findings).filter(([, items]) => Array.isArray(items) && items.length > 0);
+
+    // Violations (e.g. "Prompt Injection") that PS reports at the block level but has no
+    // detailed findings entries for — add them as synthetic single-item categories so they
+    // are visible in the UI rather than silently omitted.
+    const existingCatNames = new Set(cats.map(([k]) => k.toLowerCase()));
+    violations.forEach(v => {
+      const name = (typeof v === 'string' ? v : (v?.type || v?.category || v?.name || '')) || '';
+      if (name && !existingCatNames.has(name.toLowerCase())) {
+        cats.push([name, [{ _violation: true, type: name }]]);
+        existingCatNames.add(name.toLowerCase());
+      }
+    });
+
     if (cats.length === 0) return '<div style="font-size:12px;color:var(--text-muted);margin-top:8px">No findings detected.</div>';
 
     const total = cats.reduce((s, [, items]) => s + items.length, 0);
@@ -5642,6 +5655,14 @@ if (evt.type === 'done') {
       </div>`;
 
       items.forEach(item => {
+        // Synthetic violation entries (e.g. Prompt Injection) — show a simple blocked pill
+        if (item._violation) {
+          html += `<div style="padding:6px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);margin-bottom:3px;font-size:12px">
+            <span style="background:rgba(231,76,60,0.15);color:var(--red,#e74c3c);border:1px solid rgba(231,76,60,0.3);border-radius:4px;padding:2px 8px;font-size:11px">🚫 Blocked by policy</span>
+            <span style="color:var(--text-muted);font-size:11px;margin-left:8px">No entity-level detail available for this violation type.</span>
+          </div>`;
+          return;
+        }
         // Stat-only items (e.g. Token Limitation) have no entity_type/entity — render as key-value pills
         const isStatItem = !item.entity_type && !item.name && !item.entity;
         if (isStatItem) {
@@ -5727,7 +5748,7 @@ if (evt.type === 'done') {
     document.getElementById('fileScanResultBadge').innerHTML = badgeHtml;
 
     // ── Findings analysis ──
-    document.getElementById('fileScanFindings').innerHTML = _renderFindingsSection(data.raw || {}, data.entity_contexts || {});
+    document.getElementById('fileScanFindings').innerHTML = _renderFindingsSection(data.raw || {}, data.entity_contexts || {}, data.violations || []);
 
     // ── Meta line ──
     const meta = [data.job_id ? `Job ID: ${data.job_id}` : null, data.scan_ms ? `Scan time: ${data.scan_ms}ms` : null].filter(Boolean).join(' · ');

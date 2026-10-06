@@ -2,6 +2,7 @@
 
 ## [2026-10-06]
 ### Fixed
+- File scan findings: violation-level detections (e.g. Prompt Injection) are now shown as finding categories; PS reports these only in the `violations` array with no corresponding `findings` entry, so they were silently omitted — `_renderFindingsSection` now accepts violations and injects any not already covered by a findings category as synthetic entries showing a "Blocked by policy" pill — @pj.norris
 - File scan findings: `[object Object]` no longer appears in TOKEN RATE LIMIT (and similar stat-only) findings rows; PS can return `num_of_tokens` as an object rather than a scalar, which `String()` stringified to `[object Object]`; stat-item values are now serialised with `JSON.stringify` when the value is an object — @pj.norris
 
 ## [2026-09-18]
