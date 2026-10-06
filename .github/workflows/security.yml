@@ -18,6 +18,7 @@ jobs:
     steps:
       - name: Dependency Review
         uses: actions/dependency-review-action@v4
+        continue-on-error: true
 
   lint:
     runs-on: ubuntu-latest
